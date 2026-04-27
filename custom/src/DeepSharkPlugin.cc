@@ -1,0 +1,86 @@
+/****************************************************************************
+ *
+ * DeepShark custom QGroundControl build plugin.
+ *
+ ****************************************************************************/
+
+#include "DeepSharkPlugin.h"
+
+#include <QtCore/QFile>
+#include <QtCore/qapplicationstatic.h>
+#include <QtQml/QQmlApplicationEngine>
+#include <QtQml/qqml.h>
+
+#include "DeepSharkVideoController.h"
+#include "DeepSharkVideoSettings.h"
+
+Q_APPLICATION_STATIC(DeepSharkPlugin, _deepSharkPluginInstance);
+
+DeepSharkPlugin::DeepSharkPlugin(QObject *parent)
+    : QGCCorePlugin(parent)
+{
+}
+
+DeepSharkPlugin::~DeepSharkPlugin()
+{
+}
+
+QGCCorePlugin *DeepSharkPlugin::instance()
+{
+    return _deepSharkPluginInstance();
+}
+
+void DeepSharkPlugin::init()
+{
+    static DeepSharkVideoSettings videoSettings;
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", &videoSettings);
+    qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
+}
+
+void DeepSharkPlugin::cleanup()
+{
+    if (_qmlEngine && _selector) {
+        _qmlEngine->removeUrlInterceptor(_selector);
+    }
+
+    delete _selector;
+    _selector = nullptr;
+    _qmlEngine = nullptr;
+}
+
+QQmlApplicationEngine *DeepSharkPlugin::createQmlApplicationEngine(QObject *parent)
+{
+    _qmlEngine = QGCCorePlugin::createQmlApplicationEngine(parent);
+    _selector = new DeepSharkOverrideInterceptor();
+    _qmlEngine->addUrlInterceptor(_selector);
+
+    return _qmlEngine;
+}
+
+DeepSharkOverrideInterceptor::DeepSharkOverrideInterceptor()
+    : QQmlAbstractUrlInterceptor()
+{
+}
+
+QUrl DeepSharkOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type)
+{
+    switch (type) {
+    using DataType = QQmlAbstractUrlInterceptor::DataType;
+    case DataType::QmlFile:
+    case DataType::UrlString:
+        if (url.scheme() == QStringLiteral("qrc")) {
+            const QString overrideResource = QStringLiteral(":/Custom%1").arg(url.path());
+            if (QFile::exists(overrideResource)) {
+                QUrl result;
+                result.setScheme(QStringLiteral("qrc"));
+                result.setPath(overrideResource.mid(1));
+                return result;
+            }
+        }
+        break;
+    default:
+        break;
+    }
+
+    return url;
+}

@@ -1,0 +1,81 @@
+/****************************************************************************
+ *
+ * DeepShark single-stream video controller.
+ *
+ ****************************************************************************/
+
+#pragma once
+
+#include <QtCore/QObject>
+#include <QtCore/QPointer>
+#include <QtQuick/QQuickItem>
+
+class VideoReceiver;
+
+class DeepSharkVideoController : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QQuickItem* videoItem READ videoItem WRITE setVideoItem NOTIFY videoItemChanged)
+    Q_PROPERTY(QString receiverName READ receiverName WRITE setReceiverName NOTIFY receiverNameChanged)
+    Q_PROPERTY(QString uri READ uri WRITE setUri NOTIFY uriChanged)
+    Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
+    Q_PROPERTY(bool lowLatency READ lowLatency WRITE setLowLatency NOTIFY lowLatencyChanged)
+    Q_PROPERTY(bool streaming READ streaming NOTIFY streamingChanged)
+    Q_PROPERTY(bool decoding READ decoding NOTIFY decodingChanged)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(int startAttempts READ startAttempts NOTIFY startAttemptsChanged)
+
+public:
+    explicit DeepSharkVideoController(QObject *parent = nullptr);
+    ~DeepSharkVideoController();
+
+    QQuickItem *videoItem() const { return _videoItem; }
+    QString receiverName() const { return _receiverName; }
+    QString uri() const { return _uri; }
+    bool autoStart() const { return _autoStart; }
+    bool lowLatency() const { return _lowLatency; }
+    bool streaming() const { return _streaming; }
+    bool decoding() const { return _decoding; }
+    QString statusText() const { return _statusText; }
+    int startAttempts() const { return _startAttempts; }
+
+    void setVideoItem(QQuickItem *videoItem);
+    void setReceiverName(const QString &receiverName);
+    void setUri(const QString &uri);
+    void setAutoStart(bool autoStart);
+    void setLowLatency(bool lowLatency);
+
+    Q_INVOKABLE void start();
+    Q_INVOKABLE void stop();
+
+signals:
+    void videoItemChanged();
+    void receiverNameChanged();
+    void uriChanged();
+    void autoStartChanged();
+    void lowLatencyChanged();
+    void streamingChanged();
+    void decodingChanged();
+    void statusTextChanged();
+    void startAttemptsChanged();
+
+private:
+    void _ensureReceiver();
+    void _rebuildSink();
+    void _setStatusText(const QString &statusText);
+    void _setStreaming(bool streaming);
+    void _setDecoding(bool decoding);
+
+private:
+    QPointer<QQuickItem> _videoItem;
+    VideoReceiver *_receiver = nullptr;
+    void *_sink = nullptr;
+    QString _receiverName = QStringLiteral("deepSharkVideo");
+    QString _uri;
+    QString _statusText;
+    bool _autoStart = false;
+    bool _lowLatency = true;
+    bool _streaming = false;
+    bool _decoding = false;
+    int _startAttempts = 0;
+};

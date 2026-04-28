@@ -316,11 +316,41 @@ Rectangle {
             QGCButton { text: qsTr("四宫格"); onClicked: root.setGridMode() }
             QGCButton { text: qsTr("主辅"); onClicked: root.setMainAuxMode(root.selectedIndex) }
             QGCButton { text: layoutMode === "fullscreen" ? qsTr("退出全屏") : qsTr("全屏"); onClicked: layoutMode === "fullscreen" ? root.exitFullscreen() : root.setFullscreenMode(root.selectedIndex) }
-            QGCButton { text: qsTr("启动"); onClicked: root.startVideo(root.selectedIndex) }
-            QGCButton { text: qsTr("停止"); onClicked: root.stopVideo(root.selectedIndex) }
-            QGCButton { text: qsTr("重连"); onClicked: root.reconnectVideo(root.selectedIndex) }
-            QGCButton { text: qsTr("全部重连"); onClicked: root.reconnectAllVideos() }
-            QGCButton { text: qsTr("设置"); onClicked: root.openSettings() }
+            QGCButton {
+                text: qsTr("启动")
+                backgroundColor: "#16a34a"
+                textColor: "#f8fafc"
+                showBorder: true
+                onClicked: root.startVideo(root.selectedIndex)
+            }
+            QGCButton {
+                text: qsTr("停止")
+                backgroundColor: "#dc2626"
+                textColor: "#fef2f2"
+                showBorder: true
+                onClicked: root.stopVideo(root.selectedIndex)
+            }
+            QGCButton {
+                text: qsTr("重连")
+                backgroundColor: "#059669"
+                textColor: "#ecfdf5"
+                showBorder: true
+                onClicked: root.reconnectVideo(root.selectedIndex)
+            }
+            QGCButton {
+                text: qsTr("全部重连")
+                backgroundColor: "#86efac"
+                textColor: "#064e3b"
+                showBorder: true
+                onClicked: root.reconnectAllVideos()
+            }
+            QGCButton {
+                text: qsTr("设置")
+                backgroundColor: "#facc15"
+                textColor: "#422006"
+                showBorder: true
+                onClicked: root.openSettings()
+            }
             QGCButton { text: qsTr("最小化"); onClicked: root.minimizePanel() }
             QGCButton { text: root.videoMainMode ? qsTr("显示地图") : qsTr("主视频"); onClicked: root.toggleVideoMainMode() }
         }

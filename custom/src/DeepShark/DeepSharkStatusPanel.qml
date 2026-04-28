@@ -17,8 +17,7 @@ Rectangle {
     id: root
 
     property bool minimized: false
-    property real panelWidth: minimized ? Math.max(ScreenTools.defaultFontPixelWidth * 6, 44)
-                                       : Math.max(ScreenTools.defaultFontPixelWidth * 38, 320)
+    property real panelWidth: Math.max(ScreenTools.defaultFontPixelWidth * 38, 320)
     property string layoutMode: "grid"
     property int mainIndex: 0
     property string mainName: ""
@@ -33,7 +32,6 @@ Rectangle {
     signal reconnectVideo(int index)
     signal reconnectAllVideos()
 
-    width: panelWidth
     radius: 4
     color: "#e80b1017"
     border.color: "#384453"
@@ -60,22 +58,10 @@ Rectangle {
         statusPanelEvent(minimized ? "Status panel minimized" : "Status panel expanded")
     }
 
-    Item {
-        anchors.fill: parent
-        visible: root.minimized
-
-        QGCButton {
-            anchors.centerIn: parent
-            text: qsTr("状态")
-            onClicked: root.toggleMinimized()
-        }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScreenTools.defaultFontPixelWidth
         spacing: ScreenTools.defaultFontPixelWidth * 0.7
-        visible: !root.minimized
 
         RowLayout {
             Layout.fillWidth: true
@@ -91,6 +77,9 @@ Rectangle {
 
             QGCButton {
                 text: qsTr("全部重连")
+                backgroundColor: "#86efac"
+                textColor: "#064e3b"
+                showBorder: true
                 onClicked: root.reconnectAllVideos()
             }
 
@@ -186,6 +175,9 @@ Rectangle {
 
                                 QGCButton {
                                     text: qsTr("重连")
+                                    backgroundColor: "#059669"
+                                    textColor: "#ecfdf5"
+                                    showBorder: true
                                     onClicked: root.reconnectVideo(modelData.index - 1)
                                 }
                             }

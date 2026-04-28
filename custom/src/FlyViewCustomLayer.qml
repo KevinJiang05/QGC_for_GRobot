@@ -25,6 +25,8 @@ Item {
     property bool mapHidden: videoMainMode && !panelMinimized
     property var recentEvents: []
     property real statusPanelGap: ScreenTools.defaultFontPixelWidth
+    property real compactStatusButtonWidth: Math.max(ScreenTools.defaultFontPixelWidth * 5, 42)
+    property real compactStatusButtonHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2, 32)
 
     function addDeepSharkEvent(message) {
         var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
@@ -100,17 +102,11 @@ Item {
                              ? Math.max(parentToolInsets.rightEdgeBottomInset, ScreenTools.defaultFontPixelWidth * 2)
                              : ScreenTools.defaultFontPixelWidth
         anchors.top: _root.videoMainMode ? parent.top : undefined
-        anchors.topMargin: _root.videoMainMode
-                           ? Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight * 0.5)
-                           : 0
+        anchors.topMargin: _root.videoMainMode ? 0 : 0
         anchors.bottom: _root.videoMainMode ? parent.bottom : undefined
-        anchors.bottomMargin: _root.videoMainMode
-                              ? Math.max(parentToolInsets.bottomEdgeRightInset, ScreenTools.defaultFontPixelHeight * 3)
-                              : 0
+        anchors.bottomMargin: 0
         anchors.left: _root.videoMainMode ? parent.left : undefined
-        anchors.leftMargin: _root.videoMainMode
-                            ? Math.max(parentToolInsets.leftEdgeCenterInset, ScreenTools.defaultFontPixelWidth * 2)
-                            : 0
+        anchors.leftMargin: _root.videoMainMode ? 0 : 0
         anchors.verticalCenter: _root.videoMainMode ? undefined : parent.verticalCenter
         width: _root.videoMainMode ? undefined : Math.min(parent.width * 0.42, ScreenTools.defaultFontPixelWidth * 86)
         height: _root.videoMainMode ? undefined : Math.min(parent.height * 0.58, width * 0.62)
@@ -123,8 +119,9 @@ Item {
 
     DeepSharkStatusPanel {
         id: statusPanel
-        visible: _root.videoMainMode || _root.panelMinimized
+        visible: (_root.videoMainMode || _root.panelMinimized) && !statusPanel.minimized
         z: 20
+        width: statusPanel.panelWidth
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
@@ -144,6 +141,27 @@ Item {
         onStatusPanelEvent: function(message) { _root.addDeepSharkEvent(message) }
         onReconnectVideo: function(index) { fourVideoPanel.reconnectVideo(index) }
         onReconnectAllVideos: fourVideoPanel.reconnectAllVideos()
+    }
+
+    QGCButton {
+        id: statusRestoreButton
+        visible: (_root.videoMainMode || _root.panelMinimized) && statusPanel.minimized
+        z: 20
+        width: _root.compactStatusButtonWidth
+        height: _root.compactStatusButtonHeight
+        text: qsTr("状态")
+        backgroundColor: "#334155"
+        textColor: "#f8fafc"
+        showBorder: true
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: ScreenTools.defaultFontPixelWidth
+        anchors.topMargin: _root.panelMinimized
+                           ? Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+                             + _root.compactStatusButtonHeight
+                             + ScreenTools.defaultFontPixelHeight
+                           : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+        onClicked: statusPanel.toggleMinimized()
     }
 
     QGCButton {

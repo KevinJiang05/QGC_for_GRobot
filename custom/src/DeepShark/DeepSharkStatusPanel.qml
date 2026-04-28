@@ -162,11 +162,11 @@ Rectangle {
 
                                     QGCLabel {
                                         Layout.fillWidth: true
-                                        text: qsTr("%1 | retry:%2 | stream:%3 decode:%4")
+                                        text: qsTr("%1 | retry:%2 | watchdog:%3 age:%4")
                                               .arg(modelData.status)
                                               .arg(modelData.retry)
-                                              .arg(modelData.streamCount)
-                                              .arg(modelData.decodeCount)
+                                              .arg(modelData.watchdog || "Disabled")
+                                              .arg(modelData.lastProgressAge >= 0 ? modelData.lastProgressAge + "s" : "--")
                                         color: "#9ca3af"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
                                         elide: Text.ElideRight
@@ -174,7 +174,10 @@ Rectangle {
 
                                     QGCLabel {
                                         Layout.fillWidth: true
-                                        text: qsTr("%1 | err:%2").arg(modelData.fps || "FPS: --").arg(root.compactText(modelData.lastError, 24))
+                                        text: qsTr("%1 | wd-reconnect:%2 | err:%3")
+                                              .arg(modelData.fps || "FPS: --")
+                                              .arg(modelData.watchdogReconnectCount || 0)
+                                              .arg(root.compactText(modelData.lastError, 24))
                                         color: "#9ca3af"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
                                         elide: Text.ElideRight

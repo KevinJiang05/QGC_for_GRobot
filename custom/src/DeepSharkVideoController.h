@@ -36,6 +36,7 @@ class DeepSharkVideoController : public QObject
     Q_PROPERTY(int videoHeight READ videoHeight NOTIFY videoSizeChanged)
     Q_PROPERTY(QString resolutionText READ resolutionText NOTIFY videoSizeChanged)
     Q_PROPERTY(QString frameRateText READ frameRateText NOTIFY frameRateTextChanged)
+    Q_PROPERTY(quint64 frameCount READ frameCount NOTIFY frameCountChanged)
 
 public:
     explicit DeepSharkVideoController(QObject *parent = nullptr);
@@ -54,6 +55,7 @@ public:
     int videoHeight() const { return _videoSize.height(); }
     QString resolutionText() const;
     QString frameRateText() const;
+    quint64 frameCount() const;
 
     void setVideoItem(QQuickItem *videoItem);
     void setReceiverName(const QString &receiverName);
@@ -76,6 +78,7 @@ signals:
     void startAttemptsChanged();
     void videoSizeChanged();
     void frameRateTextChanged();
+    void frameCountChanged();
 
 private:
     void _ensureReceiver();

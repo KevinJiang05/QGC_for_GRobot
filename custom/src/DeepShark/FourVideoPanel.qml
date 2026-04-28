@@ -239,7 +239,10 @@ Rectangle {
             "streamCount": tile ? tile.streamCount : 0,
             "decodeCount": tile ? tile.decodeCount : 0,
             "fps": tile ? tile.frameRateText : "FPS: --",
-            "lastError": tile ? tile.lastError : ""
+            "lastError": tile ? tile.lastError : "",
+            "watchdog": tile ? tile.watchdogStatus : "Disabled",
+            "lastProgressAge": tile ? tile.lastProgressAgeSeconds : -1,
+            "watchdogReconnectCount": tile ? tile.watchdogReconnectCount : 0
         }
     }
 

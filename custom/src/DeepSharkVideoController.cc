@@ -135,6 +135,15 @@ QString DeepSharkVideoController::frameRateText() const
     return QStringLiteral("FPS: %1").arg(_frameRate, 0, 'f', 1);
 }
 
+quint64 DeepSharkVideoController::frameCount() const
+{
+#ifdef QGC_GST_STREAMING
+    return _sinkFrameCount.load(std::memory_order_relaxed);
+#else
+    return 0;
+#endif
+}
+
 void DeepSharkVideoController::start()
 {
     _ensureReceiver();
@@ -310,6 +319,9 @@ void DeepSharkVideoController::_updateFrameRate()
     const quint64 currentFrameCount = _sinkFrameCount.load(std::memory_order_relaxed);
     const quint64 frameDelta = currentFrameCount - _lastSinkFrameCount;
     _lastSinkFrameCount = currentFrameCount;
+    if (frameDelta > 0) {
+        emit frameCountChanged();
+    }
     _setFrameRate(_decoding ? static_cast<double>(frameDelta) : 0.0);
 #else
     _setFrameRate(0.0);

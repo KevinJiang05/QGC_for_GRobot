@@ -36,6 +36,14 @@ Rectangle {
     property string resolutionText: videoController.resolutionText
     property string frameRateText: videoController.frameRateText
     property int maxAutoRetries: 5
+    property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
+    property bool stalled: false
+    property int watchdogReconnectCount: 0
+    property double lastProgressTime: Date.now()
+    property double lastWatchdogReconnectTime: 0
+    property double lastWatchdogLogTime: 0
+    property int lastFrameCount: 0
+    property int lastProgressAgeSeconds: -1
 
     signal tileClicked()
     signal tileDoubleClicked()
@@ -75,7 +83,81 @@ Rectangle {
                 return
             }
             root.videoEvent(root.title + " Reconnecting retry=" + root.retryCount)
+            root._setStatus("Connecting", "")
             videoController.start()
+        }
+    }
+
+    Timer {
+        id: watchdogTimer
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: root._watchdogTick()
+    }
+
+    function _markProgress() {
+        lastProgressTime = Date.now()
+        if (stalled) {
+            stalled = false
+            videoEvent(title + " watchdog OK")
+        }
+    }
+
+    function _watchdogDisabledReason() {
+        if (manualStopped) {
+            return "manual stopped"
+        }
+        if (!videoEnabled || videoSource.length === 0) {
+            return "empty url"
+        }
+        if (currentStatus === "Failed") {
+            return "failed retry limit"
+        }
+        return ""
+    }
+
+    function _watchdogTick() {
+        var reason = _watchdogDisabledReason()
+        if (reason.length > 0) {
+            lastProgressAgeSeconds = -1
+            if (watchdogStatus !== "Disabled") {
+                videoEvent(title + " watchdog disabled: " + reason)
+            }
+            stalled = false
+            return
+        }
+
+        if (currentStatus !== "Playing" && currentStatus !== "Streaming") {
+            lastProgressAgeSeconds = Math.max(0, Math.floor((Date.now() - lastProgressTime) / 1000))
+            return
+        }
+
+        var frameCount = videoController.frameCount
+        if (frameCount !== lastFrameCount) {
+            lastFrameCount = frameCount
+            _markProgress()
+            lastProgressAgeSeconds = 0
+            return
+        }
+
+        var ageMs = Date.now() - lastProgressTime
+        lastProgressAgeSeconds = Math.floor(ageMs / 1000)
+        if (ageMs < 8000) {
+            return
+        }
+
+        if (!stalled) {
+            stalled = true
+            _setStatus("Stalled", "No frame progress for " + Math.floor(ageMs / 1000) + "s")
+            videoEvent(title + " stalled: no frame progress for " + Math.floor(ageMs / 1000) + "s")
+        }
+
+        if (Date.now() - lastWatchdogReconnectTime >= 15000 && retryCount < maxAutoRetries) {
+            lastWatchdogReconnectTime = Date.now()
+            watchdogReconnectCount++
+            videoEvent(title + " watchdog reconnect")
+            _scheduleReconnect("Watchdog stalled")
         }
     }
 
@@ -102,17 +184,24 @@ Rectangle {
         }
 
         var delayMs = retryCount === 1 ? 3000 : 5000
+        if (currentStatus === "Stalled") {
+            videoEvent(title + " Reconnecting retry=" + retryCount)
+        }
         _setStatus("Reconnecting", error)
+        videoController.stop()
         restartTimer.interval = delayMs
         restartTimer.restart()
     }
 
     function startVideo() {
         restartTimer.stop()
+        stalled = false
+        _markProgress()
         if (!videoEnabled || videoSource.length === 0) {
             manualStopped = false
             controllerAutoStart = false
             _setStatus("Waiting", "URL empty")
+            videoEvent(title + " watchdog disabled: empty url")
             return
         }
 
@@ -125,15 +214,19 @@ Rectangle {
 
     function stopVideo() {
         restartTimer.stop()
+        stalled = false
         manualStopped = true
         controllerAutoStart = false
         videoController.stop()
         _setStatus("Stopped", "")
         videoEvent(title + " Stopped manually")
+        videoEvent(title + " watchdog disabled: manual stopped")
     }
 
     function reconnectVideo() {
         restartTimer.stop()
+        stalled = false
+        _markProgress()
         manualStopped = false
         retryCount = 0
         controllerAutoStart = true
@@ -156,12 +249,15 @@ Rectangle {
 
     function _syncForUrl() {
         restartTimer.stop()
+        stalled = false
+        _markProgress()
         retryCount = 0
         if (!videoEnabled || videoSource.length === 0) {
             manualStopped = false
             controllerAutoStart = false
             videoController.stop()
             _setStatus("Waiting", "URL empty")
+            videoEvent(title + " watchdog disabled: empty url")
             return
         }
         if (!manualStopped) {
@@ -190,6 +286,7 @@ Rectangle {
         function onStreamingChanged() {
             if (videoController.streaming) {
                 streamCount++
+                root._markProgress()
                 if (!videoController.decoding) {
                     root._setStatus("Streaming", "")
                 }
@@ -202,6 +299,7 @@ Rectangle {
             if (videoController.decoding) {
                 decodeCount++
                 root.retryCount = 0
+                root._markProgress()
                 root._setStatus("Playing", "")
             } else if (!root.manualStopped && root.currentStatus === "Playing") {
                 root._scheduleReconnect("Decode stopped")
@@ -217,6 +315,10 @@ Rectangle {
             } else if (text.indexOf("Stopped") >= 0 && root.manualStopped) {
                 root._setStatus("Stopped", "")
             }
+        }
+
+        function onFrameCountChanged() {
+            root._markProgress()
         }
     }
 
@@ -255,13 +357,13 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.margins: ScreenTools.defaultFontPixelWidth
         text: root.videoEnabled
-              ? qsTr("%1 | %2 | %3 retry:%4 stream:%5 decode:%6")
+              ? qsTr("%1 | %2 | %3 wd:%4 age:%5s retry:%6")
                     .arg(root.resolutionText)
                     .arg(root.frameRateText)
                     .arg(root.currentStatus)
+                    .arg(root.watchdogStatus)
+                    .arg(root.lastProgressAgeSeconds < 0 ? "--" : root.lastProgressAgeSeconds)
                     .arg(root.retryCount)
-                    .arg(root.streamCount)
-                    .arg(root.decodeCount)
               : qsTr("Waiting for RTSP")
         color: "#6b7280"
         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7

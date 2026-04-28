@@ -12,15 +12,25 @@
 #include <QtCore/QTimer>
 #include <QtQuick/QQuickItem>
 
+#include <cmath>
+
+#ifdef QGC_GST_STREAMING
+#include <gst/gstelement.h>
+#endif
+
 DeepSharkVideoController::DeepSharkVideoController(QObject *parent)
     : QObject(parent)
 {
     _setStatusText(tr("Waiting for RTSP"));
+    _frameRateTimer.setInterval(1000);
+    connect(&_frameRateTimer, &QTimer::timeout, this, &DeepSharkVideoController::_updateFrameRate);
+    _frameRateTimer.start();
 }
 
 DeepSharkVideoController::~DeepSharkVideoController()
 {
     stop();
+    _removeSinkFrameProbe();
     if (_receiver && _sink) {
         QGCCorePlugin::instance()->releaseVideoSink(_sink);
     }
@@ -115,6 +125,24 @@ void DeepSharkVideoController::setLowLatency(bool lowLatency)
     }
 }
 
+QString DeepSharkVideoController::resolutionText() const
+{
+    if (!_videoSize.isValid() || _videoSize.isEmpty()) {
+        return QStringLiteral("分辨率: --");
+    }
+
+    return QStringLiteral("分辨率: %1x%2").arg(_videoSize.width()).arg(_videoSize.height());
+}
+
+QString DeepSharkVideoController::frameRateText() const
+{
+    if (!_decoding || _frameRate <= 0.0) {
+        return QStringLiteral("FPS: --");
+    }
+
+    return QStringLiteral("FPS: %1").arg(_frameRate, 0, 'f', 1);
+}
+
 void DeepSharkVideoController::start()
 {
     _ensureReceiver();
@@ -203,6 +231,10 @@ void DeepSharkVideoController::_ensureReceiver()
         _setStatusText(active ? tr("Playing") : (_streaming ? tr("Streaming") : tr("Waiting for RTSP")));
     });
 
+    connect(_receiver, &VideoReceiver::videoSizeChanged, this, [this](const QSize &size) {
+        _setVideoSize(size);
+    });
+
     _rebuildSink();
 }
 
@@ -214,6 +246,7 @@ void DeepSharkVideoController::_rebuildSink()
     }
 
     if (_sink) {
+        _removeSinkFrameProbe();
         QGCCorePlugin::instance()->releaseVideoSink(_sink);
         _sink = nullptr;
     }
@@ -222,6 +255,7 @@ void DeepSharkVideoController::_rebuildSink()
     if (_videoItem) {
         _sink = QGCCorePlugin::instance()->createVideoSink(_videoItem, _receiver);
         _receiver->setSink(_sink);
+        _installSinkFrameProbe();
     }
 }
 
@@ -252,5 +286,93 @@ void DeepSharkVideoController::_setDecoding(bool decoding)
     }
 
     _decoding = decoding;
+    if (!_decoding) {
+        _setFrameRate(0.0);
+    }
     emit decodingChanged();
 }
+
+void DeepSharkVideoController::_setVideoSize(const QSize &videoSize)
+{
+    if (_videoSize == videoSize) {
+        return;
+    }
+
+    _videoSize = videoSize;
+    emit videoSizeChanged();
+}
+
+void DeepSharkVideoController::_setFrameRate(double frameRate)
+{
+    if (std::abs(_frameRate - frameRate) < 0.05) {
+        return;
+    }
+
+    _frameRate = frameRate;
+    emit frameRateTextChanged();
+}
+
+void DeepSharkVideoController::_updateFrameRate()
+{
+#ifdef QGC_GST_STREAMING
+    const quint64 currentFrameCount = _sinkFrameCount.load(std::memory_order_relaxed);
+    const quint64 frameDelta = currentFrameCount - _lastSinkFrameCount;
+    _lastSinkFrameCount = currentFrameCount;
+    _setFrameRate(_decoding ? static_cast<double>(frameDelta) : 0.0);
+#else
+    _setFrameRate(0.0);
+#endif
+}
+
+#ifdef QGC_GST_STREAMING
+void DeepSharkVideoController::_installSinkFrameProbe()
+{
+    if (!_sink || _sinkFrameProbeId != 0) {
+        return;
+    }
+
+    GstElement *videoSink = GST_ELEMENT(_sink);
+    GstPad *sinkPad = gst_element_get_static_pad(videoSink, "sink");
+    if (!sinkPad) {
+        return;
+    }
+
+    _sinkFrameProbeId = gst_pad_add_probe(sinkPad, GST_PAD_PROBE_TYPE_BUFFER, _videoSinkFrameProbe, this, nullptr);
+    gst_object_unref(sinkPad);
+}
+
+void DeepSharkVideoController::_removeSinkFrameProbe()
+{
+    if (!_sink || _sinkFrameProbeId == 0) {
+        _sinkFrameProbeId = 0;
+        return;
+    }
+
+    GstElement *videoSink = GST_ELEMENT(_sink);
+    GstPad *sinkPad = gst_element_get_static_pad(videoSink, "sink");
+    if (sinkPad) {
+        gst_pad_remove_probe(sinkPad, _sinkFrameProbeId);
+        gst_object_unref(sinkPad);
+    }
+
+    _sinkFrameProbeId = 0;
+}
+
+GstPadProbeReturn DeepSharkVideoController::_videoSinkFrameProbe(GstPad *, GstPadProbeInfo *info, gpointer userData)
+{
+    auto *controller = static_cast<DeepSharkVideoController *>(userData);
+    if (controller && (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER)) {
+        controller->_sinkFrameCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    return GST_PAD_PROBE_OK;
+}
+#else
+void DeepSharkVideoController::_installSinkFrameProbe()
+{
+}
+
+void DeepSharkVideoController::_removeSinkFrameProbe()
+{
+}
+#endif

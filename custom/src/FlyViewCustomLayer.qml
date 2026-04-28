@@ -20,6 +20,56 @@ Item {
     property var parentToolInsets
     property var totalToolInsets: _toolInsets
     property var mapControl
+    property bool videoMainMode: true
+    property bool panelMinimized: false
+    property bool mapHidden: videoMainMode && !panelMinimized
+    property var recentEvents: []
+    property real statusPanelGap: ScreenTools.defaultFontPixelWidth
+
+    function addDeepSharkEvent(message) {
+        var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
+        var updatedEvents = recentEvents.slice(0)
+        updatedEvents.unshift(timestamp + "  " + message)
+        if (updatedEvents.length > 20) {
+            updatedEvents.length = 20
+        }
+        recentEvents = updatedEvents
+    }
+
+    function syncMapControlVisibility() {
+        if (typeof mapControl === "undefined" || mapControl === null) {
+            return
+        }
+
+        var hideMap = videoMainMode && !panelMinimized
+        mapHidden = hideMap
+        mapControl.visible = !hideMap
+        mapControl.enabled = !hideMap
+        mapControl.opacity = hideMap ? 0 : 1
+    }
+
+    function minimizeDeepSharkPanel() {
+        addDeepSharkEvent("DeepShark panel minimized")
+        panelMinimized = true
+        videoMainMode = false
+        syncMapControlVisibility()
+    }
+
+    function restoreDeepSharkPanel() {
+        addDeepSharkEvent("DeepShark panel restored")
+        panelMinimized = false
+        videoMainMode = true
+        syncMapControlVisibility()
+    }
+
+    onVideoMainModeChanged: {
+        addDeepSharkEvent(videoMainMode ? "Map hidden" : "Map visible")
+        syncMapControlVisibility()
+    }
+    onPanelMinimizedChanged: syncMapControlVisibility()
+    onMapControlChanged: Qt.callLater(syncMapControlVisibility)
+
+    Component.onCompleted: Qt.callLater(syncMapControlVisibility)
 
     QGCPalette {
         id: qgcPal
@@ -44,10 +94,63 @@ Item {
 
     FourVideoPanel {
         id: fourVideoPanel
+        visible: !_root.panelMinimized
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.rightMargin: _root.videoMainMode
+                             ? Math.max(parentToolInsets.rightEdgeBottomInset, ScreenTools.defaultFontPixelWidth * 2)
+                             : ScreenTools.defaultFontPixelWidth
+        anchors.top: _root.videoMainMode ? parent.top : undefined
+        anchors.topMargin: _root.videoMainMode
+                           ? Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight * 0.5)
+                           : 0
+        anchors.bottom: _root.videoMainMode ? parent.bottom : undefined
+        anchors.bottomMargin: _root.videoMainMode
+                              ? Math.max(parentToolInsets.bottomEdgeRightInset, ScreenTools.defaultFontPixelHeight * 3)
+                              : 0
+        anchors.left: _root.videoMainMode ? parent.left : undefined
+        anchors.leftMargin: _root.videoMainMode
+                            ? Math.max(parentToolInsets.leftEdgeCenterInset, ScreenTools.defaultFontPixelWidth * 2)
+                            : 0
+        anchors.verticalCenter: _root.videoMainMode ? undefined : parent.verticalCenter
+        width: _root.videoMainMode ? undefined : Math.min(parent.width * 0.42, ScreenTools.defaultFontPixelWidth * 86)
+        height: _root.videoMainMode ? undefined : Math.min(parent.height * 0.58, width * 0.62)
+
+        videoMainMode: _root.videoMainMode
+        onToggleVideoMainMode: _root.videoMainMode = !_root.videoMainMode
+        onMinimizePanel: _root.minimizeDeepSharkPanel()
+        onDeepSharkEvent: function(message) { _root.addDeepSharkEvent(message) }
+    }
+
+    DeepSharkStatusPanel {
+        id: statusPanel
+        visible: _root.videoMainMode || _root.panelMinimized
+        z: 20
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
         anchors.rightMargin: ScreenTools.defaultFontPixelWidth
-        width: Math.min(parent.width * 0.42, ScreenTools.defaultFontPixelWidth * 86)
-        height: Math.min(parent.height * 0.58, width * 0.62)
+        anchors.topMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+        anchors.bottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset, ScreenTools.defaultFontPixelHeight * 3)
+
+        layoutMode: _root.panelMinimized ? "minimized" : fourVideoPanel.layoutMode
+        mainIndex: fourVideoPanel.mainIndex
+        mainName: fourVideoPanel.mainViewName
+        mapHidden: _root.mapHidden
+        deepSharkPanelMinimized: _root.panelMinimized
+        vehicleStatus: "Unknown"
+        rtspRows: fourVideoPanel.videoRows
+        recentEvents: _root.recentEvents
+        onStatusPanelEvent: function(message) { _root.addDeepSharkEvent(message) }
+    }
+
+    QGCButton {
+        id: restorePanelButton
+        visible: _root.panelMinimized
+        text: qsTr("打开 DeepShark Panel")
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 2
+        anchors.topMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+        onClicked: _root.restoreDeepSharkPanel()
     }
 }

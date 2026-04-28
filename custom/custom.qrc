@@ -3,5 +3,6 @@
         <file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">src/FlyViewCustomLayer.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/FourVideoPanel.qml">src/DeepShark/FourVideoPanel.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/VideoTile.qml">src/DeepShark/VideoTile.qml</file>
+        <file alias="QGroundControl/FlightDisplay/DeepShark/DeepSharkStatusPanel.qml">src/DeepShark/DeepSharkStatusPanel.qml</file>
     </qresource>
 </RCC>

@@ -8,7 +8,15 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSize>
+#include <QtCore/QTimer>
 #include <QtQuick/QQuickItem>
+
+#include <atomic>
+
+#ifdef QGC_GST_STREAMING
+#include <gst/gstpad.h>
+#endif
 
 class VideoReceiver;
 
@@ -24,6 +32,10 @@ class DeepSharkVideoController : public QObject
     Q_PROPERTY(bool decoding READ decoding NOTIFY decodingChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(int startAttempts READ startAttempts NOTIFY startAttemptsChanged)
+    Q_PROPERTY(int videoWidth READ videoWidth NOTIFY videoSizeChanged)
+    Q_PROPERTY(int videoHeight READ videoHeight NOTIFY videoSizeChanged)
+    Q_PROPERTY(QString resolutionText READ resolutionText NOTIFY videoSizeChanged)
+    Q_PROPERTY(QString frameRateText READ frameRateText NOTIFY frameRateTextChanged)
 
 public:
     explicit DeepSharkVideoController(QObject *parent = nullptr);
@@ -38,6 +50,10 @@ public:
     bool decoding() const { return _decoding; }
     QString statusText() const { return _statusText; }
     int startAttempts() const { return _startAttempts; }
+    int videoWidth() const { return _videoSize.width(); }
+    int videoHeight() const { return _videoSize.height(); }
+    QString resolutionText() const;
+    QString frameRateText() const;
 
     void setVideoItem(QQuickItem *videoItem);
     void setReceiverName(const QString &receiverName);
@@ -58,6 +74,8 @@ signals:
     void decodingChanged();
     void statusTextChanged();
     void startAttemptsChanged();
+    void videoSizeChanged();
+    void frameRateTextChanged();
 
 private:
     void _ensureReceiver();
@@ -65,6 +83,15 @@ private:
     void _setStatusText(const QString &statusText);
     void _setStreaming(bool streaming);
     void _setDecoding(bool decoding);
+    void _setVideoSize(const QSize &videoSize);
+    void _setFrameRate(double frameRate);
+    void _updateFrameRate();
+    void _installSinkFrameProbe();
+    void _removeSinkFrameProbe();
+
+#ifdef QGC_GST_STREAMING
+    static GstPadProbeReturn _videoSinkFrameProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData);
+#endif
 
 private:
     QPointer<QQuickItem> _videoItem;
@@ -78,4 +105,13 @@ private:
     bool _streaming = false;
     bool _decoding = false;
     int _startAttempts = 0;
+    QSize _videoSize;
+    double _frameRate = 0.0;
+    QTimer _frameRateTimer;
+
+#ifdef QGC_GST_STREAMING
+    gulong _sinkFrameProbeId = 0;
+    std::atomic<quint64> _sinkFrameCount { 0 };
+    quint64 _lastSinkFrameCount = 0;
+#endif
 };

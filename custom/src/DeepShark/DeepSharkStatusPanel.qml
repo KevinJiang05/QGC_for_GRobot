@@ -18,17 +18,20 @@ Rectangle {
 
     property bool minimized: false
     property real panelWidth: minimized ? Math.max(ScreenTools.defaultFontPixelWidth * 6, 44)
-                                       : Math.max(ScreenTools.defaultFontPixelWidth * 36, 300)
+                                       : Math.max(ScreenTools.defaultFontPixelWidth * 38, 320)
     property string layoutMode: "grid"
     property int mainIndex: 0
     property string mainName: ""
     property bool mapHidden: false
     property bool deepSharkPanelMinimized: false
     property string vehicleStatus: qsTr("Unknown")
-    property var rtspRows: []
+    property var videoRows: []
+    property var rtspRows: videoRows
     property var recentEvents: []
 
     signal statusPanelEvent(string message)
+    signal reconnectVideo(int index)
+    signal reconnectAllVideos()
 
     width: panelWidth
     radius: 4
@@ -42,14 +45,14 @@ Rectangle {
         colorGroupEnabled: enabled
     }
 
-    function compactUrl(url) {
-        if (!url || url.length === 0) {
+    function compactText(text, maxLen) {
+        if (!text || text.length === 0) {
             return "--"
         }
-        if (url.length <= 38) {
-            return url
+        if (text.length <= maxLen) {
+            return text
         }
-        return url.substring(0, 20) + "..." + url.substring(url.length - 14)
+        return text.substring(0, maxLen - 3) + "..."
     }
 
     function toggleMinimized() {
@@ -71,7 +74,7 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScreenTools.defaultFontPixelWidth
-        spacing: ScreenTools.defaultFontPixelWidth * 0.8
+        spacing: ScreenTools.defaultFontPixelWidth * 0.7
         visible: !root.minimized
 
         RowLayout {
@@ -87,90 +90,168 @@ Rectangle {
             }
 
             QGCButton {
+                text: qsTr("全部重连")
+                onClicked: root.reconnectAllVideos()
+            }
+
+            QGCButton {
                 text: qsTr("最小化")
                 onClicked: root.toggleMinimized()
             }
         }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelWidth * 0.35
-
-            QGCLabel { text: qsTr("System"); color: "#e5e7eb"; font.bold: true }
-            QGCLabel { Layout.fillWidth: true; text: qsTr("Layout: %1").arg(root.layoutMode); color: "#cbd5e1"; elide: Text.ElideRight }
-            QGCLabel { Layout.fillWidth: true; text: qsTr("Main: %1 / %2").arg(root.mainIndex + 1).arg(root.mainName); color: "#cbd5e1"; elide: Text.ElideRight }
-            QGCLabel { Layout.fillWidth: true; text: qsTr("Map: %1").arg(root.mapHidden ? "Hidden" : "Visible"); color: "#cbd5e1"; elide: Text.ElideRight }
-            QGCLabel { Layout.fillWidth: true; text: qsTr("Panel: %1").arg(root.deepSharkPanelMinimized ? "Minimized" : "Visible"); color: "#cbd5e1"; elide: Text.ElideRight }
-            QGCLabel { Layout.fillWidth: true; text: qsTr("Vehicle: %1").arg(root.vehicleStatus); color: "#cbd5e1"; elide: Text.ElideRight }
-        }
-
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#2f3742" }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelWidth * 0.35
-
-            QGCLabel { text: qsTr("RTSP"); color: "#e5e7eb"; font.bold: true }
-
-            Repeater {
-                model: root.rtspRows
-
-                QGCLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("%1. %2").arg(modelData.index).arg(root.compactUrl(modelData.url))
-                    color: "#9ca3af"
-                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                    elide: Text.ElideRight
-                }
-            }
-        }
-
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#2f3742" }
-
-        QGCLabel {
-            Layout.fillWidth: true
-            text: qsTr("Recent Events")
-            color: "#e5e7eb"
-            font.bold: true
-        }
-
-        Rectangle {
+        Flickable {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#101820"
-            border.color: "#27313d"
-            radius: 3
+            contentWidth: width
+            contentHeight: contentColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
             clip: true
 
-            Flickable {
-                id: eventsFlickable
-                anchors.fill: parent
-                anchors.margins: ScreenTools.defaultFontPixelWidth * 0.6
-                contentWidth: width
-                contentHeight: eventsColumn.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
-                clip: true
+            ColumnLayout {
+                id: contentColumn
+                width: parent.width
+                spacing: ScreenTools.defaultFontPixelWidth
 
-                Column {
-                    id: eventsColumn
-                    width: eventsFlickable.width
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: ScreenTools.defaultFontPixelWidth * 0.35
 
-                    Repeater {
-                        model: root.recentEvents
+                    QGCLabel { text: qsTr("System"); color: "#e5e7eb"; font.bold: true }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("Layout: %1").arg(root.layoutMode); color: "#cbd5e1"; elide: Text.ElideRight }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("Main: %1 / %2").arg(root.mainIndex + 1).arg(root.mainName); color: "#cbd5e1"; elide: Text.ElideRight }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("Map: %1").arg(root.mapHidden ? "Hidden" : "Visible"); color: "#cbd5e1"; elide: Text.ElideRight }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("Panel: %1").arg(root.deepSharkPanelMinimized ? "Minimized" : "Visible"); color: "#cbd5e1"; elide: Text.ElideRight }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("Vehicle: %1").arg(root.vehicleStatus); color: "#cbd5e1"; elide: Text.ElideRight }
+                }
 
-                        QGCLabel {
-                            width: eventsColumn.width
-                            text: modelData
-                            color: "#9ca3af"
-                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
-                            wrapMode: Text.Wrap
+                Rectangle { Layout.fillWidth: true; height: 1; color: "#2f3742" }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.45
+
+                    QGCLabel { text: qsTr("Video"); color: "#e5e7eb"; font.bold: true }
+
+                    Repeater {
+                        model: root.videoRows
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: Math.max(ScreenTools.defaultFontPixelHeight * 4.6, 72)
+                            color: "#101820"
+                            border.color: "#27313d"
+                            radius: 3
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: ScreenTools.defaultFontPixelWidth * 0.55
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: qsTr("%1. %2").arg(modelData.index).arg(modelData.name)
+                                        color: "#f2f5f8"
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: qsTr("%1 | retry:%2 | stream:%3 decode:%4")
+                                              .arg(modelData.status)
+                                              .arg(modelData.retry)
+                                              .arg(modelData.streamCount)
+                                              .arg(modelData.decodeCount)
+                                        color: "#9ca3af"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                                        elide: Text.ElideRight
+                                    }
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: qsTr("%1 | err:%2").arg(modelData.fps || "FPS: --").arg(root.compactText(modelData.lastError, 24))
+                                        color: "#9ca3af"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                QGCButton {
+                                    text: qsTr("重连")
+                                    onClicked: root.reconnectVideo(modelData.index - 1)
+                                }
+                            }
                         }
                     }
                 }
 
-                ScrollBar.vertical: ScrollBar {
-                    policy: ScrollBar.AsNeeded
+                Rectangle { Layout.fillWidth: true; height: 1; color: "#2f3742" }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                    QGCLabel { text: qsTr("RTSP"); color: "#e5e7eb"; font.bold: true }
+
+                    Repeater {
+                        model: root.rtspRows
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("%1. %2").arg(modelData.index).arg(root.compactText(modelData.url, 42))
+                            color: "#9ca3af"
+                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: "#2f3742" }
+
+                QGCLabel { text: qsTr("Recent Events"); color: "#e5e7eb"; font.bold: true }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: Math.max(ScreenTools.defaultFontPixelHeight * 16, 220)
+                    color: "#101820"
+                    border.color: "#27313d"
+                    radius: 3
+                    clip: true
+
+                    Flickable {
+                        id: eventsFlickable
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelWidth * 0.6
+                        contentWidth: width
+                        contentHeight: eventsColumn.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+
+                        Column {
+                            id: eventsColumn
+                            width: eventsFlickable.width
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                            Repeater {
+                                model: root.recentEvents
+
+                                QGCLabel {
+                                    width: eventsColumn.width
+                                    text: modelData
+                                    color: "#9ca3af"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
+                                    wrapMode: Text.Wrap
+                                }
+                            }
+                        }
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    }
                 }
             }
         }

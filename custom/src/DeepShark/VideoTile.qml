@@ -23,12 +23,19 @@ Rectangle {
     property string videoSource: ""
     property string receiverName: "deepSharkVideo"
     property bool selected: false
-    property string currentStatus: statusText
-    property int retryCount: videoController.startAttempts
+
+    property string currentStatus: videoEnabled && videoSource.length > 0 ? "Connecting" : "Waiting"
+    property string lastError: videoSource.length > 0 ? "" : "URL empty"
+    property int retryCount: 0
+    property int streamCount: 0
+    property int decodeCount: 0
+    property bool manualStopped: false
+    property bool controllerAutoStart: videoEnabled && videoSource.length > 0
     property bool streaming: videoController.streaming
     property bool decoding: videoController.decoding
     property string resolutionText: videoController.resolutionText
     property string frameRateText: videoController.frameRateText
+    property int maxAutoRetries: 5
 
     signal tileClicked()
     signal tileDoubleClicked()
@@ -56,43 +63,161 @@ Rectangle {
         videoItem: videoOutput
         receiverName: root.receiverName
         uri: root.videoSource
-        autoStart: root.videoEnabled
+        autoStart: root.controllerAutoStart
         lowLatency: true
     }
 
-    function _statusText() {
-        if (!videoEnabled) {
-            return statusText
-        }
-        if (videoSource.length === 0) {
-            return qsTr("Set RTSP URL in Video Settings")
-        }
-        if (videoController.decoding) {
-            return qsTr("Playing")
-        }
-        if (videoController.streaming) {
-            return qsTr("Connecting")
-        }
-        return videoController.statusText
-    }
-
-    function _refreshStatus() {
-        var newStatus = _statusText()
-        statusLabel.text = newStatus
-        if (currentStatus !== newStatus) {
-            currentStatus = newStatus
-            videoEvent(title + ": " + newStatus)
+    Timer {
+        id: restartTimer
+        repeat: false
+        onTriggered: {
+            if (root.manualStopped || !root.videoEnabled || root.videoSource.length === 0) {
+                return
+            }
+            root.videoEvent(root.title + " Reconnecting retry=" + root.retryCount)
+            videoController.start()
         }
     }
 
-    Component.onCompleted: _refreshStatus()
+    function _setStatus(status, error) {
+        if (error !== undefined && error !== null) {
+            lastError = error
+        }
+        if (currentStatus === status) {
+            return
+        }
+        currentStatus = status
+        videoEvent(title + " " + status + (lastError.length > 0 && (status === "Failed" || status === "Waiting") ? ": " + lastError : ""))
+    }
+
+    function _scheduleReconnect(error) {
+        if (manualStopped || !videoEnabled || videoSource.length === 0) {
+            return
+        }
+
+        retryCount++
+        if (retryCount > maxAutoRetries) {
+            _setStatus("Failed", error + " - manual reconnect required")
+            return
+        }
+
+        var delayMs = retryCount === 1 ? 3000 : 5000
+        _setStatus("Reconnecting", error)
+        restartTimer.interval = delayMs
+        restartTimer.restart()
+    }
+
+    function startVideo() {
+        restartTimer.stop()
+        if (!videoEnabled || videoSource.length === 0) {
+            manualStopped = false
+            controllerAutoStart = false
+            _setStatus("Waiting", "URL empty")
+            return
+        }
+
+        manualStopped = false
+        retryCount = 0
+        controllerAutoStart = true
+        _setStatus("Connecting", "")
+        videoController.start()
+    }
+
+    function stopVideo() {
+        restartTimer.stop()
+        manualStopped = true
+        controllerAutoStart = false
+        videoController.stop()
+        _setStatus("Stopped", "")
+        videoEvent(title + " Stopped manually")
+    }
+
+    function reconnectVideo() {
+        restartTimer.stop()
+        manualStopped = false
+        retryCount = 0
+        controllerAutoStart = true
+        _setStatus("Reconnecting", "")
+        videoEvent(title + " Reconnect requested")
+        videoController.stop()
+        reconnectDelay.restart()
+    }
+
+    function restartVideo() {
+        reconnectVideo()
+    }
+
+    Timer {
+        id: reconnectDelay
+        interval: 650
+        repeat: false
+        onTriggered: videoController.start()
+    }
+
+    function _syncForUrl() {
+        restartTimer.stop()
+        retryCount = 0
+        if (!videoEnabled || videoSource.length === 0) {
+            manualStopped = false
+            controllerAutoStart = false
+            videoController.stop()
+            _setStatus("Waiting", "URL empty")
+            return
+        }
+        if (!manualStopped) {
+            videoEvent(title + " URL changed")
+            controllerAutoStart = true
+            _setStatus("Connecting", "")
+            videoController.stop()
+            reconnectDelay.restart()
+        }
+    }
+
+    onVideoSourceChanged: _syncForUrl()
+    onVideoEnabledChanged: _syncForUrl()
+
+    Component.onCompleted: {
+        if (videoEnabled && videoSource.length > 0) {
+            _setStatus("Connecting", "")
+        } else {
+            _setStatus("Waiting", "URL empty")
+        }
+    }
 
     Connections {
         target: videoController
-        function onDecodingChanged() { root._refreshStatus() }
-        function onStreamingChanged() { root._refreshStatus() }
-        function onStatusTextChanged() { root._refreshStatus() }
-        function onStartAttemptsChanged() { root._refreshStatus() }
+
+        function onStreamingChanged() {
+            if (videoController.streaming) {
+                streamCount++
+                if (!videoController.decoding) {
+                    root._setStatus("Streaming", "")
+                }
+            } else if (!root.manualStopped && root.currentStatus !== "Waiting" && root.currentStatus !== "Failed") {
+                root._scheduleReconnect("Stream stopped")
+            }
+        }
+
+        function onDecodingChanged() {
+            if (videoController.decoding) {
+                decodeCount++
+                root.retryCount = 0
+                root._setStatus("Playing", "")
+            } else if (!root.manualStopped && root.currentStatus === "Playing") {
+                root._scheduleReconnect("Decode stopped")
+            }
+        }
+
+        function onStatusTextChanged() {
+            var text = videoController.statusText
+            if (text.indexOf("Start failed") >= 0 || text.indexOf("Decode failed") >= 0 || text.indexOf("unavailable") >= 0 || text.indexOf("not ready") >= 0) {
+                root._scheduleReconnect(text)
+            } else if (text.indexOf("Connecting") >= 0) {
+                root._setStatus("Connecting", "")
+            } else if (text.indexOf("Stopped") >= 0 && root.manualStopped) {
+                root._setStatus("Stopped", "")
+            }
+        }
     }
 
     Rectangle {
@@ -117,9 +242,8 @@ Rectangle {
     }
 
     QGCLabel {
-        id: statusLabel
         anchors.centerIn: parent
-        text: root._statusText()
+        text: root.currentStatus
         color: "#9aa6b2"
         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.9
         visible: !videoOutput.visible
@@ -131,12 +255,13 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.margins: ScreenTools.defaultFontPixelWidth
         text: root.videoEnabled
-              ? qsTr("%1 | %2 | stream:%3 decode:%4 retry:%5")
-                    .arg(videoController.resolutionText)
-                    .arg(videoController.frameRateText)
-                    .arg(videoController.streaming)
-                    .arg(videoController.decoding)
-                    .arg(videoController.startAttempts)
+              ? qsTr("%1 | %2 | %3 retry:%4 stream:%5 decode:%6")
+                    .arg(root.resolutionText)
+                    .arg(root.frameRateText)
+                    .arg(root.currentStatus)
+                    .arg(root.retryCount)
+                    .arg(root.streamCount)
+                    .arg(root.decodeCount)
               : qsTr("Waiting for RTSP")
         color: "#6b7280"
         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7

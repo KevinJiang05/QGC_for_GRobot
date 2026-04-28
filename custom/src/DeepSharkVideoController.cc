@@ -47,14 +47,6 @@ void DeepSharkVideoController::setVideoItem(QQuickItem *videoItem)
     emit videoItemChanged();
     _rebuildSink();
 
-    if (_autoStart) {
-        if (_receiver && _receiver->started()) {
-            stop();
-            QTimer::singleShot(1200, this, &DeepSharkVideoController::start);
-        } else {
-            QTimer::singleShot(250, this, &DeepSharkVideoController::start);
-        }
-    }
 }
 
 void DeepSharkVideoController::setReceiverName(const QString &receiverName)

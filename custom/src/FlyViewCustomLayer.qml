@@ -30,8 +30,8 @@ Item {
         var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
         var updatedEvents = recentEvents.slice(0)
         updatedEvents.unshift(timestamp + "  " + message)
-        if (updatedEvents.length > 20) {
-            updatedEvents.length = 20
+        if (updatedEvents.length > 50) {
+            updatedEvents.length = 50
         }
         recentEvents = updatedEvents
     }
@@ -138,9 +138,12 @@ Item {
         mapHidden: _root.mapHidden
         deepSharkPanelMinimized: _root.panelMinimized
         vehicleStatus: "Unknown"
+        videoRows: fourVideoPanel.videoRows
         rtspRows: fourVideoPanel.videoRows
         recentEvents: _root.recentEvents
         onStatusPanelEvent: function(message) { _root.addDeepSharkEvent(message) }
+        onReconnectVideo: function(index) { fourVideoPanel.reconnectVideo(index) }
+        onReconnectAllVideos: fourVideoPanel.reconnectAllVideos()
     }
 
     QGCButton {

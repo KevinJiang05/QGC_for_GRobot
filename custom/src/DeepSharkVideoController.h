@@ -37,6 +37,8 @@ class DeepSharkVideoController : public QObject
     Q_PROPERTY(QString resolutionText READ resolutionText NOTIFY videoSizeChanged)
     Q_PROPERTY(QString frameRateText READ frameRateText NOTIFY frameRateTextChanged)
     Q_PROPERTY(quint64 frameCount READ frameCount NOTIFY frameCountChanged)
+    Q_PROPERTY(int estimatedLatencyMs READ estimatedLatencyMs NOTIFY latencyChanged)
+    Q_PROPERTY(QString latencyText READ latencyText NOTIFY latencyChanged)
 
 public:
     explicit DeepSharkVideoController(QObject *parent = nullptr);
@@ -56,6 +58,8 @@ public:
     QString resolutionText() const;
     QString frameRateText() const;
     quint64 frameCount() const;
+    int estimatedLatencyMs() const;
+    QString latencyText() const;
 
     void setVideoItem(QQuickItem *videoItem);
     void setReceiverName(const QString &receiverName);
@@ -79,6 +83,7 @@ signals:
     void videoSizeChanged();
     void frameRateTextChanged();
     void frameCountChanged();
+    void latencyChanged();
 
 private:
     void _ensureReceiver();
@@ -110,11 +115,13 @@ private:
     int _startAttempts = 0;
     QSize _videoSize;
     double _frameRate = 0.0;
+    int _estimatedLatencyMs = -1;
     QTimer _frameRateTimer;
 
 #ifdef QGC_GST_STREAMING
     gulong _sinkFrameProbeId = 0;
     std::atomic<quint64> _sinkFrameCount { 0 };
+    std::atomic<qint64> _sinkLatencyMs { -1 };
     quint64 _lastSinkFrameCount = 0;
 #endif
 };

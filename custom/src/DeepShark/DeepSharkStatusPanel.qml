@@ -163,8 +163,9 @@ Rectangle {
 
                                     QGCLabel {
                                         Layout.fillWidth: true
-                                        text: qsTr("%1 | wd-reconnect:%2 | err:%3")
+                                        text: qsTr("%1 | %2 | wd-reconnect:%3 | err:%4")
                                               .arg(modelData.fps || "FPS: --")
+                                              .arg(modelData.latency || "Latency: --")
                                               .arg(modelData.watchdogReconnectCount || 0)
                                               .arg(root.compactText(modelData.lastError, 24))
                                         color: "#9ca3af"

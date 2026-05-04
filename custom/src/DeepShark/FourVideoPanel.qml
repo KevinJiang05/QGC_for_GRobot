@@ -239,6 +239,8 @@ Rectangle {
             "streamCount": tile ? tile.streamCount : 0,
             "decodeCount": tile ? tile.decodeCount : 0,
             "fps": tile ? tile.frameRateText : "FPS: --",
+            "latency": tile ? tile.latencyText : "Latency: --",
+            "estimatedLatencyMs": tile ? tile.estimatedLatencyMs : -1,
             "lastError": tile ? tile.lastError : "",
             "watchdog": tile ? tile.watchdogStatus : "Disabled",
             "lastProgressAge": tile ? tile.lastProgressAgeSeconds : -1,

@@ -27,6 +27,10 @@ Item {
     property real statusPanelGap: ScreenTools.defaultFontPixelWidth
     property real compactStatusButtonWidth: Math.max(ScreenTools.defaultFontPixelWidth * 5, 42)
     property real compactStatusButtonHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2, 32)
+    property real minimizedControlTopMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+    property real minimizedControlRightMargin: ScreenTools.defaultFontPixelWidth * 2
+    property real minimizedControlGap: ScreenTools.defaultFontPixelHeight * 0.6
+    property real restorePanelButtonWidth: Math.max(ScreenTools.defaultFontPixelWidth * 20, 190)
 
     function addDeepSharkEvent(message) {
         var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
@@ -126,7 +130,9 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.rightMargin: ScreenTools.defaultFontPixelWidth
-        anchors.topMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+        anchors.topMargin: _root.panelMinimized
+                           ? _root.minimizedControlTopMargin + _root.compactStatusButtonHeight + _root.minimizedControlGap
+                           : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
         anchors.bottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset, ScreenTools.defaultFontPixelHeight * 3)
 
         layoutMode: _root.panelMinimized ? "minimized" : fourVideoPanel.layoutMode
@@ -157,21 +163,44 @@ Item {
         anchors.top: parent.top
         anchors.rightMargin: ScreenTools.defaultFontPixelWidth
         anchors.topMargin: _root.panelMinimized
-                           ? Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+                           ? _root.minimizedControlTopMargin
                              + _root.compactStatusButtonHeight
-                             + ScreenTools.defaultFontPixelHeight
+                             + _root.minimizedControlGap
                            : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
         onClicked: statusPanel.toggleMinimized()
     }
 
-    QGCButton {
+    Rectangle {
         id: restorePanelButton
         visible: _root.panelMinimized
-        text: qsTr("打开 DeepShark Panel")
+        z: 30
+        width: _root.restorePanelButtonWidth
+        height: _root.compactStatusButtonHeight
+        radius: 4
+        color: "#334155"
+        border.color: "#94a3b8"
+        border.width: 1
         anchors.right: parent.right
+        anchors.rightMargin: _root.minimizedControlRightMargin
         anchors.top: parent.top
-        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 2
-        anchors.topMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
-        onClicked: _root.restoreDeepSharkPanel()
+        anchors.topMargin: _root.minimizedControlTopMargin
+
+        QGCLabel {
+            anchors.centerIn: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+            anchors.rightMargin: ScreenTools.defaultFontPixelWidth
+            text: qsTr("打开 DeepShark Panel")
+            color: "#f8fafc"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: _root.restoreDeepSharkPanel()
+        }
     }
 }

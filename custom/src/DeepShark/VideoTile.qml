@@ -35,6 +35,8 @@ Rectangle {
     property bool decoding: videoController.decoding
     property string resolutionText: videoController.resolutionText
     property string frameRateText: videoController.frameRateText
+    property string latencyText: videoController.latencyText
+    property int estimatedLatencyMs: videoController.estimatedLatencyMs
     property int maxAutoRetries: 5
     property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
     property bool stalled: false
@@ -357,9 +359,10 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.margins: ScreenTools.defaultFontPixelWidth
         text: root.videoEnabled
-              ? qsTr("%1 | %2 | %3 wd:%4 age:%5s retry:%6")
+              ? qsTr("%1 | %2 | %3 | %4 wd:%5 age:%6s retry:%7")
                     .arg(root.resolutionText)
                     .arg(root.frameRateText)
+                    .arg(root.latencyText)
                     .arg(root.currentStatus)
                     .arg(root.watchdogStatus)
                     .arg(root.lastProgressAgeSeconds < 0 ? "--" : root.lastProgressAgeSeconds)

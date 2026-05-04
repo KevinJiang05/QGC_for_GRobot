@@ -15,6 +15,8 @@
 #include <cmath>
 
 #ifdef QGC_GST_STREAMING
+#include <gst/gstbuffer.h>
+#include <gst/gstclock.h>
 #include <gst/gstelement.h>
 #endif
 
@@ -142,6 +144,20 @@ quint64 DeepSharkVideoController::frameCount() const
 #else
     return 0;
 #endif
+}
+
+int DeepSharkVideoController::estimatedLatencyMs() const
+{
+    return _estimatedLatencyMs;
+}
+
+QString DeepSharkVideoController::latencyText() const
+{
+    if (_estimatedLatencyMs < 0) {
+        return QStringLiteral("Latency: --");
+    }
+
+    return QStringLiteral("Latency: %1 ms").arg(_estimatedLatencyMs);
 }
 
 void DeepSharkVideoController::start()
@@ -289,6 +305,13 @@ void DeepSharkVideoController::_setDecoding(bool decoding)
     _decoding = decoding;
     if (!_decoding) {
         _setFrameRate(0.0);
+#ifdef QGC_GST_STREAMING
+        _sinkLatencyMs.store(-1, std::memory_order_relaxed);
+#endif
+        if (_estimatedLatencyMs != -1) {
+            _estimatedLatencyMs = -1;
+            emit latencyChanged();
+        }
     }
     emit decodingChanged();
 }
@@ -323,8 +346,17 @@ void DeepSharkVideoController::_updateFrameRate()
         emit frameCountChanged();
     }
     _setFrameRate(_decoding ? static_cast<double>(frameDelta) : 0.0);
+    const int currentLatencyMs = _decoding ? static_cast<int>(_sinkLatencyMs.load(std::memory_order_relaxed)) : -1;
+    if (currentLatencyMs != _estimatedLatencyMs) {
+        _estimatedLatencyMs = currentLatencyMs;
+        emit latencyChanged();
+    }
 #else
     _setFrameRate(0.0);
+    if (_estimatedLatencyMs != -1) {
+        _estimatedLatencyMs = -1;
+        emit latencyChanged();
+    }
 #endif
 }
 
@@ -362,11 +394,36 @@ void DeepSharkVideoController::_removeSinkFrameProbe()
     _sinkFrameProbeId = 0;
 }
 
-GstPadProbeReturn DeepSharkVideoController::_videoSinkFrameProbe(GstPad *, GstPadProbeInfo *info, gpointer userData)
+GstPadProbeReturn DeepSharkVideoController::_videoSinkFrameProbe(GstPad *pad, GstPadProbeInfo *info, gpointer userData)
 {
     auto *controller = static_cast<DeepSharkVideoController *>(userData);
     if (controller && (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER)) {
         controller->_sinkFrameCount.fetch_add(1, std::memory_order_relaxed);
+        GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+        const GstClockTime pts = buffer ? GST_BUFFER_PTS(buffer) : GST_CLOCK_TIME_NONE;
+        if (GST_CLOCK_TIME_IS_VALID(pts)) {
+            GstElement *sink = GST_ELEMENT(gst_pad_get_parent(pad));
+            if (sink) {
+                GstClock *clock = gst_element_get_clock(sink);
+                const GstClockTime baseTime = gst_element_get_base_time(sink);
+                if (clock && GST_CLOCK_TIME_IS_VALID(baseTime)) {
+                    const GstClockTime now = gst_clock_get_time(clock);
+                    if (GST_CLOCK_TIME_IS_VALID(now) && now >= baseTime) {
+                        const GstClockTime runningTime = now - baseTime;
+                        if (runningTime >= pts) {
+                            const guint64 latencyMs = (runningTime - pts) / GST_MSECOND;
+                            if (latencyMs <= 60000) {
+                                controller->_sinkLatencyMs.store(static_cast<qint64>(latencyMs), std::memory_order_relaxed);
+                            }
+                        }
+                    }
+                }
+                if (clock) {
+                    gst_object_unref(clock);
+                }
+                gst_object_unref(sink);
+            }
+        }
     }
 
     return GST_PAD_PROBE_OK;

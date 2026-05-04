@@ -90,7 +90,7 @@ jobs:
       - run: cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk ${{ runner.temp }}/shadow_build_dir/${{ env.ARTIFACT }}
 
       - name: Save APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ runner.temp }}/shadow_build_dir/android-build/*.apk

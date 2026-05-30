@@ -30,6 +30,7 @@ Rectangle {
     property int streamCount: 0
     property int decodeCount: 0
     property bool manualStopped: false
+    property bool shuttingDown: false
     property bool controllerAutoStart: videoEnabled && videoSource.length > 0
     property bool streaming: videoController.streaming
     property bool decoding: videoController.decoding
@@ -81,7 +82,7 @@ Rectangle {
         id: restartTimer
         repeat: false
         onTriggered: {
-            if (root.manualStopped || !root.videoEnabled || root.videoSource.length === 0) {
+            if (root.shuttingDown || root.manualStopped || !root.videoEnabled || root.videoSource.length === 0) {
                 return
             }
             root.videoEvent(root.title + " Reconnecting retry=" + root.retryCount)
@@ -175,7 +176,7 @@ Rectangle {
     }
 
     function _scheduleReconnect(error) {
-        if (manualStopped || !videoEnabled || videoSource.length === 0) {
+        if (shuttingDown || manualStopped || !videoEnabled || videoSource.length === 0) {
             return
         }
 
@@ -246,7 +247,11 @@ Rectangle {
         id: reconnectDelay
         interval: 650
         repeat: false
-        onTriggered: videoController.start()
+        onTriggered: {
+            if (!root.shuttingDown) {
+                videoController.start()
+            }
+        }
     }
 
     function _syncForUrl() {
@@ -280,6 +285,16 @@ Rectangle {
         } else {
             _setStatus("Waiting", "URL empty")
         }
+    }
+
+    Component.onDestruction: {
+        shuttingDown = true
+        restartTimer.stop()
+        watchdogTimer.stop()
+        reconnectDelay.stop()
+        manualStopped = true
+        controllerAutoStart = false
+        videoController.stop()
     }
 
     Connections {
@@ -372,6 +387,17 @@ Rectangle {
         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
         elide: Text.ElideRight
         visible: true
+    }
+
+    AIDetectionVideoOverlay {
+        anchors.fill: parent
+        sourceId: root.receiverName
+        videoWidth: videoController.videoWidth
+        videoHeight: videoController.videoHeight
+        showStatus: false
+        visible: root.videoEnabled
+                 && QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        z: 20
     }
 
     MouseArea {

@@ -106,6 +106,13 @@ SettingsPage {
             visible:            !_videoAutoStreamConfig && _isStreamSource && fact.visible && _isGST
         }
 
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
+            text:               qsTr("YOLO Detection Overlay")
+            fact:               _videoSettings.yoloOverlay
+            visible:            fact.visible
+        }
+
         LabelledFactComboBox {
             Layout.fillWidth:   true
             label:              qsTr("Video decode priority")

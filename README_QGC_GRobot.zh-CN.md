@@ -1,28 +1,25 @@
-# QGC_GRobot / DeepShark Ground Station
+# QGC_GRobot / DeepShark 地面站
 
-本仓库是基于 **QGroundControl v5.0.8 Stable** 的水下机器人比赛地面站二次开发工程。当前策略是“方案 A”：保留 QGC 原生 ArduPilot / MAVLink / 参数 / 模式 / 遥测 / 控制能力，通过 QGC custom build 机制叠加 DeepShark 比赛专用界面。
+本仓库是在 **QGroundControl v5.0.8 Stable** 基础上，为水下机器人比赛和后续 AUV/ROV 实验开发的定制地面站。当前策略是保留 QGC 原生 ArduPilot、MAVLink、参数、模式、遥测和控制链路，通过 QGC custom build 机制叠加 DeepShark 专用视频面板与 YOLO 目标检测叠加层。
 
-第一版重点是可靠操控和多路低延迟 RTSP 观察，不重构 QGC 原生 `VideoManager`，不修改 MAVLink 协议定义，不替换 ArduPilot/APM firmware plugin。
+核心原则是小步改造：优先复用 QGC 原有视频、GStreamer、MAVLink 和设置体系，不重构无关架构，不替换原生飞控插件。
 
 ## 当前能力
 
-- QGC custom build 已接入，启动后加载 `DeepSharkPlugin`。
-- Fly View 中覆盖 `FlyViewCustomLayer.qml`，显示 DeepShark 主视频面板。
-- 支持四路 RTSP 视频通道。
-- 支持自定义四路通道名称和 RTSP URL。
-- 支持四宫格、一主三辅、单路面板内全屏、最小化 DeepShark Panel。
-- Video Main Mode 下隐藏并禁用底层地图，以减少地图渲染和交互干扰。
-- 保留 QGC 顶部连接状态栏、底部/右下角关键飞行仪表区域。
-- 每路视频独立 Start / Stop / Reconnect。
-- 支持 Reconnect All，并按顺序重启，避免四路同一瞬间抢资源。
-- 每路独立状态机：`Waiting`、`Connecting`、`Streaming`、`Playing`、`Stopped`、`Failed`、`Reconnecting`、`Stalled`。
-- 支持自动重连和 watchdog 冻结检测。
-- 显示分辨率、FPS、watchdog 状态、估算接收端延迟。
-- 右侧 DeepShark Status Panel 显示系统状态、视频状态、RTSP URL、Recent Events。
+- DeepShark custom build 已接入，启动后加载 `DeepSharkPlugin`。
+- Fly View 中加载 DeepShark 专用四路视频面板。
+- 支持四路 RTSP 视频源，通道名称和 URL 可在面板设置中保存。
+- 支持四宫格、主辅布局、单路面板内全屏、最小化和地图显示切换。
+- 每路视频独立 Start、Stop、Reconnect，并有独立状态、重连计数和 watchdog。
+- 支持按顺序全部重连，避免四路视频同时抢占资源。
+- 支持 YOLO 检测框叠加到 QGC 原生视频和 DeepShark 四路 Video Panel。
+- 支持按视频源路由检测框：`deepSharkVideo1` 到 `deepSharkVideo4` 分别对应四个 tile。
+- 支持在 QGC 视频设置和 DeepShark 设置面板中开关 `YOLO Detection Overlay`。
+- YOLO 桥接程序可自动读取 QGC 已保存的四路 RTSP URL，并为每路启动一个检测子进程。
 
-## 项目架构
+## 目录结构
 
-DeepShark 改造尽量集中在 `custom/` 目录。
+DeepShark 定制代码尽量集中在 `custom/`，AI 桥接工具集中在 `tools/ai_detection/`。
 
 ```text
 custom/
@@ -39,125 +36,66 @@ custom/
       FourVideoPanel.qml
       VideoTile.qml
       DeepSharkStatusPanel.qml
+
+src/FlightDisplay/
+  AIDetectionReceiver.h/.cc
+  AIDetectionVideoOverlay.qml
+
+tools/ai_detection/
+  yolo_to_qgc_udp.py
+  run_yolo_to_qgc_auto.py
+  run_yolo_to_qgc_udp.bat
+  send_sample_detection.py
+  requirements.txt
 ```
 
-### Custom build 入口
+## 启动脚本
 
-`custom/CMakeLists.txt` 设置：
+根目录提供两个常用启动脚本：
 
-- `QGC_CUSTOM_BUILD`
-- `CUSTOMHEADER="DeepSharkPlugin.h"`
-- `CUSTOMCLASS=DeepSharkPlugin`
-- 注册 `custom/custom.qrc`
-- 注册 DeepShark C++ 源文件
-- 将 `custom/src` 和 QGC `VideoReceiver` include path 加入构建
-
-`custom/cmake/CustomOverrides.cmake` 保持最小化。当前不禁用 APM，不禁用 MAVLink，不修改 firmware plugin factory。
-
-### QML 覆盖机制
-
-`custom/custom.qrc` 使用 `/Custom/qml` 资源前缀覆盖 Fly View custom layer：
-
-```xml
-<file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">
-    src/FlyViewCustomLayer.qml
-</file>
+```powershell
+.\StartDeepSharkQGC.cmd
+.\StartYoloToQGC.cmd
 ```
 
-`DeepSharkPlugin` 使用 custom override/interceptor，让 QGC 加载 custom 资源中的 Fly View custom layer。这样可以插入 DeepShark UI，而不直接修改 `src/FlightDisplay/FlyView.qml`。
+`StartDeepSharkQGC.cmd` 负责设置 Qt、GStreamer、MSVC 运行库相关环境变量，然后启动：
 
-### Fly View custom layer
+```text
+build-debug-ai\Debug\QGroundControl.exe
+```
 
-`custom/src/FlyViewCustomLayer.qml` 是 DeepShark UI 的顶层入口，负责：
+不要直接双击 exe 启动视频版本。RTSP/GStreamer 依赖启动脚本中的环境变量。
 
-- 显示/隐藏 DeepShark Video Panel。
-- 显示/隐藏 DeepShark Status Panel。
-- 控制 Video Main Mode。
-- 在主视频模式下隐藏并禁用 `mapControl`。
-- 维护 Recent Events。
-- 保持 QGC `parentToolInsets` / `totalToolInsets` 透传。
-
-### 视频面板
-
-`custom/src/DeepShark/FourVideoPanel.qml` 负责四路视频的整体布局和交互：
-
-- `grid`：2x2 四宫格。
-- `mainAux`：一主三辅。
-- `fullscreen`：单路面板内全屏。
-- `minimized`：最小化 DeepShark Panel，恢复底层 QGC 地图。
-
-布局切换不销毁 `VideoTile` 实例，尽量避免 RTSP 重连。
-
-### 单路视频 Tile
-
-`custom/src/DeepShark/VideoTile.qml` 负责单路视频显示、状态机和恢复逻辑：
-
-- 绑定一个独立 `DeepSharkVideoController`。
-- 独立 Start / Stop / Reconnect。
-- 独立 retry 计数、lastError、watchdog 状态。
-- 显示分辨率、FPS、估算延迟、状态、watchdog age。
-
-### 视频控制器
-
-`custom/src/DeepSharkVideoController.h/.cc` 是 DeepShark 自定义视频接入层。
-
-它通过 QGC core plugin 创建原生 `VideoReceiver` 和 video sink：
-
-- `QGCCorePlugin::createVideoReceiver`
-- `QGCCorePlugin::createVideoSink`
-- `QGCCorePlugin::releaseVideoSink`
-
-这意味着 DeepShark 复用 QGC 现有 GStreamer / VideoReceiver 能力，但不改 `src/VideoManager/*`。
-
-当前 controller 还在 GStreamer sink pad 上安装轻量 probe，用于统计：
-
-- frame count
-- FPS
-- 分辨率
-- 接收端估算延迟
-
-延迟是基于 sink buffer PTS 和 pipeline clock 估算的接收端链路延迟，不等同于摄像头到屏幕的真实端到端物理延迟。
-
-### 视频设置
-
-`custom/src/DeepSharkVideoSettings.h/.cc` 使用 `QSettings` 保存四路通道名称和 RTSP URL。
-
-设置面板保存后：
-
-- 更新通道名称。
-- 更新 RTSP URL。
-- 名称同步到 Video Panel 和 Status Panel。
-- URL 为空时对应通道进入 `Waiting`。
-- URL 发生变化时只重启对应通道，不强制重启全部视频。
-- 保存未变化配置不应触发不必要重连。
+`StartYoloToQGC.cmd` 负责使用共享 YOLO 环境启动桥接程序。无参数运行时，它会自动读取 QGC 保存的 DeepShark 四路 RTSP URL。
 
 ## Windows 开发环境
 
-当前项目按 Windows 目标平台开发。
-
-已验证的本机路径：
+当前工作区使用的本机路径如下：
 
 ```text
-Qt:         D:\Develop\Qt\6.8.3\msvc2022_64
-Visual Studio: D:\Develop\Vs2022\Community
-GStreamer: D:\gstreamer\1.0\msvc_x86_64
-Build dir: build
+项目目录:       D:\Develop\QGC_for_GRobot
+构建目录:       D:\Develop\QGC_for_GRobot\build-debug-ai
+Qt:             D:\Develop\Toolchains\Qt\6.8.3\msvc2022_64
+GStreamer:      D:\Develop\Toolchains\GStreamer\1.0\msvc_x86_64
+VS Build Tools: D:\Develop\Toolchains\VS2022BuildTools
+YOLO 共享环境:  D:\Develop\envs\yolo
 ```
 
-如果迁移到其他电脑，路径可以不同，但需要保持：
+如迁移到其他电脑，路径可以不同，但需要保持：
 
 - Qt 6.8.x MSVC 64-bit
-- Visual Studio 2022 C++ toolchain
+- Visual Studio 2022 C++ Build Tools
 - CMake
 - Ninja
 - GStreamer MSVC x86_64 runtime/development package
+- Python venv 中安装 `ultralytics`
 
 ## 构建
 
 在仓库根目录执行：
 
 ```powershell
-cmd.exe /c "call D:\Develop\Vs2022\Community\VC\Auxiliary\Build\vcvars64.bat >nul && cmake --build build --config Debug"
+cmd /s /c ""D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build-debug-ai --target QGroundControl"
 ```
 
 如果链接时报错：
@@ -166,195 +104,221 @@ cmd.exe /c "call D:\Develop\Vs2022\Community\VC\Auxiliary\Build\vcvars64.bat >nu
 LINK : fatal error LNK1168: cannot open Debug\QGroundControl.exe for writing
 ```
 
-说明 QGC 正在运行，占用了 exe。先关闭 QGC：
+说明 QGC 仍在运行，占用了 exe。先关闭 QGC，或执行：
 
 ```powershell
-Get-Process QGroundControl -ErrorAction SilentlyContinue | Stop-Process
+Get-Process QGroundControl -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like "*QGC_for_GRobot*build-debug-ai*" } |
+    Stop-Process
 ```
 
-然后重新 build。
+然后重新构建。
 
-## 运行
+## RTSP 使用流程
 
-不要直接双击 `build\Debug\QGroundControl.exe` 来运行视频版本。RTSP/GStreamer 需要环境变量，推荐使用：
+1. 手机或相机开启 RTSP 推流。
+2. 先用 VLC 或 PotPlayer 验证 URL 是否能播放。
+3. 运行 `StartDeepSharkQGC.cmd`。
+4. 进入 Fly View，打开 DeepShark Video Panel。
+5. 点击 `设置`，填入四路视频名称和 RTSP URL。
+6. 点击 `启动` 或 `全部重连`。
 
-```powershell
-D:\Develop\QGC_for_GRobot\StartDeepSharkQGC.cmd
-```
-
-该脚本会设置：
-
-- `PATH`
-- `GST_PLUGIN_PATH`
-- `GST_PLUGIN_SYSTEM_PATH`
-- `GST_PLUGIN_SCANNER`
-- `GIO_EXTRA_MODULES`
-
-然后启动 Debug 版 QGC。
-
-## RTSP 使用
-
-打开 QGC 后进入 Fly View，DeepShark Video Panel 默认显示。
-
-常用操作：
-
-- `设置`：编辑四路视频名称和 RTSP URL。
-- `启动`：启动当前/默认视频通道。
-- `停止`：手动停止视频。手动停止后不会自动重连。
-- `重连`：重连当前选中通道。
-- `全部重连`：按顺序重连四路视频。
-- `四宫格`：回到 2x2 总览布局。
-- `主辅`：进入一主三辅布局。
-- `全屏`：将选中通道放大到 DeepShark 面板内。
-- `最小化`：隐藏 DeepShark Panel，恢复 QGC 原生地图视图。
-- `显示地图`：切换地图显示/隐藏。
-
-建议先用 VLC 或 PotPlayer 验证 RTSP 源：
+常见 RTSP 格式：
 
 ```text
-rtsp://<ip>:<port>/<path>
+rtsp://192.168.2.189:8552/live
+rtsp://user:password@192.168.2.189:8554/stream1
 ```
 
-确认外部播放器能播放后，再接入 DeepShark。
+四路通道在内部对应：
 
-## 稳定性机制
+```text
+video1 -> deepSharkVideo1
+video2 -> deepSharkVideo2
+下视   -> deepSharkVideo3
+备用/侧视 -> deepSharkVideo4
+```
 
-### 独立通道
+## YOLO 检测叠加
 
-四路视频互相独立。一路 URL 错误、断流或重连，不应导致其他三路停止。
+QGC 内部监听 UDP `127.0.0.1:57610`，接收 JSON 检测结果并绘制检测框。YOLO 推理由外部 Python 桥接程序执行，QGC 本体不直接加载 PyTorch。
 
-### 自动重连
+推荐启动顺序：
 
-非手动停止导致的失败会触发自动重连：
+1. 运行 `StartDeepSharkQGC.cmd`。
+2. 在 DeepShark 设置中保存四路 RTSP URL。
+3. 确认需要识别的视频能正常播放。
+4. 运行 `StartYoloToQGC.cmd`。
 
-- 第一次失败后约 3 秒重连。
-- 后续约 5 秒重连。
-- 连续失败超过上限后进入 `Failed`，等待人工点击 Reconnect。
+无参数运行 `StartYoloToQGC.cmd` 时，它会读取 QGC 设置文件中的四路 URL，并自动启动四个子进程：
 
-### 手动停止
+```text
+deepSharkVideo1 -> 第一路 URL
+deepSharkVideo2 -> 第二路 URL
+deepSharkVideo3 -> 第三路 URL
+deepSharkVideo4 -> 第四路 URL
+```
 
-用户点击 Stop 后：
+只跑单路源时，也可以手动指定：
 
-- 状态变为 `Stopped`。
-- 自动重连禁用。
-- watchdog 不会触发重连。
-- 需要手动 Start/Reconnect 才恢复。
+```powershell
+.\StartYoloToQGC.cmd "rtsp://192.168.2.189:8552/live"
+```
 
-### Watchdog
+查看自动读取到的源但不启动 YOLO：
 
-每路视频使用 sink frame count 判断是否有真实帧进展。
+```powershell
+.\StartYoloToQGC.cmd --dry-run
+```
 
-如果处于播放状态但约 8 秒没有新帧：
+## YOLO 共享环境
 
-- 标记为 `Stalled`。
-- 记录 Recent Event。
-- 触发受控重连。
+YOLO 依赖安装在共享虚拟环境：
 
-watchdog 重连有节流，避免无限高速重启。
+```text
+D:\Develop\envs\yolo
+```
 
-### 延迟显示
+创建和安装依赖：
 
-每路显示 `Latency: xx ms` 或 `Latency: --`。
+```powershell
+python -m venv D:\Develop\envs\yolo
+D:\Develop\envs\yolo\Scripts\python.exe -m pip install --upgrade pip
+D:\Develop\envs\yolo\Scripts\python.exe -m pip install -r tools\ai_detection\requirements.txt
+```
 
-该值是接收端估算延迟：
+默认模型路径：
 
-- 基于 GStreamer buffer PTS 和 pipeline clock。
-- 用于判断接收端是否堆帧或滞后。
-- 不等于摄像头真实端到端延迟。
-- 如果 RTSP 源没有有效 PTS，会显示 `--`。
+```text
+D:\Develop\envs\yolo\models\yolov8n.pt
+```
 
-## 状态面板
+如果后续训练了水下目标模型，建议把权重放在共享环境或项目外统一模型目录，然后修改 `tools\ai_detection\run_yolo_to_qgc_udp.bat` 中的 `DEFAULT_MODEL`。
 
-DeepShark Status Panel 显示：
+## 检测数据格式
 
-- 当前布局模式。
-- 当前主视图。
-- 地图状态。
-- DeepShark Panel 状态。
-- Vehicle 状态占位。
-- 每路视频状态、retry、watchdog、FPS、延迟、lastError。
-- 四路 RTSP URL。
-- 最近事件。
+QGC 支持归一化框：
 
-Recent Events 支持滚动，只记录 DeepShark custom 层能捕获的事件，不读取 QGC 全局日志文件。
+```json
+{
+  "timestamp": 1710000000.123,
+  "source_id": "deepSharkVideo4",
+  "detections": [
+    {
+      "label": "target",
+      "confidence": 0.91,
+      "x": 0.2,
+      "y": 0.15,
+      "w": 0.3,
+      "h": 0.4
+    }
+  ]
+}
+```
+
+也支持像素坐标框：
+
+```json
+{
+  "timestamp": 1710000000.123,
+  "source_id": "deepSharkVideo4",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "detections": [
+    {
+      "label": "target",
+      "confidence": 0.91,
+      "bbox": [256, 108, 640, 396]
+    }
+  ]
+}
+```
+
+`source_id` 用于把检测框路由到对应视频 tile。没有 `source_id` 的检测结果只会显示在默认 QGC 原生视频叠加层。
+
+## YOLO 叠加开关
+
+开关位置：
+
+- QGC: `Application Settings -> Video -> YOLO Detection Overlay`
+- DeepShark: `DeepShark Video Panel -> 设置 -> YOLO Detection Overlay`
+
+关闭后，QGC 仍可接收 UDP 检测数据，但界面不绘制检测框。
+
+## 稳定性设计
+
+- 四路视频互相独立，一路断流不应影响其他三路。
+- 手动 Stop 后不会自动重连，需要手动 Start 或 Reconnect。
+- 非手动停止导致的异常会触发自动重连。
+- Watchdog 会检测长时间无帧进展的通道，并触发受控重连。
+- 退出时会停止 DeepShark tile 的重连定时器、watchdog 和视频控制器，避免关闭阶段再次启动视频。
+
+当前为了优先保证退出稳定性，DeepShark 视频 tile 的 FPS 和 Latency 可能显示为 `--`。这不代表视频不可用，也不影响 YOLO 绘制。
+
+## 常见问题
+
+### 双击 exe 后视频不可用
+
+使用根目录脚本启动：
+
+```powershell
+.\StartDeepSharkQGC.cmd
+```
+
+### YOLO 桥接窗口提示找不到 Python
+
+检查共享环境是否存在：
+
+```powershell
+D:\Develop\envs\yolo\Scripts\python.exe --version
+```
+
+如果不存在，重新创建共享环境并安装 `tools\ai_detection\requirements.txt`。
+
+### QGC 中有视频但没有检测框
+
+按顺序检查：
+
+- `YOLO Detection Overlay` 是否开启。
+- `StartYoloToQGC.cmd` 是否正在运行。
+- 桥接窗口是否持续输出 `sent ... detections to 127.0.0.1:57610`。
+- DeepShark 设置里保存的 RTSP URL 是否和正在播放的通道一致。
+- 自动桥接时 `source_id` 是否对应当前 tile。
+
+### 检测框偏移或出现在黑边
+
+当前 overlay 会根据视频真实宽高计算内容区域，只在有效视频画面内绘制。若仍有偏移，优先确认桥接发送的 `frame_width`、`frame_height` 是否与实际推理帧一致。
+
+### 关闭 QGC 时 Debug CRT 报 heap corruption
+
+这不是 YOLO 桥接未关闭导致的。桥接是外部 UDP 发送进程，QGC 关闭后 UDP 包会被系统丢弃。若仍复现，应继续排查 QGC 内部视频对象、GStreamer sink 或异步重连回调的释放顺序。
 
 ## 开发边界
 
 当前项目原则：
 
-- 优先新增/修改 `custom/`。
-- 不改 `src/FlightDisplay/FlyView.qml`。
-- 不改 `src/FlightDisplay/FlyViewWidgetLayer.qml`。
-- 不改 `src/VideoManager/*`。
-- 不改 `src/MAVLink/*`。
-- 不改 `src/FirmwarePlugin/APM/*`。
-- 不改 `src/Vehicle/*`。
-- 不改 `src/Comms/*`。
-- 不修改 ArduPilot/APM 插件配置。
-- 不修改 MAVLink 协议定义。
-- 不重构 QGC 原生视频链路。
-
-如后续必须触碰 QGC 原生模块，应先写清楚原因、影响范围、回滚方案，再小步实施。
+- 优先修改 `custom/` 和 `tools/ai_detection/`。
+- 尽量不改 `src/VideoManager/*`。
+- 尽量不改 MAVLink、FirmwarePlugin、Vehicle、Comms 相关核心链路。
+- QGC 原生模块若必须修改，应说明原因、影响范围和回滚方式。
+- 不为了单个实验功能大范围重构 QGC 架构。
 
 ## 建议开发流程
 
-1. 修改前先看 `git status --short`，确认工作区状态。
-2. 每次只解决一个问题。
-3. 优先改 `custom/`。
-4. 改完先跑定向构建。
-5. 能启动的改动要运行 `StartDeepSharkQGC.cmd` 做冒烟测试。
-6. 视频相关改动至少用一条 RTSP 源验证。
-7. 多路稳定性改动再验证两路/四路。
-8. 每个阶段单独提交，提交信息说明功能边界。
-
-## 常见问题
-
-### 双击 exe 没反应或找不到 GStreamer 插件
-
-使用 `StartDeepSharkQGC.cmd` 启动，不要直接双击 exe。
-
-### 构建时 exe 无法写入
-
-QGC 正在运行。关闭进程后重新构建：
-
-```powershell
-Get-Process QGroundControl -ErrorAction SilentlyContinue | Stop-Process
-```
-
-### VLC 能播，DeepShark 不能播
-
-优先检查：
-
-- 是否通过 `StartDeepSharkQGC.cmd` 启动。
-- RTSP URL 是否保存到对应通道。
-- GStreamer MSI 是否安装在脚本指定路径。
-- 手机/摄像头和电脑是否在同一网段。
-- 防火墙是否拦截。
-- RTSP 源是否有音频轨、是否为 H.264/H.265、是否支持多客户端。
-
-### 延迟显示为 `--`
-
-说明当前流没有提供可用 PTS，或 pipeline 当前未 decoding。这不一定代表视频不可用。
-
-## 当前限制
-
-- 尚未接入真实机器人联调。
-- Vehicle 状态面板目前仍是占位/基础显示，未深度绑定 active vehicle。
-- 未做视频录制。
-- 未做云台控制。
-- 未做机械臂控制。
-- 未做 3D 姿态窗口。
-- 延迟为接收端估算值，不是真实端到端延迟。
-- Status Panel 不读取 QGC 全局日志。
+1. 修改前先看 `git status --short`。
+2. 每次只解决一个明确问题。
+3. 视频 UI 优先改 `custom/src/DeepShark/`。
+4. AI 桥接优先改 `tools/ai_detection/`。
+5. 改完先跑定向构建。
+6. 能启动的改动用 `StartDeepSharkQGC.cmd` 做冒烟测试。
+7. YOLO 改动先用 `send_sample_detection.py` 验证 QGC 绘制，再跑真实 YOLO。
+8. 多路视频改动至少测一路真实 RTSP，稳定性改动再测两路或四路。
 
 ## 后续路线建议
 
-优先级建议：
-
-1. 实验室真实连接 ArduPilot / MAVLink，验证遥测、模式、解锁、安全控制链路。
-2. 真实机器人四路 RTSP 长时间稳定性测试。
-3. 根据实测调整 RTSP latency、watchdog 阈值、重连上限。
-4. 增加轻量 3D 姿态窗，绑定 active vehicle roll / pitch / yaw。
-5. 比赛 UI 固化：减少误触、固定布局、快捷恢复。
-6. 根据比赛需求再考虑日志导出、录制、相机控制等功能。
-
+1. 接入真实 ArduPilot / MAVLink 机器人，验证遥测、模式、解锁和安全控制链路。
+2. 用真实四路 RTSP 长时间测试 DeepShark Video Panel。
+3. 根据实测调 RTSP latency、watchdog 阈值和重连上限。
+4. 训练或微调水下目标专用模型，替换默认 COCO `yolov8n.pt`。
+5. 增加轻量 3D 姿态窗口，绑定 active vehicle 的 roll/pitch/yaw。
+6. 在核心链路稳定后，再考虑录像、日志导出、云台或机械臂控制。

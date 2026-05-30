@@ -4,8 +4,12 @@ qt_add_qml_module(FlightDisplayModule
     URI QGroundControl.FlightDisplay
     VERSION 1.0
     RESOURCE_PREFIX /qml
+    SOURCES
+        AIDetectionReceiver.cc
+        AIDetectionReceiver.h
     QML_FILES
         CustomGuidedActionsController.qml
+        AIDetectionVideoOverlay.qml
         DefaultChecklist.qml
         FixedWingChecklist.qml
         FlightDisplayViewDummy.qml
@@ -65,3 +69,5 @@ qt_add_qml_module(FlightDisplayModule
         VirtualJoystick.qml
     NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
 )
+
+target_link_libraries(FlightDisplayModule PRIVATE Qt6::Network)

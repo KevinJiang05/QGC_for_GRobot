@@ -10,6 +10,7 @@ import QtQuick.Layouts
 import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.FactControls
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
@@ -25,6 +26,7 @@ Rectangle {
     property string mainViewName: titleForIndex(mainIndex)
     property var videoRows: []
     property int reconnectAllIndex: 0
+    property var _videoSettings: QGroundControl.settingsManager.videoSettings
 
     signal toggleVideoMainMode()
     signal minimizePanel()
@@ -439,6 +441,13 @@ Rectangle {
                 QGCLabel { Layout.fillWidth: true; text: qsTr("DeepShark Video Settings"); color: "#f2f5f8"; font.bold: true }
                 QGCButton { text: qsTr("取消"); onClicked: settingsOverlay.visible = false }
                 QGCButton { text: qsTr("保存"); onClicked: root.saveSettings() }
+            }
+
+            FactCheckBoxSlider {
+                Layout.fillWidth: true
+                text: qsTr("YOLO Detection Overlay")
+                fact: root._videoSettings.yoloOverlay
+                visible: fact.visible
             }
 
             GridLayout {

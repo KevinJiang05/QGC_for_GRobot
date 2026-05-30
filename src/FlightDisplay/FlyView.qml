@@ -123,6 +123,14 @@ Item {
             property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
         }
 
+        AIDetectionVideoOverlay {
+            anchors.fill:       _pipView
+            visible:            _pipView.visible && videoControl.pipState.state === videoControl.pipState.pipState &&
+                                    QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+            showStatus:         false
+            z:                  _pipView.z + 1
+        }
+
         FlyViewWidgetLayer {
             id:                     widgetLayer
             anchors.top:            parent.top

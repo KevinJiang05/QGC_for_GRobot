@@ -42,7 +42,6 @@ Item {
     property bool   _isMode_FIT_HEIGHT: _fitMode === 1
     property bool   _isMode_FILL:       _fitMode === 2
     property bool   _isMode_NO_CROP:    _fitMode === 3
-
     function getWidth() {
         return videoBackground.getWidth()
     }

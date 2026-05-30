@@ -1,28 +1,25 @@
 # QGC_GRobot / DeepShark Ground Station
 
-This repository is a **QGroundControl v5.0.8 Stable** based custom ground station for an underwater robotics competition project. The current strategy is “Plan A”: keep the native QGC ArduPilot / MAVLink / parameter / flight mode / telemetry / control stack intact, and add the DeepShark competition UI through the official QGC custom build mechanism.
+This repository is a **QGroundControl v5.0.8 Stable** custom ground station for underwater robotics competition work and later AUV/ROV experiments. The current approach keeps the native QGC ArduPilot, MAVLink, parameter, mode, telemetry, and control stack intact, then layers a DeepShark video panel and YOLO object-detection overlay through the QGC custom build mechanism.
 
-The first version focuses on reliable operation and low-latency multi-RTSP viewing. It does not refactor the native QGC `VideoManager`, does not modify MAVLink definitions, and does not replace the ArduPilot/APM firmware plugin.
+The guiding rule is minimal, scoped change: reuse QGC's existing video, GStreamer, MAVLink, and settings infrastructure wherever possible, and avoid unrelated architecture rewrites.
 
 ## Current Features
 
-- QGC custom build is enabled and loads `DeepSharkPlugin`.
-- Fly View loads a custom `FlyViewCustomLayer.qml`.
-- Four RTSP video channels.
-- Custom names and RTSP URLs for all four channels.
-- Layouts: 2x2 grid, main + auxiliary, in-panel fullscreen, minimized panel.
-- Video Main Mode hides and disables the underlying map to reduce rendering and interaction overhead.
-- QGC top connection/status bar and key lower/right-side flight instruments are preserved.
-- Independent Start / Stop / Reconnect per video channel.
-- Reconnect All restarts channels sequentially to avoid a resource spike.
-- Per-channel state machine: `Waiting`, `Connecting`, `Streaming`, `Playing`, `Stopped`, `Failed`, `Reconnecting`, `Stalled`.
-- Auto reconnect and watchdog-based freeze detection.
-- Resolution, FPS, watchdog status, and estimated receiver-side latency display.
-- Right-side DeepShark Status Panel with system state, video state, RTSP URLs, and recent events.
+- DeepShark custom build is enabled and loads `DeepSharkPlugin`.
+- Fly View loads the DeepShark four-channel video panel.
+- Four RTSP video sources with saved channel names and URLs.
+- Layouts: 2x2 grid, main + auxiliary, in-panel fullscreen, minimized panel, and map visibility toggle.
+- Independent Start, Stop, and Reconnect per video channel, with separate state, retry count, and watchdog.
+- Sequential Reconnect All to avoid all four streams competing for resources at once.
+- YOLO detection boxes can be drawn over both native QGC video and the DeepShark four-channel Video Panel.
+- Detection routing by source: `deepSharkVideo1` through `deepSharkVideo4` map to the four video tiles.
+- `YOLO Detection Overlay` can be toggled from both QGC Video Settings and the DeepShark settings panel.
+- The YOLO bridge can automatically read the four saved RTSP URLs from QGC settings and launch one detector process per source.
 
-## Architecture
+## Layout
 
-DeepShark changes are intentionally concentrated under `custom/`.
+DeepShark custom code is kept under `custom/` as much as possible. AI bridge tools live under `tools/ai_detection/`.
 
 ```text
 custom/
@@ -39,125 +36,66 @@ custom/
       FourVideoPanel.qml
       VideoTile.qml
       DeepSharkStatusPanel.qml
+
+src/FlightDisplay/
+  AIDetectionReceiver.h/.cc
+  AIDetectionVideoOverlay.qml
+
+tools/ai_detection/
+  yolo_to_qgc_udp.py
+  run_yolo_to_qgc_auto.py
+  run_yolo_to_qgc_udp.bat
+  send_sample_detection.py
+  requirements.txt
 ```
 
-### Custom Build Entry
+## Startup Scripts
 
-`custom/CMakeLists.txt` sets:
+The repository root provides two common launchers:
 
-- `QGC_CUSTOM_BUILD`
-- `CUSTOMHEADER="DeepSharkPlugin.h"`
-- `CUSTOMCLASS=DeepSharkPlugin`
-- `custom/custom.qrc`
-- DeepShark C++ sources
-- include paths for `custom/src` and QGC `VideoReceiver`
-
-`custom/cmake/CustomOverrides.cmake` is intentionally minimal. It does not disable APM, does not disable MAVLink, and does not alter the firmware plugin factory.
-
-### QML Override
-
-`custom/custom.qrc` uses the `/Custom/qml` prefix to override the Fly View custom layer:
-
-```xml
-<file alias="QGroundControl/FlightDisplay/FlyViewCustomLayer.qml">
-    src/FlyViewCustomLayer.qml
-</file>
+```powershell
+.\StartDeepSharkQGC.cmd
+.\StartYoloToQGC.cmd
 ```
 
-`DeepSharkPlugin` uses the custom override/interceptor path so QGC loads the custom Fly View layer from the custom resource path. This inserts DeepShark UI without editing `src/FlightDisplay/FlyView.qml`.
+`StartDeepSharkQGC.cmd` sets the Qt, GStreamer, and MSVC runtime environment variables, then starts:
 
-### Fly View Custom Layer
+```text
+build-debug-ai\Debug\QGroundControl.exe
+```
 
-`custom/src/FlyViewCustomLayer.qml` is the top-level DeepShark UI entry point. It handles:
+Do not launch the video-enabled build by double-clicking the exe directly. RTSP/GStreamer depends on the environment prepared by the launcher.
 
-- Showing/hiding the DeepShark Video Panel.
-- Showing/hiding the DeepShark Status Panel.
-- Video Main Mode.
-- Hiding and disabling `mapControl` in Video Main Mode.
-- Recent Events.
-- Preserving QGC `parentToolInsets` / `totalToolInsets` forwarding.
-
-### Video Panel
-
-`custom/src/DeepShark/FourVideoPanel.qml` manages the four-channel video layout and interactions:
-
-- `grid`: 2x2 overview.
-- `mainAux`: one main view with three auxiliary views.
-- `fullscreen`: one video maximized inside the DeepShark panel.
-- `minimized`: DeepShark panel hidden, native QGC map restored.
-
-Layout switching avoids destroying `VideoTile` instances, so RTSP streams should not reconnect just because the layout changed.
-
-### Video Tile
-
-`custom/src/DeepShark/VideoTile.qml` owns a single video channel UI and state machine:
-
-- One independent `DeepSharkVideoController`.
-- Independent Start / Stop / Reconnect.
-- Independent retry count, lastError, and watchdog state.
-- Resolution, FPS, estimated latency, state, and watchdog age display.
-
-### Video Controller
-
-`custom/src/DeepSharkVideoController.h/.cc` is the DeepShark video integration layer.
-
-It creates native QGC video objects through the core plugin:
-
-- `QGCCorePlugin::createVideoReceiver`
-- `QGCCorePlugin::createVideoSink`
-- `QGCCorePlugin::releaseVideoSink`
-
-This reuses QGC’s existing GStreamer / VideoReceiver stack without modifying `src/VideoManager/*`.
-
-The controller also installs a lightweight GStreamer sink pad probe to collect:
-
-- frame count
-- FPS
-- resolution
-- estimated receiver-side latency
-
-Latency is estimated from sink buffer PTS and the pipeline clock. It is useful for detecting receiver-side buffering or lag, but it is not a true camera-to-screen end-to-end latency measurement.
-
-### Video Settings
-
-`custom/src/DeepSharkVideoSettings.h/.cc` stores four channel names and RTSP URLs in `QSettings`.
-
-After saving settings:
-
-- Channel names are updated.
-- RTSP URLs are updated.
-- Video Panel and Status Panel are synchronized.
-- Empty URLs put the channel into `Waiting`.
-- Changed URLs restart only the affected channel.
-- Unchanged settings should not cause unnecessary reconnects.
+`StartYoloToQGC.cmd` starts the YOLO bridge using the shared YOLO environment. When run without arguments, it automatically reads the DeepShark four-channel RTSP URLs saved by QGC.
 
 ## Windows Development Environment
 
-The current project targets Windows.
-
-Verified local paths:
+Current local paths:
 
 ```text
-Qt:         D:\Develop\Qt\6.8.3\msvc2022_64
-Visual Studio: D:\Develop\Vs2022\Community
-GStreamer: D:\gstreamer\1.0\msvc_x86_64
-Build dir: build
+Repository:      D:\Develop\QGC_for_GRobot
+Build dir:       D:\Develop\QGC_for_GRobot\build-debug-ai
+Qt:              D:\Develop\Toolchains\Qt\6.8.3\msvc2022_64
+GStreamer:       D:\Develop\Toolchains\GStreamer\1.0\msvc_x86_64
+VS Build Tools:  D:\Develop\Toolchains\VS2022BuildTools
+YOLO shared env: D:\Develop\envs\yolo
 ```
 
 On another machine, paths may differ, but the expected stack is:
 
 - Qt 6.8.x MSVC 64-bit
-- Visual Studio 2022 C++ toolchain
+- Visual Studio 2022 C++ Build Tools
 - CMake
 - Ninja
 - GStreamer MSVC x86_64 runtime/development package
+- Python venv with `ultralytics`
 
 ## Build
 
 Run from the repository root:
 
 ```powershell
-cmd.exe /c "call D:\Develop\Vs2022\Community\VC\Auxiliary\Build\vcvars64.bat >nul && cmake --build build --config Debug"
+cmd /s /c ""D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build-debug-ai --target QGroundControl"
 ```
 
 If the linker reports:
@@ -166,193 +104,221 @@ If the linker reports:
 LINK : fatal error LNK1168: cannot open Debug\QGroundControl.exe for writing
 ```
 
-QGC is still running and the exe is locked. Stop it first:
+QGC is still running and the exe is locked. Close QGC first, or run:
 
 ```powershell
-Get-Process QGroundControl -ErrorAction SilentlyContinue | Stop-Process
+Get-Process QGroundControl -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like "*QGC_for_GRobot*build-debug-ai*" } |
+    Stop-Process
 ```
 
 Then build again.
 
-## Run
+## RTSP Workflow
 
-Do not run the video-enabled build by double-clicking `build\Debug\QGroundControl.exe`. RTSP/GStreamer requires environment variables. Use:
+1. Start RTSP streaming from the phone or camera.
+2. Verify the URL with VLC or PotPlayer first.
+3. Run `StartDeepSharkQGC.cmd`.
+4. Open Fly View and show the DeepShark Video Panel.
+5. Click `Settings` and enter the four video names and RTSP URLs.
+6. Click `Start` or `Reconnect All`.
 
-```powershell
-D:\Develop\QGC_for_GRobot\StartDeepSharkQGC.cmd
-```
-
-The script sets:
-
-- `PATH`
-- `GST_PLUGIN_PATH`
-- `GST_PLUGIN_SYSTEM_PATH`
-- `GST_PLUGIN_SCANNER`
-- `GIO_EXTRA_MODULES`
-
-Then it starts the Debug QGC executable.
-
-## RTSP Usage
-
-After QGC starts, open Fly View. The DeepShark Video Panel is shown by default.
-
-Common actions:
-
-- `Settings`: edit names and RTSP URLs for all four channels.
-- `Start`: start the current/default channel.
-- `Stop`: manually stop video. Manual stop disables auto reconnect.
-- `Reconnect`: reconnect the selected channel.
-- `Reconnect All`: sequentially reconnect all four channels.
-- `Grid`: return to the 2x2 overview.
-- `Main`: enter main + auxiliary layout.
-- `Fullscreen`: enlarge the selected channel inside the DeepShark panel.
-- `Minimize`: hide the DeepShark Panel and restore the native QGC map view.
-- `Show Map`: toggle map visibility.
-
-Before adding a source to DeepShark, verify it with VLC or PotPlayer:
+Common RTSP URL examples:
 
 ```text
-rtsp://<ip>:<port>/<path>
+rtsp://192.168.2.189:8552/live
+rtsp://user:password@192.168.2.189:8554/stream1
 ```
+
+Internal channel IDs:
+
+```text
+video1       -> deepSharkVideo1
+video2       -> deepSharkVideo2
+down view    -> deepSharkVideo3
+spare/side   -> deepSharkVideo4
+```
+
+## YOLO Detection Overlay
+
+QGC listens on UDP `127.0.0.1:57610`, receives JSON detection results, and draws boxes. YOLO inference runs in an external Python bridge process; QGC itself does not load PyTorch.
+
+Recommended startup order:
+
+1. Run `StartDeepSharkQGC.cmd`.
+2. Save the four RTSP URLs in DeepShark settings.
+3. Confirm the target video stream is playing.
+4. Run `StartYoloToQGC.cmd`.
+
+When `StartYoloToQGC.cmd` is run without arguments, it reads the four URLs from QGC settings and starts four child processes:
+
+```text
+deepSharkVideo1 -> first URL
+deepSharkVideo2 -> second URL
+deepSharkVideo3 -> third URL
+deepSharkVideo4 -> fourth URL
+```
+
+To run a single source manually:
+
+```powershell
+.\StartYoloToQGC.cmd "rtsp://192.168.2.189:8552/live"
+```
+
+To print the auto-detected sources without launching YOLO:
+
+```powershell
+.\StartYoloToQGC.cmd --dry-run
+```
+
+## Shared YOLO Environment
+
+YOLO dependencies are installed in the shared virtual environment:
+
+```text
+D:\Develop\envs\yolo
+```
+
+Create and install dependencies:
+
+```powershell
+python -m venv D:\Develop\envs\yolo
+D:\Develop\envs\yolo\Scripts\python.exe -m pip install --upgrade pip
+D:\Develop\envs\yolo\Scripts\python.exe -m pip install -r tools\ai_detection\requirements.txt
+```
+
+Default model path:
+
+```text
+D:\Develop\envs\yolo\models\yolov8n.pt
+```
+
+If a dedicated underwater model is trained later, keep the weights in the shared environment or a project-external model directory, then update `DEFAULT_MODEL` in `tools\ai_detection\run_yolo_to_qgc_udp.bat`.
+
+## Detection Data Format
+
+QGC accepts normalized boxes:
+
+```json
+{
+  "timestamp": 1710000000.123,
+  "source_id": "deepSharkVideo4",
+  "detections": [
+    {
+      "label": "target",
+      "confidence": 0.91,
+      "x": 0.2,
+      "y": 0.15,
+      "w": 0.3,
+      "h": 0.4
+    }
+  ]
+}
+```
+
+It also accepts pixel-space boxes:
+
+```json
+{
+  "timestamp": 1710000000.123,
+  "source_id": "deepSharkVideo4",
+  "frame_width": 1280,
+  "frame_height": 720,
+  "detections": [
+    {
+      "label": "target",
+      "confidence": 0.91,
+      "bbox": [256, 108, 640, 396]
+    }
+  ]
+}
+```
+
+`source_id` routes detections to the matching video tile. Detections without `source_id` are shown only on the default native QGC video overlay.
+
+## YOLO Overlay Toggle
+
+Toggle locations:
+
+- QGC: `Application Settings -> Video -> YOLO Detection Overlay`
+- DeepShark: `DeepShark Video Panel -> Settings -> YOLO Detection Overlay`
+
+When disabled, QGC may still receive UDP detection data, but the UI does not draw boxes.
 
 ## Stability Model
 
-### Independent Channels
+- The four streams are independent; one failed stream should not stop the other three.
+- Manual Stop disables auto reconnect until the user clicks Start or Reconnect.
+- Non-manual failures trigger auto reconnect.
+- Watchdog detects channels with no frame progress for an extended period and triggers a controlled reconnect.
+- During shutdown, DeepShark tiles stop reconnect timers, watchdog timers, and video controllers to avoid starting video again while QGC is exiting.
 
-The four video channels are independent. A bad URL, stream failure, or reconnect on one channel should not stop the other three.
+To prioritize shutdown stability, the DeepShark video tile FPS and Latency fields may currently show `--`. This does not mean the video is unusable and does not affect YOLO drawing.
 
-### Auto Reconnect
+## Troubleshooting
 
-Failures not caused by a manual Stop trigger auto reconnect:
+### Video does not work after double-clicking the exe
 
-- About 3 seconds after the first failure.
-- About 5 seconds for later attempts.
-- After the retry limit, the channel enters `Failed` and waits for manual Reconnect.
+Use the root launcher:
 
-### Manual Stop
+```powershell
+.\StartDeepSharkQGC.cmd
+```
 
-After the user clicks Stop:
+### The YOLO bridge cannot find Python
 
-- State becomes `Stopped`.
-- Auto reconnect is disabled.
-- Watchdog reconnect is disabled.
-- The user must Start/Reconnect manually.
+Check the shared environment:
 
-### Watchdog
+```powershell
+D:\Develop\envs\yolo\Scripts\python.exe --version
+```
 
-Each channel uses sink frame count to detect real frame progress.
+If it does not exist, recreate the shared environment and install `tools\ai_detection\requirements.txt`.
 
-If a channel appears to be playing but no new frame arrives for about 8 seconds:
+### Video is visible in QGC but boxes are missing
 
-- The state becomes `Stalled`.
-- A Recent Event is recorded.
-- A controlled reconnect is triggered.
+Check, in order:
 
-Watchdog reconnects are throttled to avoid tight restart loops.
+- Is `YOLO Detection Overlay` enabled?
+- Is `StartYoloToQGC.cmd` still running?
+- Does the bridge console print `sent ... detections to 127.0.0.1:57610`?
+- Does the RTSP URL saved in DeepShark settings match the stream being played?
+- In auto mode, does the `source_id` match the active tile?
 
-### Latency Display
+### Boxes are offset or appear over black bars
 
-Each channel displays `Latency: xx ms` or `Latency: --`.
+The overlay computes the real video content area from the video dimensions and draws only inside that area. If offset remains, first verify that the bridge sends `frame_width` and `frame_height` matching the actual inference frame.
 
-This is receiver-side estimated latency:
+### QGC shows Debug CRT heap corruption on shutdown
 
-- Based on GStreamer buffer PTS and the pipeline clock.
-- Useful for detecting receiver buffering or lag.
-- Not a true camera-to-screen end-to-end latency.
-- If the RTSP source does not provide valid PTS, it shows `--`.
-
-## Status Panel
-
-The DeepShark Status Panel displays:
-
-- Current layout mode.
-- Current main view.
-- Map state.
-- DeepShark Panel state.
-- Vehicle state placeholder/basic state.
-- Per-channel state, retry, watchdog, FPS, latency, and lastError.
-- Four RTSP URLs.
-- Recent Events.
-
-Recent Events is scrollable. It records events available inside the DeepShark custom layer and does not read QGC global log files.
+This is not caused by leaving the YOLO bridge running. The bridge is an external UDP sender; after QGC exits, packets are dropped by the OS. If it still reproduces, continue investigating QGC-side video object lifetime, GStreamer sink release order, or asynchronous reconnect callbacks.
 
 ## Development Boundaries
 
 Current project rules:
 
-- Prefer changes under `custom/`.
-- Do not edit `src/FlightDisplay/FlyView.qml`.
-- Do not edit `src/FlightDisplay/FlyViewWidgetLayer.qml`.
-- Do not edit `src/VideoManager/*`.
-- Do not edit `src/MAVLink/*`.
-- Do not edit `src/FirmwarePlugin/APM/*`.
-- Do not edit `src/Vehicle/*`.
-- Do not edit `src/Comms/*`.
-- Do not alter ArduPilot/APM plugin configuration.
-- Do not modify MAVLink protocol definitions.
-- Do not refactor native QGC video architecture.
-
-If a future task truly requires touching native QGC modules, document the reason, impact, and rollback plan before making small scoped changes.
+- Prefer changes under `custom/` and `tools/ai_detection/`.
+- Avoid modifying `src/VideoManager/*`.
+- Avoid changing MAVLink, FirmwarePlugin, Vehicle, and Comms core paths.
+- If a native QGC module must be changed, document the reason, impact, and rollback path.
+- Do not perform broad QGC architecture refactors for a single experiment feature.
 
 ## Recommended Development Workflow
 
-1. Run `git status --short` before changing files.
-2. Solve one problem per change.
-3. Prefer `custom/`.
-4. Build after changes.
-5. For startup-sensitive changes, smoke test with `StartDeepSharkQGC.cmd`.
-6. For video changes, test with at least one RTSP source.
-7. For stability changes, test with two/four RTSP sources.
-8. Commit each stage separately with a clear scope.
-
-## Troubleshooting
-
-### Double-clicking the exe does nothing or GStreamer plugins are missing
-
-Use `StartDeepSharkQGC.cmd` instead of launching the exe directly.
-
-### Build cannot overwrite the exe
-
-QGC is still running. Stop it and build again:
-
-```powershell
-Get-Process QGroundControl -ErrorAction SilentlyContinue | Stop-Process
-```
-
-### VLC works, DeepShark does not
-
-Check:
-
-- Was QGC started through `StartDeepSharkQGC.cmd`?
-- Is the RTSP URL saved to the correct channel?
-- Is GStreamer installed at the path used by the script?
-- Are the camera/phone and PC on the same network?
-- Is Windows Firewall blocking traffic?
-- Does the RTSP source include audio, use H.264/H.265, or limit clients?
-
-### Latency shows `--`
-
-The stream may not provide valid PTS, or the pipeline is not decoding yet. This does not always mean the video is broken.
-
-## Current Limitations
-
-- Real robot integration has not yet been completed.
-- Vehicle status in the Status Panel is still placeholder/basic and is not deeply bound to active vehicle data yet.
-- No video recording.
-- No gimbal control.
-- No manipulator control.
-- No 3D attitude widget yet.
-- Latency is receiver-side estimated latency, not true end-to-end latency.
-- Status Panel does not read QGC global logs.
+1. Check `git status --short` before editing.
+2. Solve one clearly scoped problem per change.
+3. For video UI, prefer `custom/src/DeepShark/`.
+4. For AI bridge work, prefer `tools/ai_detection/`.
+5. Run a targeted build after code changes.
+6. Smoke test startup-sensitive changes with `StartDeepSharkQGC.cmd`.
+7. For YOLO changes, verify QGC drawing with `send_sample_detection.py` before running real YOLO.
+8. For video changes, test at least one real RTSP source; for stability changes, test two or four sources.
 
 ## Suggested Roadmap
 
-Recommended priorities:
-
-1. Connect to the real ArduPilot / MAVLink vehicle in the lab and validate telemetry, modes, arming, and safety control paths.
-2. Long-duration stability tests with four real RTSP sources.
+1. Connect to a real ArduPilot / MAVLink robot and validate telemetry, modes, arming, and safety control paths.
+2. Run long-duration DeepShark Video Panel tests with four real RTSP sources.
 3. Tune RTSP latency, watchdog thresholds, and reconnect limits using real data.
-4. Add a lightweight 3D attitude widget bound to active vehicle roll / pitch / yaw.
-5. Harden competition UI: reduce accidental touches, lock layouts, add quick recovery actions.
-6. Add logging export, recording, or camera control only after the core operation loop is stable.
-
+4. Train or fine-tune an underwater target model to replace the default COCO `yolov8n.pt`.
+5. Add a lightweight 3D attitude widget bound to active vehicle roll/pitch/yaw.
+6. Add recording, log export, gimbal control, or manipulator control after the core operation loop is stable.

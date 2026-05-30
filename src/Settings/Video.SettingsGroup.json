@@ -54,6 +54,13 @@
     "default":      false
 },
 {
+    "name":         "yoloOverlay",
+    "shortDesc":    "YOLO Detection Overlay",
+    "longDesc":     "Displays YOLO detection boxes overlaid over the video view.",
+    "type":         "bool",
+    "default":      true
+},
+{
     "name":             "videoFit",
     "shortDesc": "Video Display Fit",
     "longDesc":  "Handle Video Aspect Ratio.",

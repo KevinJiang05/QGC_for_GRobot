@@ -1,10 +1,16 @@
 @echo off
 setlocal
 
-set "GST_ROOT=D:\gstreamer\1.0\msvc_x86_64"
+set "GST_ROOT=D:\Develop\Toolchains\GStreamer\1.0\msvc_x86_64"
+set "QT_ROOT=D:\Develop\Toolchains\Qt\6.8.3\msvc2022_64"
 set "QGC_ROOT=D:\Develop\QGC_for_GRobot"
+set "VS_ROOT=D:\Develop\Toolchains\VS2022BuildTools"
+set "VS_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT"
+set "VS_DEBUG_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\debug_nonredist\x64\Microsoft.VC143.DebugCRT"
+set "WIN_UCRT_DEBUG=C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\ucrt"
+set "QGC_EXE=%QGC_ROOT%\build-debug-ai\Debug\QGroundControl.exe"
 
-set "PATH=%GST_ROOT%\bin;%PATH%"
+set "PATH=%QT_ROOT%\bin;%GST_ROOT%\bin;%VS_CRT%;%VS_DEBUG_CRT%;%WIN_UCRT_DEBUG%;%PATH%"
 set "GST_PLUGIN_PATH=%GST_ROOT%\lib\gstreamer-1.0"
 set "GST_PLUGIN_PATH_1_0=%GST_ROOT%\lib\gstreamer-1.0"
 set "GST_PLUGIN_SYSTEM_PATH=%GST_ROOT%\lib\gstreamer-1.0"
@@ -14,4 +20,4 @@ set "GST_PLUGIN_SCANNER_1_0=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.
 set "GIO_EXTRA_MODULES=%GST_ROOT%\lib\gio\modules"
 
 cd /d "%QGC_ROOT%"
-start "" "%QGC_ROOT%\build\Debug\QGroundControl.exe"
+start "" "%QGC_EXE%"

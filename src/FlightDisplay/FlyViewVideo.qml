@@ -12,6 +12,7 @@ import QtQuick
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.Controllers
+import QGroundControl.FlightDisplay
 import QGroundControl.ScreenTools
 
 Item {
@@ -59,6 +60,21 @@ Item {
         anchors.fill:   parent
         useSmallFont:   _root.pipState.state !== _root.pipState.fullState
         visible:        QGroundControl.videoManager.isStreamSource
+    }
+
+    Item {
+        id:                 aiDetectionOverlay
+        width:              videoStreaming.getWidth()
+        height:             videoStreaming.getHeight()
+        anchors.centerIn:   videoStreaming
+        visible:            QGroundControl.videoManager.isStreamSource &&
+                                QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        z:                  50
+
+        AIDetectionVideoOverlay {
+            anchors.fill:   parent
+            showStatus:     true
+        }
     }
     //-- UVC Video (USB Camera or Video Device)
     Loader {

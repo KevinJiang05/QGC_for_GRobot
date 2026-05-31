@@ -22,14 +22,14 @@ constexpr const char *kCamera4Url = "Camera4Url";
 
 DeepSharkVideoSettings::DeepSharkVideoSettings(QObject *parent)
     : QObject(parent)
-    , _camera1Name(_readValue(kCamera1Name, QStringLiteral("机械爪视角")))
-    , _camera1Url(_readValue(kCamera1Url, QStringLiteral("rtsp://192.168.2.189:8554/live")))
-    , _camera2Name(_readValue(kCamera2Name, QStringLiteral("机舱/前视")))
-    , _camera2Url(_readValue(kCamera2Url, QStringLiteral("rtsp://192.168.2.102:8555/live")))
-    , _camera3Name(_readValue(kCamera3Name, QStringLiteral("下视")))
-    , _camera3Url(_readValue(kCamera3Url, QStringLiteral("rtsp://192.168.2.189:8554/live")))
-    , _camera4Name(_readValue(kCamera4Name, QStringLiteral("备用/侧视")))
-    , _camera4Url(_readValue(kCamera4Url, QStringLiteral("rtsp://192.168.2.102:8555/live")))
+    , _camera1Name(_readValue(kCamera1Name, QStringLiteral("前视")))
+    , _camera1Url(_readValue(kCamera1Url, QString()))
+    , _camera2Name(_readValue(kCamera2Name, QStringLiteral("左视")))
+    , _camera2Url(_readValue(kCamera2Url, QString()))
+    , _camera3Name(_readValue(kCamera3Name, QStringLiteral("右视")))
+    , _camera3Url(_readValue(kCamera3Url, QString()))
+    , _camera4Name(_readValue(kCamera4Name, QStringLiteral("后视")))
+    , _camera4Url(_readValue(kCamera4Url, QString()))
 {
 }
 

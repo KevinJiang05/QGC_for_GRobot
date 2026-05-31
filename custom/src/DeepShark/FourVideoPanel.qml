@@ -470,7 +470,7 @@ Rectangle {
         Rectangle {
             id: settingsCard
             anchors.centerIn: parent
-            width: Math.max(1, Math.min(parent.width - ScreenTools.defaultFontPixelWidth * 4, ScreenTools.defaultFontPixelWidth * 92))
+            width: Math.max(1, Math.min(parent.width - ScreenTools.defaultFontPixelWidth, ScreenTools.defaultFontPixelWidth * 132))
             height: Math.max(1, Math.min(parent.height - ScreenTools.defaultFontPixelWidth * 4, settingsContent.implicitHeight + ScreenTools.defaultFontPixelWidth * 4))
             radius: 6
             color: "#111821"
@@ -490,7 +490,7 @@ Rectangle {
 
                     QGCLabel {
                         Layout.fillWidth: true
-                        text: qsTr("DeepShark Video Settings")
+                        text: qsTr("DeepShark 视频设置")
                         color: "#f2f5f8"
                         font.bold: true
                         font.pointSize: ScreenTools.mediumFontPointSize
@@ -508,7 +508,7 @@ Rectangle {
 
                 FactCheckBoxSlider {
                     Layout.fillWidth: true
-                    text: qsTr("YOLO Detection Overlay")
+                    text: qsTr("YOLO 检测叠加层")
                     fact: root._videoSettings.yoloOverlay
                     visible: fact.visible
                 }
@@ -520,23 +520,23 @@ Rectangle {
                     rowSpacing: ScreenTools.defaultFontPixelWidth * 0.8
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: qsTr("通道"); color: "#cbd5e1"; font.bold: true }
-                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18; text: qsTr("名称"); color: "#cbd5e1"; font.bold: true }
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; text: qsTr("名称"); color: "#cbd5e1"; font.bold: true }
                     QGCLabel { Layout.fillWidth: true; text: qsTr("RTSP URL"); color: "#cbd5e1"; font.bold: true }
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "1"; color: "#cbd5e1" }
-                    QGCTextField { id: camera1NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera1NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9 }
                     QGCTextField { id: camera1UrlField; Layout.fillWidth: true }
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "2"; color: "#cbd5e1" }
-                    QGCTextField { id: camera2NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera2NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9 }
                     QGCTextField { id: camera2UrlField; Layout.fillWidth: true }
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "3"; color: "#cbd5e1" }
-                    QGCTextField { id: camera3NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera3NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9 }
                     QGCTextField { id: camera3UrlField; Layout.fillWidth: true }
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "4"; color: "#cbd5e1" }
-                    QGCTextField { id: camera4NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera4NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9 }
                     QGCTextField { id: camera4UrlField; Layout.fillWidth: true }
                 }
             }

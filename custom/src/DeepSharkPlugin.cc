@@ -16,8 +16,14 @@
 
 Q_APPLICATION_STATIC(DeepSharkPlugin, _deepSharkPluginInstance);
 
+DeepSharkOptions::DeepSharkOptions(QObject *parent)
+    : QGCOptions(parent)
+{
+}
+
 DeepSharkPlugin::DeepSharkPlugin(QObject *parent)
     : QGCCorePlugin(parent)
+    , _options(this)
 {
 }
 
@@ -46,6 +52,11 @@ void DeepSharkPlugin::cleanup()
     delete _selector;
     _selector = nullptr;
     _qmlEngine = nullptr;
+}
+
+QGCOptions *DeepSharkPlugin::options()
+{
+    return &_options;
 }
 
 QQmlApplicationEngine *DeepSharkPlugin::createQmlApplicationEngine(QObject *parent)

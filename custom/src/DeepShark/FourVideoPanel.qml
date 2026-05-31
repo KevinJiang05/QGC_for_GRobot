@@ -27,6 +27,10 @@ Rectangle {
     property var videoRows: []
     property int reconnectAllIndex: 0
     property var _videoSettings: QGroundControl.settingsManager.videoSettings
+    property real _panelGap: Math.max(1, ScreenTools.defaultFontPixelWidth)
+    property real _toolbarHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2, 32)
+    property bool _compactToolbar: width < ScreenTools.defaultFontPixelWidth * 112
+    property bool _veryCompactToolbar: width < ScreenTools.defaultFontPixelWidth * 76
 
     signal toggleVideoMainMode()
     signal minimizePanel()
@@ -184,39 +188,43 @@ Rectangle {
     }
 
     function tileX(index) {
-        var gap = ScreenTools.defaultFontPixelWidth
+        var areaWidth = Math.max(1, videoArea.width)
+        var gap = Math.min(_panelGap, Math.max(0, areaWidth * 0.08))
         if (layoutMode === "grid") {
-            return (index % 2) * ((videoArea.width - gap) / 2 + gap)
+            return (index % 2) * ((areaWidth - gap) / 2 + gap)
         }
         if (layoutMode === "mainAux") {
-            return index === mainIndex ? 0 : videoArea.width * 0.74 + gap
+            return index === mainIndex ? 0 : areaWidth * 0.74 + gap
         }
         return 0
     }
 
     function tileY(index) {
-        var gap = ScreenTools.defaultFontPixelWidth
+        var areaHeight = Math.max(1, videoArea.height)
+        var gap = Math.min(_panelGap, Math.max(0, areaHeight * 0.08))
         if (layoutMode === "grid") {
-            return Math.floor(index / 2) * ((videoArea.height - gap) / 2 + gap)
+            return Math.floor(index / 2) * ((areaHeight - gap) / 2 + gap)
         }
         if (layoutMode === "mainAux") {
-            return index === mainIndex ? 0 : auxSlot(index) * ((videoArea.height - gap * 2) / 3 + gap)
+            return index === mainIndex ? 0 : auxSlot(index) * ((areaHeight - gap * 2) / 3 + gap)
         }
         return 0
     }
 
     function tileWidth(index) {
-        var gap = ScreenTools.defaultFontPixelWidth
-        if (layoutMode === "grid") return (videoArea.width - gap) / 2
-        if (layoutMode === "mainAux") return index === mainIndex ? videoArea.width * 0.74 : videoArea.width * 0.26 - gap
-        return videoArea.width
+        var areaWidth = Math.max(1, videoArea.width)
+        var gap = Math.min(_panelGap, Math.max(0, areaWidth * 0.08))
+        if (layoutMode === "grid") return Math.max(1, (areaWidth - gap) / 2)
+        if (layoutMode === "mainAux") return Math.max(1, index === mainIndex ? areaWidth * 0.74 : areaWidth * 0.26 - gap)
+        return areaWidth
     }
 
     function tileHeight(index) {
-        var gap = ScreenTools.defaultFontPixelWidth
-        if (layoutMode === "grid") return (videoArea.height - gap) / 2
-        if (layoutMode === "mainAux") return index === mainIndex ? videoArea.height : (videoArea.height - gap * 2) / 3
-        return videoArea.height
+        var areaHeight = Math.max(1, videoArea.height)
+        var gap = Math.min(_panelGap, Math.max(0, areaHeight * 0.08))
+        if (layoutMode === "grid") return Math.max(1, (areaHeight - gap) / 2)
+        if (layoutMode === "mainAux") return Math.max(1, index === mainIndex ? areaHeight : (areaHeight - gap * 2) / 3)
+        return areaHeight
     }
 
     function auxSlot(index) {
@@ -298,11 +306,14 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2, 32)
-            spacing: ScreenTools.defaultFontPixelWidth
+            Layout.preferredHeight: _toolbarHeight
+            spacing: ScreenTools.defaultFontPixelWidth * 0.7
 
             QGCLabel {
-                Layout.fillWidth: true
+                Layout.fillWidth: false
+                Layout.minimumWidth: root._veryCompactToolbar ? ScreenTools.defaultFontPixelWidth * 10 : ScreenTools.defaultFontPixelWidth * 18
+                Layout.preferredWidth: root._veryCompactToolbar ? ScreenTools.defaultFontPixelWidth * 14 : ScreenTools.defaultFontPixelWidth * 28
+                Layout.maximumWidth: root._compactToolbar ? ScreenTools.defaultFontPixelWidth * 28 : ScreenTools.defaultFontPixelWidth * 42
                 text: layoutMode === "fullscreen"
                       ? qsTr("DeepShark Video Panel - Fullscreen")
                       : (layoutMode === "mainAux" ? qsTr("DeepShark Video Panel - Main Aux") : qsTr("DeepShark Video Panel"))
@@ -311,58 +322,86 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            QGCLabel {
-                text: qsTr("By KevinJiang")
-                color: "#94a3b8"
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.85
+            Item {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
             }
 
-            QGCButton { text: qsTr("四宫格"); onClicked: root.setGridMode() }
-            QGCButton { text: qsTr("主辅"); onClicked: root.setMainAuxMode(root.selectedIndex) }
-            QGCButton { text: layoutMode === "fullscreen" ? qsTr("退出全屏") : qsTr("全屏"); onClicked: layoutMode === "fullscreen" ? root.exitFullscreen() : root.setFullscreenMode(root.selectedIndex) }
+            Flickable {
+                Layout.preferredWidth: Math.min(toolbarActions.implicitWidth, Math.max(1, root.width - ScreenTools.defaultFontPixelWidth * (root._veryCompactToolbar ? 34 : 54)))
+                Layout.preferredHeight: _toolbarHeight
+                contentWidth: toolbarActions.implicitWidth
+                contentHeight: _toolbarHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: contentWidth > width
+
+                RowLayout {
+                    id: toolbarActions
+                    height: parent.height
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.7
+
+                    QGCLabel {
+                        visible: !root._compactToolbar
+                        text: qsTr("By KevinJiang")
+                        color: "#94a3b8"
+                        font.pointSize: ScreenTools.defaultFontPointSize * 0.85
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    QGCButton { text: qsTr("四宫格"); onClicked: root.setGridMode() }
+                    QGCButton { text: qsTr("主辅"); onClicked: root.setMainAuxMode(root.selectedIndex) }
+                    QGCButton { text: layoutMode === "fullscreen" ? qsTr("退出全屏") : qsTr("全屏"); onClicked: layoutMode === "fullscreen" ? root.exitFullscreen() : root.setFullscreenMode(root.selectedIndex) }
+                    QGCButton {
+                        text: qsTr("启动")
+                        backgroundColor: "#16a34a"
+                        textColor: "#f8fafc"
+                        showBorder: true
+                        onClicked: root.startVideo(root.selectedIndex)
+                    }
+                    QGCButton {
+                        text: qsTr("停止")
+                        backgroundColor: "#dc2626"
+                        textColor: "#fef2f2"
+                        showBorder: true
+                        onClicked: root.stopVideo(root.selectedIndex)
+                    }
+                    QGCButton {
+                        text: qsTr("重连")
+                        backgroundColor: "#059669"
+                        textColor: "#ecfdf5"
+                        showBorder: true
+                        onClicked: root.reconnectVideo(root.selectedIndex)
+                    }
+                    QGCButton {
+                        text: qsTr("全部重连")
+                        backgroundColor: "#86efac"
+                        textColor: "#064e3b"
+                        showBorder: true
+                        onClicked: root.reconnectAllVideos()
+                    }
+                }
+            }
+
+            QGCButton { text: root._veryCompactToolbar ? qsTr("最小") : qsTr("最小化"); onClicked: root.minimizePanel() }
             QGCButton {
-                text: qsTr("启动")
-                backgroundColor: "#16a34a"
-                textColor: "#f8fafc"
-                showBorder: true
-                onClicked: root.startVideo(root.selectedIndex)
+                visible: !root._veryCompactToolbar
+                text: root.videoMainMode ? qsTr("显示地图") : qsTr("主视频")
+                onClicked: root.toggleVideoMainMode()
             }
             QGCButton {
-                text: qsTr("停止")
-                backgroundColor: "#dc2626"
-                textColor: "#fef2f2"
-                showBorder: true
-                onClicked: root.stopVideo(root.selectedIndex)
-            }
-            QGCButton {
-                text: qsTr("重连")
-                backgroundColor: "#059669"
-                textColor: "#ecfdf5"
-                showBorder: true
-                onClicked: root.reconnectVideo(root.selectedIndex)
-            }
-            QGCButton {
-                text: qsTr("全部重连")
-                backgroundColor: "#86efac"
-                textColor: "#064e3b"
-                showBorder: true
-                onClicked: root.reconnectAllVideos()
-            }
-            QGCButton {
-                text: qsTr("设置")
+                text: root._veryCompactToolbar ? qsTr("设") : qsTr("设置")
                 backgroundColor: "#facc15"
                 textColor: "#422006"
                 showBorder: true
                 onClicked: root.openSettings()
             }
-            QGCButton { text: qsTr("最小化"); onClicked: root.minimizePanel() }
-            QGCButton { text: root.videoMainMode ? qsTr("显示地图") : qsTr("主视频"); onClicked: root.toggleVideoMainMode() }
         }
 
         Item {
             id: videoArea
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: 1
             clip: true
 
             VideoTile {
@@ -424,58 +463,82 @@ Rectangle {
         anchors.fill: parent
         visible: false
         z: 10
-        color: "#d910151c"
-        border.color: "#526174"
-        border.width: 1
-        radius: 4
+        color: "#b0070b10"
 
         MouseArea { anchors.fill: parent }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: ScreenTools.defaultFontPixelWidth * 1.5
-            spacing: ScreenTools.defaultFontPixelWidth
+        Rectangle {
+            id: settingsCard
+            anchors.centerIn: parent
+            width: Math.max(1, Math.min(parent.width - ScreenTools.defaultFontPixelWidth * 4, ScreenTools.defaultFontPixelWidth * 92))
+            height: Math.max(1, Math.min(parent.height - ScreenTools.defaultFontPixelWidth * 4, settingsContent.implicitHeight + ScreenTools.defaultFontPixelWidth * 4))
+            radius: 6
+            color: "#111821"
+            border.color: "#526174"
+            border.width: 1
+            clip: true
 
-            RowLayout {
-                Layout.fillWidth: true
-                QGCLabel { Layout.fillWidth: true; text: qsTr("DeepShark Video Settings"); color: "#f2f5f8"; font.bold: true }
-                QGCButton { text: qsTr("取消"); onClicked: settingsOverlay.visible = false }
-                QGCButton { text: qsTr("保存"); onClicked: root.saveSettings() }
-            }
+            ColumnLayout {
+                id: settingsContent
+                anchors.fill: parent
+                anchors.margins: ScreenTools.defaultFontPixelWidth * 2
+                spacing: ScreenTools.defaultFontPixelWidth * 1.2
 
-            FactCheckBoxSlider {
-                Layout.fillWidth: true
-                text: qsTr("YOLO Detection Overlay")
-                fact: root._videoSettings.yoloOverlay
-                visible: fact.visible
-            }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScreenTools.defaultFontPixelWidth
 
-            GridLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                columns: 3
-                columnSpacing: ScreenTools.defaultFontPixelWidth
-                rowSpacing: ScreenTools.defaultFontPixelWidth * 0.7
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("DeepShark Video Settings")
+                        color: "#f2f5f8"
+                        font.bold: true
+                        font.pointSize: ScreenTools.mediumFontPointSize
+                    }
 
-                QGCLabel { text: qsTr("通道"); color: "#cbd5e1"; font.bold: true }
-                QGCLabel { text: qsTr("名称"); color: "#cbd5e1"; font.bold: true }
-                QGCLabel { text: qsTr("RTSP URL"); color: "#cbd5e1"; font.bold: true }
+                    QGCButton { text: qsTr("取消"); onClicked: settingsOverlay.visible = false }
+                    QGCButton { text: qsTr("保存"); onClicked: root.saveSettings() }
+                }
 
-                QGCLabel { text: "1"; color: "#cbd5e1" }
-                QGCTextField { id: camera1NameField; Layout.fillWidth: true }
-                QGCTextField { id: camera1UrlField; Layout.fillWidth: true }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: "#2b3542"
+                }
 
-                QGCLabel { text: "2"; color: "#cbd5e1" }
-                QGCTextField { id: camera2NameField; Layout.fillWidth: true }
-                QGCTextField { id: camera2UrlField; Layout.fillWidth: true }
+                FactCheckBoxSlider {
+                    Layout.fillWidth: true
+                    text: qsTr("YOLO Detection Overlay")
+                    fact: root._videoSettings.yoloOverlay
+                    visible: fact.visible
+                }
 
-                QGCLabel { text: "3"; color: "#cbd5e1" }
-                QGCTextField { id: camera3NameField; Layout.fillWidth: true }
-                QGCTextField { id: camera3UrlField; Layout.fillWidth: true }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 3
+                    columnSpacing: ScreenTools.defaultFontPixelWidth * 1.2
+                    rowSpacing: ScreenTools.defaultFontPixelWidth * 0.8
 
-                QGCLabel { text: "4"; color: "#cbd5e1" }
-                QGCTextField { id: camera4NameField; Layout.fillWidth: true }
-                QGCTextField { id: camera4UrlField; Layout.fillWidth: true }
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: qsTr("通道"); color: "#cbd5e1"; font.bold: true }
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18; text: qsTr("名称"); color: "#cbd5e1"; font.bold: true }
+                    QGCLabel { Layout.fillWidth: true; text: qsTr("RTSP URL"); color: "#cbd5e1"; font.bold: true }
+
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "1"; color: "#cbd5e1" }
+                    QGCTextField { id: camera1NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera1UrlField; Layout.fillWidth: true }
+
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "2"; color: "#cbd5e1" }
+                    QGCTextField { id: camera2NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera2UrlField; Layout.fillWidth: true }
+
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "3"; color: "#cbd5e1" }
+                    QGCTextField { id: camera3NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera3UrlField; Layout.fillWidth: true }
+
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "4"; color: "#cbd5e1" }
+                    QGCTextField { id: camera4NameField; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 18 }
+                    QGCTextField { id: camera4UrlField; Layout.fillWidth: true }
+                }
             }
         }
     }

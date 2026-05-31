@@ -22,6 +22,8 @@ Item {
     implicitHeight: mainLayout.height + (_toolsMargin * 2)
 
     property real extraWidth: 0 ///< Extra width to add to the background rectangle
+    property bool alignValuesInExtraWidth: false
+    property alias transposeDisplay: factValueGrid.transposeDisplay
 
     property alias factValueGrid:           factValueGrid
     property alias settingsGroup:           factValueGrid.settingsGroup
@@ -41,6 +43,7 @@ Item {
         anchors.margins:    _toolsMargin
         anchors.bottom:     parent.bottom
         anchors.left:       parent.left
+        anchors.leftMargin: control.alignValuesInExtraWidth ? control.extraWidth : 0
 
         RowLayout {
             visible: factValueGrid.settingsUnlocked

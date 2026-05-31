@@ -188,6 +188,12 @@ void DeepSharkVideoController::start()
     _startAttempts++;
     emit startAttemptsChanged();
     _setStatusText(tr("Connecting"));
+#ifdef QGC_GST_STREAMING
+    _sinkFrameCount.store(0, std::memory_order_relaxed);
+    _sinkLatencyMs.store(-1, std::memory_order_relaxed);
+    _lastSinkFrameCount = 0;
+    emit frameCountChanged();
+#endif
     _receiver->setUri(_uri);
     _receiver->setLowLatency(_lowLatency);
     _receiver->start(8);
@@ -280,6 +286,7 @@ void DeepSharkVideoController::_rebuildSink()
     if (_videoItem) {
         _sink = QGCCorePlugin::instance()->createVideoSink(_videoItem, _receiver);
         _receiver->setSink(_sink);
+        _installSinkFrameProbe();
     }
 }
 
@@ -345,11 +352,29 @@ void DeepSharkVideoController::_setFrameRate(double frameRate)
 
 void DeepSharkVideoController::_updateFrameRate()
 {
+#ifdef QGC_GST_STREAMING
+    const quint64 currentFrameCount = _sinkFrameCount.load(std::memory_order_relaxed);
+    if (currentFrameCount != _lastSinkFrameCount) {
+        const quint64 frameDelta = currentFrameCount - _lastSinkFrameCount;
+        _lastSinkFrameCount = currentFrameCount;
+        emit frameCountChanged();
+        _setFrameRate(_decoding ? static_cast<double>(frameDelta) : 0.0);
+    } else {
+        _setFrameRate(0.0);
+    }
+
+    const qint64 latencyMs = _sinkLatencyMs.load(std::memory_order_relaxed);
+    if (_estimatedLatencyMs != static_cast<int>(latencyMs)) {
+        _estimatedLatencyMs = static_cast<int>(latencyMs);
+        emit latencyChanged();
+    }
+#else
     _setFrameRate(0.0);
     if (_estimatedLatencyMs != -1) {
         _estimatedLatencyMs = -1;
         emit latencyChanged();
     }
+#endif
 }
 
 #ifdef QGC_GST_STREAMING

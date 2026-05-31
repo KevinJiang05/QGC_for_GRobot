@@ -8,7 +8,7 @@ set "VS_ROOT=D:\Develop\Toolchains\VS2022BuildTools"
 set "VS_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT"
 set "VS_DEBUG_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\debug_nonredist\x64\Microsoft.VC143.DebugCRT"
 set "WIN_UCRT_DEBUG=C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\ucrt"
-set "QGC_EXE=%QGC_ROOT%\build-debug-ai\Debug\QGroundControl.exe"
+set "QGC_EXE=%QGC_ROOT%\build-debug-ai\Debug\QGC_KevinJiang.exe"
 
 set "PATH=%QT_ROOT%\bin;%GST_ROOT%\bin;%VS_CRT%;%VS_DEBUG_CRT%;%WIN_UCRT_DEBUG%;%PATH%"
 set "GST_PLUGIN_PATH=%GST_ROOT%\lib\gstreamer-1.0"

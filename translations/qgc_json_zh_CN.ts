@@ -5018,7 +5018,7 @@
       <translatorcomment>Only use english comma &apos;,&apos; to separate strings</translatorcomment>
       <location filename="../src/FirmwarePlugin/APM/APM-MavCmdInfoCommon.json"/>
       <source>Enable,Disable</source>
-      <translation>启用/禁用</translation>
+      <translation>启用,禁用</translation>
     </message>
   </context>
 </TS>

@@ -18,6 +18,8 @@ RowLayout {
     TelemetryValuesBar {
         Layout.alignment:       Qt.AlignBottom
         extraWidth:             instrumentPanel.extraValuesWidth
+        alignValuesInExtraWidth: false
+        transposeDisplay:       true
         settingsGroup:          factValueGrid.telemetryBarSettingsGroup
         specificVehicleForCard: null // Tracks active vehicle
     }

@@ -70,4 +70,16 @@ qt_add_qml_module(FlightDisplayModule
     NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
 )
 
+target_include_directories(FlightDisplayModule PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/FactSystem
+    ${CMAKE_SOURCE_DIR}/src/Settings
+)
+
 target_link_libraries(FlightDisplayModule PRIVATE Qt6::Network)
+
+target_sources(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        AIDetectionManager.cc
+        AIDetectionManager.h
+)

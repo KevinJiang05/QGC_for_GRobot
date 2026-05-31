@@ -31,6 +31,17 @@ Item {
     property real minimizedControlRightMargin: ScreenTools.defaultFontPixelWidth * 2
     property real minimizedControlGap: ScreenTools.defaultFontPixelHeight * 0.6
     property real restorePanelButtonWidth: Math.max(ScreenTools.defaultFontPixelWidth * 20, 190)
+    property bool statusPanelManualOpen: false
+    property bool statusPanelAutoCompact: width < ScreenTools.defaultFontPixelWidth * 145
+                                          || height < ScreenTools.defaultFontPixelHeight * 46
+    property bool statusPanelExpanded: (_root.videoMainMode || _root.panelMinimized)
+                                       && !statusPanel.minimized
+                                       && (!_root.statusPanelAutoCompact || _root.statusPanelManualOpen)
+    property real videoPanelRightMargin: _root.videoMainMode
+                                         ? (_root.statusPanelExpanded
+                                            ? statusPanel.panelWidth + ScreenTools.defaultFontPixelWidth * 2
+                                            : Math.max(parentToolInsets.rightEdgeBottomInset, ScreenTools.defaultFontPixelWidth * 2))
+                                         : ScreenTools.defaultFontPixelWidth
 
     function addDeepSharkEvent(message) {
         var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
@@ -74,6 +85,11 @@ Item {
     }
     onPanelMinimizedChanged: syncMapControlVisibility()
     onMapControlChanged: Qt.callLater(syncMapControlVisibility)
+    onStatusPanelAutoCompactChanged: {
+        if (statusPanelAutoCompact) {
+            statusPanelManualOpen = false
+        }
+    }
 
     Component.onCompleted: Qt.callLater(syncMapControlVisibility)
 
@@ -102,11 +118,9 @@ Item {
         id: fourVideoPanel
         visible: !_root.panelMinimized
         anchors.right: parent.right
-        anchors.rightMargin: _root.videoMainMode
-                             ? Math.max(parentToolInsets.rightEdgeBottomInset, ScreenTools.defaultFontPixelWidth * 2)
-                             : ScreenTools.defaultFontPixelWidth
+        anchors.rightMargin: _root.videoPanelRightMargin
         anchors.top: _root.videoMainMode ? parent.top : undefined
-        anchors.topMargin: _root.videoMainMode ? 0 : 0
+        anchors.topMargin: 0
         anchors.bottom: _root.videoMainMode ? parent.bottom : undefined
         anchors.bottomMargin: 0
         anchors.left: _root.videoMainMode ? parent.left : undefined
@@ -123,7 +137,7 @@ Item {
 
     DeepSharkStatusPanel {
         id: statusPanel
-        visible: (_root.videoMainMode || _root.panelMinimized) && !statusPanel.minimized
+        visible: _root.statusPanelExpanded
         z: 20
         width: statusPanel.panelWidth
         anchors.right: parent.right
@@ -152,6 +166,7 @@ Item {
     QGCButton {
         id: statusRestoreButton
         visible: (_root.videoMainMode || _root.panelMinimized) && statusPanel.minimized
+                 || ((_root.videoMainMode || _root.panelMinimized) && _root.statusPanelAutoCompact && !_root.statusPanelExpanded)
         z: 20
         width: _root.compactStatusButtonWidth
         height: _root.compactStatusButtonHeight
@@ -167,7 +182,14 @@ Item {
                              + _root.compactStatusButtonHeight
                              + _root.minimizedControlGap
                            : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
-        onClicked: statusPanel.toggleMinimized()
+        onClicked: {
+            if (_root.statusPanelAutoCompact && !_root.statusPanelExpanded) {
+                _root.statusPanelManualOpen = true
+                statusPanel.minimized = false
+            } else {
+                statusPanel.toggleMinimized()
+            }
+        }
     }
 
     Rectangle {

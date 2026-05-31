@@ -61,6 +61,15 @@ Rectangle {
                 text:               "<a href=\"https://discord.com/channels/1022170275984457759/1022185820683255908\">https://discord.com/channels/1022170275984457759/1022185820683255908</a>"
                 onLinkActivated:    (link) => Qt.openUrlExternally(link)
             }
+
+            QGCLabel {
+                Layout.columnSpan:   2
+                Layout.topMargin:    ScreenTools.defaultFontPixelHeight
+                Layout.fillWidth:    true
+                text:                qsTr("QGC_KevinJiang 1.0 基于开源 QGroundControl v5.0.8 二次开发，非官方发行版本。维护：蒋中泽 <KevinJiang1018@gmail.com>")
+                wrapMode:            Text.WordWrap
+                color:               qgcPal.text
+            }
         }
     }
 }

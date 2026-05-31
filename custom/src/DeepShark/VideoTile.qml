@@ -364,7 +364,7 @@ Rectangle {
         anchors.centerIn: parent
         text: root.currentStatus
         color: "#9aa6b2"
-        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.9
+        font.pointSize: ScreenTools.defaultFontPointSize * 0.9
         visible: !videoOutput.visible
     }
 
@@ -384,7 +384,7 @@ Rectangle {
                     .arg(root.retryCount)
               : qsTr("Waiting for RTSP")
         color: "#6b7280"
-        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+        font.pointSize: ScreenTools.defaultFontPointSize * 0.7
         elide: Text.ElideRight
         visible: true
     }

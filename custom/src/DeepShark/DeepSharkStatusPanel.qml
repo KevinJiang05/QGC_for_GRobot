@@ -17,7 +17,9 @@ Rectangle {
     id: root
 
     property bool minimized: false
-    property real panelWidth: Math.max(ScreenTools.defaultFontPixelWidth * 38, 320)
+    property real panelWidth: Math.min(Math.max(ScreenTools.defaultFontPixelWidth * 38, 320),
+                                       Math.max(ScreenTools.defaultFontPixelWidth * 24,
+                                                parent ? parent.width - ScreenTools.defaultFontPixelWidth * 2 : 320))
     property string layoutMode: "grid"
     property int mainIndex: 0
     property string mainName: ""
@@ -157,7 +159,7 @@ Rectangle {
                                               .arg(modelData.watchdog || "Disabled")
                                               .arg(modelData.lastProgressAge >= 0 ? modelData.lastProgressAge + "s" : "--")
                                         color: "#9ca3af"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                                        font.pointSize: ScreenTools.defaultFontPointSize * 0.7
                                         elide: Text.ElideRight
                                     }
 
@@ -169,7 +171,7 @@ Rectangle {
                                               .arg(modelData.watchdogReconnectCount || 0)
                                               .arg(root.compactText(modelData.lastError, 24))
                                         color: "#9ca3af"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                                        font.pointSize: ScreenTools.defaultFontPointSize * 0.7
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -201,7 +203,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: qsTr("%1. %2").arg(modelData.index).arg(root.compactText(modelData.url, 42))
                             color: "#9ca3af"
-                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.7
                             elide: Text.ElideRight
                         }
                     }
@@ -240,7 +242,7 @@ Rectangle {
                                     width: eventsColumn.width
                                     text: modelData
                                     color: "#9ca3af"
-                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 0.68
                                     wrapMode: Text.Wrap
                                 }
                             }

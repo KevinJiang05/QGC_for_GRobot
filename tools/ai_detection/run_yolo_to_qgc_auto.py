@@ -20,16 +20,21 @@ DEFAULT_SOURCES = [
 ]
 
 
-def _candidate_settings_files() -> list[Path]:
+def _candidate_settings_files(settings_file: str | None = None) -> list[Path]:
     appdata = Path(os.environ.get("APPDATA", ""))
-    return [
+    candidates = [
+        appdata / "KevinJiang" / "QGC_KevinJiang Daily.ini",
+        appdata / "KevinJiang" / "QGC_KevinJiang.ini",
         appdata / "QGroundControl" / "QGroundControl Daily.ini",
         appdata / "QGroundControl.org" / "QGroundControl.ini",
     ]
+    if settings_file:
+        candidates.insert(0, Path(settings_file))
+    return candidates
 
 
-def _read_sources() -> list[tuple[str, str]]:
-    for settings_file in _candidate_settings_files():
+def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
+    for settings_file in _candidate_settings_files(settings_file_arg):
         if not settings_file.exists():
             continue
 
@@ -65,15 +70,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default=None, help="Inference device, for example cpu, 0, cuda:0.")
     parser.add_argument("--max-fps", type=float, default=8.0, help="Maximum UDP send rate per source.")
     parser.add_argument("--log-every", type=float, default=2.0, help="Seconds between console status lines.")
+    parser.add_argument("--settings-file", default=None, help="QGC settings ini file used to read DeepShark video sources.")
     parser.add_argument("--dry-run", action="store_true", help="Print detected sources without starting YOLO.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
-    repo_dir = Path(__file__).resolve().parents[2]
-    bridge_script = repo_dir / "tools" / "ai_detection" / "yolo_to_qgc_udp.py"
-    sources = _read_sources()
+    bridge_script = Path(__file__).resolve().with_name("yolo_to_qgc_udp.py")
+    sources = _read_sources(args.settings_file)
 
     if not sources:
         print("No RTSP source configured.", flush=True)
@@ -114,7 +119,7 @@ def main() -> int:
             command.extend(["--device", args.device])
 
         print(f"Starting {source_id}: {source}", flush=True)
-        processes.append(subprocess.Popen(command, cwd=repo_dir))
+        processes.append(subprocess.Popen(command, cwd=bridge_script.parent))
 
     try:
         while processes:

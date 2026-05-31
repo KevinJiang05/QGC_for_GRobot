@@ -26,6 +26,7 @@ T.HorizontalFactValueGrid {
     Layout.preferredHeight: topLayout.height
 
     property bool   settingsUnlocked:       false
+    property bool   transposeDisplay:       false
 
     property real   _margins:               ScreenTools.defaultFontPixelWidth / 2
     property int    _rowMax:                2
@@ -46,7 +47,7 @@ T.HorizontalFactValueGrid {
                 spacing:    ScreenTools.defaultFontPixelWidth * 1.25
 
                 Repeater {
-                    model: _root.columns
+                    model: _root.transposeDisplay ? 0 : _root.columns
 
                     GridLayout {
                         rows:           object.count
@@ -102,6 +103,72 @@ T.HorizontalFactValueGrid {
                                     if (currentTime - valueRepeater.lastCheck > 30 * 1000) {
                                         valueRepeater.lastCheck = currentTime
                                         valueRepeater.recalcWidth()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: _root.transposeDisplay ? _root.rowCount : 0
+
+                    GridLayout {
+                        id: transposedGrid
+                        property int displayColumnIndex: index
+
+                        rows:           _root.columns.count
+                        columns:        2
+                        rowSpacing:     0
+                        columnSpacing:  ScreenTools.defaultFontPixelWidth / 4
+                        flow:           GridLayout.TopToBottom
+
+                        Repeater {
+                            id: transposedLabelRepeater
+                            model: _root.columns.count
+
+                            InstrumentValueLabel {
+                                Layout.fillHeight:      true
+                                Layout.alignment:       Qt.AlignRight
+                                instrumentValueData:    _root.columns.get(index).get(transposedGrid.displayColumnIndex)
+                            }
+                        }
+
+                        Repeater {
+                            id: transposedValueRepeater
+                            model: _root.columns.count
+
+                            property real   maxWidth:   0
+                            property var    lastCheck:  new Date().getTime()
+
+                            function recalcWidth() {
+                                var newMaxWidth = 0
+                                for (var i=0; i<transposedValueRepeater.count; i++) {
+                                    newMaxWidth = Math.max(newMaxWidth, transposedValueRepeater.itemAt(i).contentWidth)
+                                }
+                                maxWidth = Math.min(maxWidth, newMaxWidth)
+                            }
+
+                            InstrumentValueValue {
+                                Layout.fillHeight:      true
+                                Layout.alignment:       Qt.AlignLeft
+                                Layout.preferredWidth:  transposedValueRepeater.maxWidth
+                                instrumentValueData:    _root.columns.get(index).get(transposedGrid.displayColumnIndex)
+
+                                property real lastContentWidth
+
+                                Component.onCompleted:  {
+                                    transposedValueRepeater.maxWidth = Math.max(transposedValueRepeater.maxWidth, contentWidth)
+                                    lastContentWidth = contentWidth
+                                }
+
+                                onContentWidthChanged: {
+                                    transposedValueRepeater.maxWidth = Math.max(transposedValueRepeater.maxWidth, contentWidth)
+                                    lastContentWidth = contentWidth
+                                    var currentTime = new Date().getTime()
+                                    if (currentTime - transposedValueRepeater.lastCheck > 30 * 1000) {
+                                        transposedValueRepeater.lastCheck = currentTime
+                                        transposedValueRepeater.recalcWidth()
                                     }
                                 }
                             }

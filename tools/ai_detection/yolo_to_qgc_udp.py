@@ -9,13 +9,42 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
+import tempfile
 import time
 from typing import Any
 
 
+STREAM_SOURCE_PREFIXES = ("rtsp://", "rtmp://", "tcp://")
+
+
+def _clean_source(source: str) -> str:
+    cleaned = source.strip()
+    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
 def _parse_source(source: str) -> str | int:
-    return int(source) if source.isdecimal() else source
+    cleaned = _clean_source(source)
+    return int(cleaned) if cleaned.isdecimal() else cleaned
+
+
+def _prepare_source_for_ultralytics(source: str) -> tuple[str | int, str | None]:
+    parsed_source = _parse_source(source)
+    if not isinstance(parsed_source, str):
+        return parsed_source, None
+
+    if parsed_source.lower().startswith(STREAM_SOURCE_PREFIXES):
+        streams_file = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".streams", delete=False)
+        try:
+            streams_file.write(f"{parsed_source}\n")
+            return streams_file.name, streams_file.name
+        finally:
+            streams_file.close()
+
+    return parsed_source, None
 
 
 def _clamp_unit(value: float) -> float:
@@ -90,36 +119,44 @@ def main() -> int:
     interval = 1.0 / args.max_fps if args.max_fps > 0 else 0.0
     last_sent = 0.0
     last_log = 0.0
+    predict_source, cleanup_path = _prepare_source_for_ultralytics(args.source)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-        results = model.predict(
-            source=_parse_source(args.source),
-            stream=True,
-            imgsz=args.imgsz,
-            conf=args.conf,
-            iou=args.iou,
-            device=args.device,
-            classes=args.classes,
-            verbose=False,
-        )
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
+            results = model.predict(
+                source=predict_source,
+                stream=True,
+                imgsz=args.imgsz,
+                conf=args.conf,
+                iou=args.iou,
+                device=args.device,
+                classes=args.classes,
+                verbose=False,
+            )
 
-        for result in results:
-            now = time.time()
-            if interval > 0 and now - last_sent < interval:
-                continue
+            for result in results:
+                now = time.time()
+                if interval > 0 and now - last_sent < interval:
+                    continue
 
-            payload = _build_payload(result, args.source_id)
-            message = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-            udp_socket.sendto(message, destination)
-            last_sent = now
+                payload = _build_payload(result, args.source_id)
+                message = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                udp_socket.sendto(message, destination)
+                last_sent = now
 
-            if args.log_every > 0 and now - last_log >= args.log_every:
-                print(
-                    f"{args.source_id or 'default'} sent {len(payload['detections'])} detections "
-                    f"({payload['frame_width']}x{payload['frame_height']}) to {args.host}:{args.port}",
-                    flush=True,
-                )
-                last_log = now
+                if args.log_every > 0 and now - last_log >= args.log_every:
+                    print(
+                        f"{args.source_id or 'default'} sent {len(payload['detections'])} detections "
+                        f"({payload['frame_width']}x{payload['frame_height']}) to {args.host}:{args.port}",
+                        flush=True,
+                    )
+                    last_log = now
+    finally:
+        if cleanup_path:
+            try:
+                os.unlink(cleanup_path)
+            except OSError:
+                pass
 
     return 0
 

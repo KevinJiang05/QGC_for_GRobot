@@ -1,56 +1,55 @@
+# QGC_KevinJiang
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Dronecode/UX-Design/35d8148a8a0559cd4bcf50bfa2c94614983cce91/QGC/Branding/Deliverables/QGC_RGB_Logo_Horizontal_Positive_PREFERRED/QGC_RGB_Logo_Horizontal_Positive_PREFERRED.svg" alt="QGroundControl Logo" width="500">
-</p>
+QGC_KevinJiang is an internal GRobot ground control application maintained by Kevin Jiang. It is based on the open-source QGroundControl project and customized for DeepShark multi-camera operation and optional local AI detection.
 
-<p align="center">
-  <a href="https://github.com/mavlink/QGroundControl/releases">
-    <img src="https://img.shields.io/github/release/mavlink/QGroundControl.svg" alt="Latest Release">
-  </a>
-</p>
+- Project name: QGC_KevinJiang
+- Current stable version: 1.0.0
+- Upstream base: QGroundControl v5.0.8
+- Maintainer: Jiang Zhongze / KevinJiang1018@gmail.com
+- Distribution: Windows installer published through GitHub Releases
 
-*QGroundControl* (QGC) is a highly intuitive and powerful Ground Control Station (GCS) designed for UAVs. Whether you're a first-time pilot or an experienced professional, QGC provides a seamless user experience for flight control and mission planning, making it the go-to solution for any *MAVLink-enabled drone*.
+## Main Features
 
----
+- DeepShark four-channel RTSP video panel for front, left, right, and rear camera views.
+- Optional YOLO AI detection overlay using a local Python environment and local model files.
+- Built-in AI environment check and AI start/stop/restart controls in QGC video settings.
+- GRobot application icon and Windows NSIS installer packaging.
+- QGC native video source defaults to disabled and respects the disabled state when vehicle video stream information is received.
 
-### 🌟 *Why Choose QGroundControl?*
+## Installation
 
-- *🚀 Ease of Use*: A beginner-friendly interface designed for smooth operation without sacrificing advanced features for pros.
-- *✈️ Comprehensive Flight Control*: Full flight control and mission management for *PX4* and *ArduPilot* powered UAVs.
-- *🛠️ Mission Planning*: Easily plan complex missions with a simple drag-and-drop interface.
+Download the Windows installer from the GitHub Release page for the required version. For v1.0.0, use:
 
-🔍 For a deeper dive into using QGC, check out the [User Manual](https://docs.qgroundcontrol.com/en/) – although, thanks to QGC's intuitive UI, you may not even need it!
+- `QGC_v1.0.0_KevinJiang-installer.exe`
 
+The installer is distributed as a Release asset. It is intentionally not committed into the normal source tree.
 
----
+## Optional AI Detection
 
-### 🚁 *Key Features*
+AI detection is optional. The installer includes the lightweight AI bridge scripts, but it does not bundle large Python dependencies, CUDA libraries, or YOLO model files.
 
-- 🕹️ *Full Flight Control*: Supports all *MAVLink drones*.
-- ⚙️ *Vehicle Setup*: Tailored configuration for *PX4* and *ArduPilot* platforms.
-- 🔧 *Fully Open Source*: Customize and extend the software to suit your needs.
+Each operator should configure:
 
-🎯 Check out the latest updates in our [New Features and Release Notes](https://github.com/mavlink/qgroundcontrol/blob/master/ChangeLog.md).
+- Python executable path for a local environment with `ultralytics` and `torch`.
+- YOLO model path, for example a local `.pt` file.
+- Optional device value, such as `cpu`, `0`, or `cuda:0`.
 
----
+Use the environment check in the Video settings page before starting AI detection.
 
-### 💻 *Get Involved!*
+## Source Provenance
 
-QGroundControl is *open-source*, meaning you have the power to shape it! Whether you're fixing bugs, adding features, or customizing for your specific needs, QGC welcomes contributions from the community.
+This project is a secondary development based on QGroundControl v5.0.8. The upstream QGroundControl history is intentionally preserved for traceability and license compliance.
 
-🛠️ Start building today with our [Developer Guide](https://dev.qgroundcontrol.com/en/) and [build instructions](https://dev.qgroundcontrol.com/en/getting_started/).
+Upstream project:
 
----
+- https://github.com/mavlink/qgroundcontrol
 
-### 🔗 *Useful Links*
+## Documentation
 
-- 🌐 [Official Website](http://qgroundcontrol.com)
-- 📘 [User Manual](https://docs.qgroundcontrol.com/en/)
-- 🛠️ [Developer Guide](https://dev.qgroundcontrol.com/en/)
-- 💬 [Discussion & Support](https://docs.qgroundcontrol.com/en/Support/Support.html)
-- 🤝 [Contributing](https://dev.qgroundcontrol.com/en/contribute/)
-- 📜 [License Information](https://github.com/mavlink/qgroundcontrol/blob/master/.github/COPYING.md)
+- Release notes: [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md)
+- Original QGroundControl user documentation: https://docs.qgroundcontrol.com/
+- Original QGroundControl developer documentation: https://dev.qgroundcontrol.com/
 
----
+## License
 
-With QGroundControl, you're in full command of your UAV, ready to take your missions to the next level.
+QGroundControl is licensed according to the license files included in this repository. QGC_KevinJiang keeps the upstream licensing and attribution.

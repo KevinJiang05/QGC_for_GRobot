@@ -12,12 +12,14 @@ import time
 from pathlib import Path
 
 
-DEFAULT_SOURCES = [
-    ("deepSharkVideo1", "rtsp://192.168.2.189:8554/live"),
-    ("deepSharkVideo2", "rtsp://192.168.2.102:8555/live"),
-    ("deepSharkVideo3", "rtsp://192.168.2.189:8554/live"),
-    ("deepSharkVideo4", "rtsp://192.168.2.102:8555/live"),
-]
+DEFAULT_SOURCES: list[tuple[str, str]] = []
+
+
+def _clean_source(source: str) -> str:
+    cleaned = source.strip()
+    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
 
 
 def _candidate_settings_files(settings_file: str | None = None) -> list[Path]:
@@ -47,7 +49,7 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
         sources: list[tuple[str, str]] = []
         section = parser["DeepShark"]
         for index in range(1, 5):
-            url = section.get(f"Video\\Camera{index}Url", "").strip()
+            url = _clean_source(section.get(f"Video\\Camera{index}Url", ""))
             if url:
                 sources.append((f"deepSharkVideo{index}", url))
 
@@ -55,7 +57,7 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
             print(f"Loaded DeepShark video sources from {settings_file}", flush=True)
             return sources
 
-    print("QGC DeepShark settings not found; using built-in default RTSP URLs.", flush=True)
+    print("QGC DeepShark settings not found or no RTSP source configured.", flush=True)
     return DEFAULT_SOURCES
 
 

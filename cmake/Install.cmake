@@ -8,6 +8,13 @@ install(
     BUNDLE  DESTINATION .
 )
 
+install(
+    DIRECTORY ${CMAKE_SOURCE_DIR}/tools/ai_detection/
+    DESTINATION ${CMAKE_INSTALL_BINDIR}/ai_detection
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+)
+
 set(deploy_tool_options_arg "")
 if(MACOS OR WIN32)
     set(deploy_tool_options_arg "-qmldir=${CMAKE_SOURCE_DIR}")

@@ -144,12 +144,6 @@ Vehicle::Vehicle(LinkInterface*             link,
 
     _vehicleLinkManager->_addLink(link);
 
-    // Set video stream to udp if running ArduSub and Video is disabled
-    if (sub() && SettingsManager::instance()->videoSettings()->videoSource()->rawValue() == VideoSettings::videoDisabled) {
-        SettingsManager::instance()->videoSettings()->videoSource()->setRawValue(VideoSettings::videoSourceUDPH264);
-        SettingsManager::instance()->videoSettings()->lowLatencyMode()->setRawValue(true);
-    }
-
 #ifdef QGC_UTM_ADAPTER
     _utmspVehicle = UTMSPManager::instance()->instantiateVehicle(this);
 #endif
@@ -352,12 +346,6 @@ void Vehicle::_commonInit()
     _flightTimeUpdater.setInterval(1000);
     _flightTimeUpdater.setSingleShot(false);
     connect(&_flightTimeUpdater, &QTimer::timeout, this, &Vehicle::_updateFlightTime);
-
-    // Set video stream to udp if running ArduSub and Video is disabled
-    if (sub() && SettingsManager::instance()->videoSettings()->videoSource()->rawValue() == VideoSettings::videoDisabled) {
-        SettingsManager::instance()->videoSettings()->videoSource()->setRawValue(VideoSettings::videoSourceUDPH264);
-        SettingsManager::instance()->videoSettings()->lowLatencyMode()->setRawValue(true);
-    }
 
     // enable Joystick if appropriate
     _loadJoystickSettings();

@@ -461,7 +461,7 @@ bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
 
     const bool settingsChanged = _updateVideoUri(receiver, url);
     if (settingsChanged) {
-        if (!receiver->isThermal()) {
+        if (!receiver->isThermal() && _videoSettings->videoSource()->rawValue() != VideoSettings::videoDisabled) {
             _videoSettings->videoSource()->setRawValue(source);
         }
 

@@ -41,7 +41,7 @@ Rectangle {
     property string frameRateText: videoController.frameRateText
     property string latencyText: videoController.latencyText
     property int estimatedLatencyMs: videoController.estimatedLatencyMs
-    property int maxAutoRetries: 5
+    property int maxAutoRetries: videoSource.indexOf("rtsp://127.0.0.1:8554/deepshark") === 0 ? 0 : 5
     property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
     property bool stalled: false
     property int watchdogReconnectCount: 0
@@ -159,12 +159,16 @@ Rectangle {
             videoEvent(title + " stalled: no frame progress for " + Math.floor(ageMs / 1000) + "s")
         }
 
-        if (Date.now() - lastWatchdogReconnectTime >= 15000 && retryCount < maxAutoRetries) {
+        if (Date.now() - lastWatchdogReconnectTime >= 15000 && _canAutoRetry()) {
             lastWatchdogReconnectTime = Date.now()
             watchdogReconnectCount++
             videoEvent(title + " watchdog reconnect")
             _scheduleReconnect("Watchdog stalled")
         }
+    }
+
+    function _canAutoRetry() {
+        return maxAutoRetries <= 0 || retryCount < maxAutoRetries
     }
 
     function _setStatus(status, error) {
@@ -184,7 +188,7 @@ Rectangle {
         }
 
         retryCount++
-        if (retryCount > maxAutoRetries) {
+        if (maxAutoRetries > 0 && retryCount > maxAutoRetries) {
             _setStatus("Failed", error + " - manual reconnect required")
             return
         }

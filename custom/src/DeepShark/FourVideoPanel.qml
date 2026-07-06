@@ -23,8 +23,15 @@ Rectangle {
     property int selectedIndex: 0
     property int mainIndex: 0
     property int fullscreenIndex: -1
+    property bool attitudeMode: false
+    property bool auvMissionMode: false
     property string mainViewName: titleForIndex(mainIndex)
     property var videoRows: []
+    readonly property var camera1PreviewItem: videoTile1.previewItem
+    readonly property bool camera1Decoding: videoTile1.decoding
+    readonly property int camera1VideoWidth: videoTile1.videoWidth
+    readonly property int camera1VideoHeight: videoTile1.videoHeight
+    readonly property string camera1Status: videoTile1.currentStatus
     property int reconnectAllIndex: 0
     property var _videoSettings: QGroundControl.settingsManager.videoSettings
     property real _panelGap: Math.max(1, ScreenTools.defaultFontPixelWidth)
@@ -33,6 +40,7 @@ Rectangle {
     property bool _veryCompactToolbar: width < ScreenTools.defaultFontPixelWidth * 76
 
     signal toggleVideoMainMode()
+    signal toggleStatusPanel()
     signal minimizePanel()
     signal deepSharkEvent(string message)
 
@@ -128,6 +136,8 @@ Rectangle {
     }
 
     function setGridMode() {
+        attitudeMode = false
+        auvMissionMode = false
         if (layoutMode !== "grid") {
             deepSharkEvent("Layout switched to grid")
         }
@@ -137,6 +147,8 @@ Rectangle {
     }
 
     function setMainAuxMode(index) {
+        attitudeMode = false
+        auvMissionMode = false
         if (layoutMode !== "mainAux") {
             deepSharkEvent("Layout switched to mainAux")
         }
@@ -151,6 +163,8 @@ Rectangle {
     }
 
     function setFullscreenMode(index) {
+        attitudeMode = false
+        auvMissionMode = false
         if (layoutMode !== "fullscreen" || fullscreenIndex !== index) {
             deepSharkEvent("Fullscreen entered: " + titleForIndex(index))
         }
@@ -178,7 +192,25 @@ Rectangle {
     }
 
     function isTileVisible(index) {
-        return layoutMode !== "fullscreen" || fullscreenIndex === index
+        return !attitudeMode && !auvMissionMode && (layoutMode !== "fullscreen" || fullscreenIndex === index)
+    }
+
+    function toggleAttitudeMode() {
+        attitudeMode = true
+        auvMissionMode = false
+        deepSharkEvent("3D attitude opened")
+    }
+
+    function toggleAuvMissionMode() {
+        auvMissionMode = true
+        attitudeMode = false
+        deepSharkEvent("AUV mission workspace opened")
+    }
+
+    function showVideoWorkspace() {
+        attitudeMode = false
+        auvMissionMode = false
+        deepSharkEvent("Video workspace opened")
     }
 
     function tileZ(index) {
@@ -314,7 +346,11 @@ Rectangle {
                 Layout.minimumWidth: root._veryCompactToolbar ? ScreenTools.defaultFontPixelWidth * 10 : ScreenTools.defaultFontPixelWidth * 18
                 Layout.preferredWidth: root._veryCompactToolbar ? ScreenTools.defaultFontPixelWidth * 14 : ScreenTools.defaultFontPixelWidth * 28
                 Layout.maximumWidth: root._compactToolbar ? ScreenTools.defaultFontPixelWidth * 28 : ScreenTools.defaultFontPixelWidth * 42
-                text: layoutMode === "fullscreen"
+                text: auvMissionMode
+                      ? qsTr("DeepShark AUV 任务")
+                      : attitudeMode
+                      ? qsTr("DeepShark 3D 姿态")
+                      : layoutMode === "fullscreen"
                       ? qsTr("DeepShark Video Panel - Fullscreen")
                       : (layoutMode === "mainAux" ? qsTr("DeepShark Video Panel - Main Aux") : qsTr("DeepShark Video Panel"))
                 color: "#f2f5f8"
@@ -348,10 +384,47 @@ Rectangle {
                         font.pointSize: ScreenTools.defaultFontPointSize * 0.85
                         Layout.alignment: Qt.AlignVCenter
                     }
-                    QGCButton { text: qsTr("四宫格"); onClicked: root.setGridMode() }
-                    QGCButton { text: qsTr("主辅"); onClicked: root.setMainAuxMode(root.selectedIndex) }
-                    QGCButton { text: layoutMode === "fullscreen" ? qsTr("退出全屏") : qsTr("全屏"); onClicked: layoutMode === "fullscreen" ? root.exitFullscreen() : root.setFullscreenMode(root.selectedIndex) }
                     QGCButton {
+                        text: qsTr("视频")
+                        backgroundColor: !root.attitudeMode && !root.auvMissionMode ? "#0e7490" : "#334155"
+                        textColor: "#f8fafc"
+                        showBorder: true
+                        onClicked: root.showVideoWorkspace()
+                    }
+                    QGCButton {
+                        text: qsTr("3D 姿态")
+                        backgroundColor: root.attitudeMode ? "#0e7490" : "#334155"
+                        textColor: "#f8fafc"
+                        showBorder: true
+                        onClicked: root.toggleAttitudeMode()
+                    }
+                    QGCButton {
+                        text: qsTr("AUV 任务")
+                        backgroundColor: root.auvMissionMode ? "#0e7490" : "#334155"
+                        textColor: "#f8fafc"
+                        showBorder: true
+                        onClicked: root.toggleAuvMissionMode()
+                    }
+                    QGCButton {
+                        text: qsTr("载具状态")
+                        backgroundColor: "#334155"
+                        textColor: "#f8fafc"
+                        showBorder: true
+                        onClicked: root.toggleStatusPanel()
+                    }
+                    Rectangle {
+                        visible: !root.attitudeMode && !root.auvMissionMode
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        Layout.topMargin: 5
+                        Layout.bottomMargin: 5
+                        color: "#526174"
+                    }
+                    QGCButton { visible: !root.attitudeMode && !root.auvMissionMode; text: qsTr("四宫格"); onClicked: root.setGridMode() }
+                    QGCButton { visible: !root.attitudeMode && !root.auvMissionMode; text: qsTr("主辅"); onClicked: root.setMainAuxMode(root.selectedIndex) }
+                    QGCButton { visible: !root.attitudeMode && !root.auvMissionMode; text: layoutMode === "fullscreen" ? qsTr("退出全屏") : qsTr("全屏"); onClicked: layoutMode === "fullscreen" ? root.exitFullscreen() : root.setFullscreenMode(root.selectedIndex) }
+                    QGCButton {
+                        visible: !root.attitudeMode && !root.auvMissionMode
                         text: qsTr("启动")
                         backgroundColor: "#16a34a"
                         textColor: "#f8fafc"
@@ -359,6 +432,7 @@ Rectangle {
                         onClicked: root.startVideo(root.selectedIndex)
                     }
                     QGCButton {
+                        visible: !root.attitudeMode && !root.auvMissionMode
                         text: qsTr("停止")
                         backgroundColor: "#dc2626"
                         textColor: "#fef2f2"
@@ -366,6 +440,7 @@ Rectangle {
                         onClicked: root.stopVideo(root.selectedIndex)
                     }
                     QGCButton {
+                        visible: !root.attitudeMode && !root.auvMissionMode
                         text: qsTr("重连")
                         backgroundColor: "#059669"
                         textColor: "#ecfdf5"
@@ -373,6 +448,7 @@ Rectangle {
                         onClicked: root.reconnectVideo(root.selectedIndex)
                     }
                     QGCButton {
+                        visible: !root.attitudeMode && !root.auvMissionMode
                         text: qsTr("全部重连")
                         backgroundColor: "#86efac"
                         textColor: "#064e3b"
@@ -389,6 +465,7 @@ Rectangle {
                 onClicked: root.toggleVideoMainMode()
             }
             QGCButton {
+                visible: !root.auvMissionMode
                 text: root._veryCompactToolbar ? qsTr("设") : qsTr("设置")
                 backgroundColor: "#facc15"
                 textColor: "#422006"
@@ -404,10 +481,26 @@ Rectangle {
             Layout.minimumHeight: 1
             clip: true
 
+            Attitude3DPanel {
+                anchors.fill: parent
+                visible: root.attitudeMode
+                z: 8
+            }
+
+            Loader {
+                anchors.fill: parent
+                active: root.auvMissionMode
+                visible: active
+                z: 9
+                source: "AuvMissionPanel.qml"
+            }
+
             VideoTile {
                 id: videoTile1
                 x: root.tileX(0); y: root.tileY(0); width: root.tileWidth(0); height: root.tileHeight(0)
-                z: root.tileZ(0); visible: root.isTileVisible(0)
+                // Keep the first source renderable while another workspace covers it,
+                // so the right-side preview can mirror the existing video texture.
+                z: root.tileZ(0); visible: true
                 title: root.titleForIndex(0); receiverName: "deepSharkVideo1"
                 selected: root.selectedIndex === 0
                 videoEnabled: root.urlForIndex(0).length > 0

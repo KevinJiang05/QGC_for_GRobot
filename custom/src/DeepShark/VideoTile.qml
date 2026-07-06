@@ -34,6 +34,9 @@ Rectangle {
     property bool controllerAutoStart: videoEnabled && videoSource.length > 0
     property bool streaming: videoController.streaming
     property bool decoding: videoController.decoding
+    readonly property alias previewItem: videoOutput
+    readonly property int videoWidth: videoController.videoWidth
+    readonly property int videoHeight: videoController.videoHeight
     property string resolutionText: videoController.resolutionText
     property string frameRateText: videoController.frameRateText
     property string latencyText: videoController.latencyText

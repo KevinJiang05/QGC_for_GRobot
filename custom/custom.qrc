@@ -4,5 +4,7 @@
         <file alias="QGroundControl/FlightDisplay/DeepShark/FourVideoPanel.qml">src/DeepShark/FourVideoPanel.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/VideoTile.qml">src/DeepShark/VideoTile.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/DeepSharkStatusPanel.qml">src/DeepShark/DeepSharkStatusPanel.qml</file>
+        <file alias="QGroundControl/FlightDisplay/DeepShark/Attitude3DPanel.qml">src/DeepShark/Attitude3DPanel.qml</file>
+        <file alias="QGroundControl/FlightDisplay/DeepShark/AuvMissionPanel.qml">src/DeepShark/AuvMissionPanel.qml</file>
     </qresource>
 </RCC>

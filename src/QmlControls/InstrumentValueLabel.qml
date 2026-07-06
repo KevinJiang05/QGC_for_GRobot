@@ -18,15 +18,18 @@ import QGroundControl.Palette
 
 ColumnLayout {
     property var    instrumentValueData:        null
+    readonly property bool _dataReady:          instrumentValueData !== null && instrumentValueData.factValueGrid !== null
 
     property var    _rgFontSizes:               [ ScreenTools.defaultFontPointSize, ScreenTools.smallFontPointSize, ScreenTools.mediumFontPointSize, ScreenTools.largeFontPointSize ]
     property var    _rgFontSizeRatios:          [ 1, ScreenTools.smallFontPointRatio, ScreenTools.mediumFontPointRatio, ScreenTools.largeFontPointRatio ]
     property real   _doubleDescent:             ScreenTools.defaultFontDescent * 2
     property real   _tightDefaultFontHeight:    ScreenTools.defaultFontPixelHeight - _doubleDescent
     property var    _rgFontSizeTightHeights:    [ _tightDefaultFontHeight * _rgFontSizeRatios[0] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[1] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[2] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[3] + 2 ]
-    property real   _tightHeight:               _rgFontSizeTightHeights[instrumentValueData.factValueGrid.fontSize]
-    property bool   _iconVisible:               instrumentValueData.rangeType === InstrumentValueData.IconSelectRange || instrumentValueData.icon
-    property var    _color:                     instrumentValueData.isValidColor(instrumentValueData.currentColor) ? instrumentValueData.currentColor : qgcPal.text
+    property real   _tightHeight:               _dataReady ? _rgFontSizeTightHeights[instrumentValueData.factValueGrid.fontSize] : ScreenTools.defaultFontPixelHeight
+    property bool   _iconVisible:               _dataReady && (instrumentValueData.rangeType === InstrumentValueData.IconSelectRange || instrumentValueData.icon)
+    property var    _color:                     _dataReady && instrumentValueData.isValidColor(instrumentValueData.currentColor) ? instrumentValueData.currentColor : qgcPal.text
+
+    visible: _dataReady
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
@@ -40,12 +43,16 @@ ColumnLayout {
         mipmap:                     true
         smooth:                     true
         color:                      _color
-        opacity:                    instrumentValueData.currentOpacity
+        opacity:                    _dataReady ? instrumentValueData.currentOpacity : 1
         visible:                    _iconVisible
 
         readonly property string iconPrefix: "/InstrumentValueIcons/"
 
         function updateIcon() {
+            if (!_dataReady) {
+                valueIcon.source = ""
+                return
+            }
             if (instrumentValueData.rangeType === InstrumentValueData.IconSelectRange) {
                 valueIcon.source = instrumentValueData.currentIcon != "" ? iconPrefix + instrumentValueData.currentIcon : "";
             } else if (instrumentValueData.icon) {
@@ -56,7 +63,7 @@ ColumnLayout {
         }
 
         Connections {
-            target:                 instrumentValueData
+            target:                 _dataReady ? instrumentValueData : null
             function onRangeTypeChanged() { valueIcon.updateIcon() }
             function onCurrentIconChanged() { valueIcon.updateIcon() }
             function onIconChanged() { valueIcon.updateIcon() }
@@ -67,10 +74,12 @@ ColumnLayout {
     QGCLabel {
         Layout.alignment:   Qt.AlignVCenter
         height:             _tightHeight
-        font.pointSize:     ScreenTools.smallFontPointSize
-        text:               instrumentValueData.text
+        font.pointSize:     Math.max(1, ScreenTools.smallFontPointSize)
+        text:               _dataReady ? instrumentValueData.text : ""
         color:              _color
-        opacity:            instrumentValueData.currentOpacity
+        opacity:            _dataReady ? instrumentValueData.currentOpacity : 1
         visible:            !_iconVisible
     }
+
+    on_DataReadyChanged: valueIcon.updateIcon()
 }

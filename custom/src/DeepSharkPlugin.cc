@@ -11,6 +11,7 @@
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/qqml.h>
 
+#include "DeepSharkAuvController.h"
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
 
@@ -38,7 +39,9 @@ QGCCorePlugin *DeepSharkPlugin::instance()
 
 void DeepSharkPlugin::init()
 {
+    static DeepSharkAuvController auvController;
     static DeepSharkVideoSettings videoSettings;
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkAuvController", &auvController);
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", &videoSettings);
     qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
 }

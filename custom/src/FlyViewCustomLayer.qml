@@ -37,6 +37,14 @@ Item {
     property bool statusPanelExpanded: (_root.videoMainMode || _root.panelMinimized)
                                        && !statusPanel.minimized
                                        && (!_root.statusPanelAutoCompact || _root.statusPanelManualOpen)
+    property real rightPanelBottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset,
+                                                   ScreenTools.defaultFontPixelHeight * 3)
+    property int sidePreviewMode: 0
+    property bool attitudePreviewVisible: _root.statusPanelExpanded
+                                          && !_root.panelMinimized
+    property real attitudePreviewHeight: Math.max(ScreenTools.defaultFontPixelHeight * 8,
+                                                  Math.min(height * 0.27,
+                                                           ScreenTools.defaultFontPixelHeight * 15))
     property real videoPanelRightMargin: _root.videoMainMode
                                          ? (_root.statusPanelExpanded
                                             ? statusPanel.panelWidth + ScreenTools.defaultFontPixelWidth * 2
@@ -131,6 +139,14 @@ Item {
 
         videoMainMode: _root.videoMainMode
         onToggleVideoMainMode: _root.videoMainMode = !_root.videoMainMode
+        onToggleStatusPanel: {
+            if (_root.statusPanelAutoCompact && !_root.statusPanelExpanded) {
+                _root.statusPanelManualOpen = true
+                statusPanel.minimized = false
+            } else {
+                statusPanel.toggleMinimized()
+            }
+        }
         onMinimizePanel: _root.minimizeDeepSharkPanel()
         onDeepSharkEvent: function(message) { _root.addDeepSharkEvent(message) }
     }
@@ -142,12 +158,14 @@ Item {
         width: statusPanel.panelWidth
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        anchors.bottom: _root.attitudePreviewVisible ? sidePreview.top : parent.bottom
         anchors.rightMargin: ScreenTools.defaultFontPixelWidth
         anchors.topMargin: _root.panelMinimized
                            ? _root.minimizedControlTopMargin + _root.compactStatusButtonHeight + _root.minimizedControlGap
                            : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
-        anchors.bottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset, ScreenTools.defaultFontPixelHeight * 3)
+        anchors.bottomMargin: _root.attitudePreviewVisible
+                              ? _root.statusPanelGap
+                              : _root.rightPanelBottomMargin
 
         layoutMode: _root.panelMinimized ? "minimized" : fourVideoPanel.layoutMode
         mainIndex: fourVideoPanel.mainIndex
@@ -161,6 +179,104 @@ Item {
         onStatusPanelEvent: function(message) { _root.addDeepSharkEvent(message) }
         onReconnectVideo: function(index) { fourVideoPanel.reconnectVideo(index) }
         onReconnectAllVideos: fourVideoPanel.reconnectAllVideos()
+    }
+
+    Rectangle {
+        id: sidePreview
+        visible: _root.attitudePreviewVisible
+        z: 20
+        width: statusPanel.panelWidth
+        height: _root.attitudePreviewHeight
+        color: _root.sidePreviewMode === 0 ? "#07090c" : "#f7f9fb"
+        border.color: "#aeb9c2"
+        border.width: 1
+        clip: true
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: ScreenTools.defaultFontPixelWidth
+        anchors.bottomMargin: _root.rightPanelBottomMargin
+
+        Rectangle {
+            id: previewHeader
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: Math.max(ScreenTools.defaultFontPixelHeight * 2.1, 30)
+            color: _root.sidePreviewMode === 0 ? "#e6141920" : "#efffffff"
+            border.color: _root.sidePreviewMode === 0 ? "#384453" : "#aeb9c2"
+            z: 3
+
+            QGCLabel {
+                anchors.left: parent.left
+                anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+                anchors.verticalCenter: parent.verticalCenter
+                text: _root.sidePreviewMode === 0 ? qsTr("RTSP 1") : qsTr("3D 姿态")
+                color: _root.sidePreviewMode === 0 ? "#f2f5f8" : "#17212b"
+                font.bold: true
+            }
+
+            ComboBox {
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: Math.max(ScreenTools.defaultFontPixelWidth * 12, 92)
+                model: [qsTr("RTSP 1"), qsTr("3D 姿态")]
+                currentIndex: _root.sidePreviewMode
+                onActivated: function(index) { _root.sidePreviewMode = index }
+            }
+        }
+
+        Item {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: previewHeader.bottom
+            anchors.bottom: parent.bottom
+            clip: true
+
+            Item {
+                id: rtspPreviewArea
+                anchors.fill: parent
+                visible: _root.sidePreviewMode === 0
+
+                ShaderEffectSource {
+                    id: camera1Mirror
+                    anchors.centerIn: parent
+                    width: {
+                        var sourceWidth = Math.max(1, fourVideoPanel.camera1VideoWidth)
+                        var sourceHeight = Math.max(1, fourVideoPanel.camera1VideoHeight)
+                        var sourceRatio = sourceWidth / sourceHeight
+                        return sourceRatio > parent.width / Math.max(1, parent.height)
+                               ? parent.width : parent.height * sourceRatio
+                    }
+                    height: {
+                        var sourceWidth = Math.max(1, fourVideoPanel.camera1VideoWidth)
+                        var sourceHeight = Math.max(1, fourVideoPanel.camera1VideoHeight)
+                        var sourceRatio = sourceWidth / sourceHeight
+                        return sourceRatio > parent.width / Math.max(1, parent.height)
+                               ? parent.width / sourceRatio : parent.height
+                    }
+                    sourceItem: fourVideoPanel.camera1PreviewItem
+                    live: true
+                    recursive: true
+                    visible: fourVideoPanel.camera1Decoding
+                }
+
+                QGCLabel {
+                    anchors.centerIn: parent
+                    visible: !fourVideoPanel.camera1Decoding
+                    text: fourVideoPanel.camera1Status
+                    color: "#9aa6b2"
+                }
+            }
+
+            Attitude3DPanel {
+                anchors.fill: parent
+                visible: _root.sidePreviewMode === 1
+                compactMode: true
+                showCompactHeader: false
+            }
+        }
     }
 
     QGCButton {

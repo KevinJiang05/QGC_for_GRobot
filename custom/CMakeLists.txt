@@ -15,6 +15,8 @@ set(QGC_RESOURCES ${QGC_RESOURCES} ${CUSTOM_RESOURCES} CACHE STRING "Paths to .q
 set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkPlugin.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkAuvController.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkAuvController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoSettings.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoSettings.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoController.cc

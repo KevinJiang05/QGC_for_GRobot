@@ -37,6 +37,15 @@ Item {
         id: controller
     }
 
+    function openDeepSharkThrusterMappingTool() {
+        var component = Qt.createComponent("qrc:/Custom/qml/QGroundControl/Controls/DeepSharkThrusterMappingTool.qml")
+        if (component.status === Component.Ready) {
+            component.createObject(mainWindow).open()
+        } else {
+            mainWindow.showMessageDialog(qsTr("DeepShark"), component.errorString())
+        }
+    }
+
     Timer {
         id:         clearTimer
         interval:   100;
@@ -83,6 +92,11 @@ Item {
                 fileDialog.title =          qsTr("Save Parameters")
                 fileDialog.openForSave()
             }
+        }
+        QGCMenuSeparator { }
+        QGCMenuItem {
+            text:           qsTr("推进器映射向导")
+            onTriggered:    openDeepSharkThrusterMappingTool()
         }
         QGCMenuSeparator { visible: _showRCToParam }
         QGCMenuItem {

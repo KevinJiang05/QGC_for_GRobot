@@ -12,6 +12,7 @@
 #include <QtQml/qqml.h>
 
 #include "DeepSharkAuvController.h"
+#include "ThrusterMappingExportController.h"
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
 
@@ -44,6 +45,7 @@ void DeepSharkPlugin::init()
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkAuvController", &auvController);
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", &videoSettings);
     qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
+    qmlRegisterType<ThrusterMappingExportController>("DeepShark", 1, 0, "ThrusterMappingExportController");
 }
 
 void DeepSharkPlugin::cleanup()

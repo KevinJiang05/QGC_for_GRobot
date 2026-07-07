@@ -117,9 +117,10 @@ Item {
 
     GuidedActionConfirm {
         anchors.margins:            _toolsMargin
+        anchors.topMargin:          Math.max(0, _toolsMargin * 0.25)
         anchors.top:                parent.top
         anchors.horizontalCenter:   parent.horizontalCenter
-        z:                          QGroundControl.zOrderTopMost
+        z:                          QGroundControl.zOrderTopMost + 10
         guidedController:           _guidedController
         guidedValueSlider:          _guidedValueSlider
         utmspSliderTrigger:         utmspActTrigger

@@ -41,9 +41,11 @@ Rectangle {
     property string frameRateText: videoController.frameRateText
     property string latencyText: videoController.latencyText
     property int estimatedLatencyMs: videoController.estimatedLatencyMs
-    property int maxAutoRetries: videoSource.indexOf("rtsp://127.0.0.1:8554/deepshark") === 0 ? 0 : 5
+    property int maxAutoRetries: 0
     property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
     property bool stalled: false
+    property bool dragEnabled: true
+    property bool reconnectPending: false
     property int watchdogReconnectCount: 0
     property double lastProgressTime: Date.now()
     property double lastWatchdogReconnectTime: 0
@@ -53,6 +55,9 @@ Rectangle {
 
     signal tileClicked()
     signal tileDoubleClicked()
+    signal tileDragStarted(real centerX, real centerY)
+    signal tileDragMoved(real centerX, real centerY)
+    signal tileDragReleased(real centerX, real centerY)
     signal videoEvent(string message)
 
     radius: 4
@@ -86,10 +91,12 @@ Rectangle {
         repeat: false
         onTriggered: {
             if (root.shuttingDown || root.manualStopped || !root.videoEnabled || root.videoSource.length === 0) {
+                root.reconnectPending = false
                 return
             }
             root.videoEvent(root.title + " Reconnecting retry=" + root.retryCount)
             root._setStatus("Connecting", "")
+            root.reconnectPending = false
             videoController.start()
         }
     }
@@ -108,13 +115,23 @@ Rectangle {
             stalled = false
             videoEvent(title + " watchdog OK")
         }
+        if (currentStatus === "Stalled" && !manualStopped) {
+            if (videoController.decoding) {
+                _setStatus("Playing", "")
+            } else if (videoController.streaming) {
+                _setStatus("Streaming", "")
+            }
+        }
     }
 
     function _watchdogDisabledReason() {
         if (manualStopped) {
             return "manual stopped"
         }
-        if (!videoEnabled || videoSource.length === 0) {
+        if (!videoEnabled) {
+            return videoSource.length > 0 ? "channel disabled" : "empty url"
+        }
+        if (videoSource.length === 0) {
             return "empty url"
         }
         if (currentStatus === "Failed") {
@@ -134,7 +151,7 @@ Rectangle {
             return
         }
 
-        if (currentStatus !== "Playing" && currentStatus !== "Streaming") {
+        if (currentStatus !== "Playing" && currentStatus !== "Streaming" && currentStatus !== "Stalled") {
             lastProgressAgeSeconds = Math.max(0, Math.floor((Date.now() - lastProgressTime) / 1000))
             return
         }
@@ -149,14 +166,18 @@ Rectangle {
 
         var ageMs = Date.now() - lastProgressTime
         lastProgressAgeSeconds = Math.floor(ageMs / 1000)
-        if (ageMs < 8000) {
+        var stallTimeoutMs = videoController.streaming && !videoController.decoding ? 5000 : 8000
+        if (ageMs < stallTimeoutMs) {
             return
         }
 
         if (!stalled) {
             stalled = true
-            _setStatus("Stalled", "No frame progress for " + Math.floor(ageMs / 1000) + "s")
-            videoEvent(title + " stalled: no frame progress for " + Math.floor(ageMs / 1000) + "s")
+            var stalledReason = videoController.streaming && !videoController.decoding
+                    ? "Streaming without decoded frames for "
+                    : "No frame progress for "
+            _setStatus("Stalled", stalledReason + Math.floor(ageMs / 1000) + "s")
+            videoEvent(title + " stalled: " + stalledReason + Math.floor(ageMs / 1000) + "s")
         }
 
         if (Date.now() - lastWatchdogReconnectTime >= 15000 && _canAutoRetry()) {
@@ -186,6 +207,9 @@ Rectangle {
         if (shuttingDown || manualStopped || !videoEnabled || videoSource.length === 0) {
             return
         }
+        if (reconnectPending) {
+            return
+        }
 
         retryCount++
         if (maxAutoRetries > 0 && retryCount > maxAutoRetries) {
@@ -198,20 +222,24 @@ Rectangle {
             videoEvent(title + " Reconnecting retry=" + retryCount)
         }
         _setStatus("Reconnecting", error)
+        reconnectPending = true
         videoController.stop()
-        restartTimer.interval = delayMs
+        // Prefer starting after VideoReceiver reports Stopped. This timer is only a fallback.
+        restartTimer.interval = Math.max(delayMs, 2500)
         restartTimer.restart()
     }
 
     function startVideo() {
         restartTimer.stop()
         stalled = false
+        reconnectPending = false
         _markProgress()
         if (!videoEnabled || videoSource.length === 0) {
             manualStopped = false
             controllerAutoStart = false
-            _setStatus("Waiting", "URL empty")
-            videoEvent(title + " watchdog disabled: empty url")
+            var startReason = videoSource.length > 0 ? "Channel disabled" : "URL empty"
+            _setStatus("Waiting", startReason)
+            videoEvent(title + " watchdog disabled: " + startReason.toLowerCase())
             return
         }
 
@@ -225,6 +253,7 @@ Rectangle {
     function stopVideo() {
         restartTimer.stop()
         stalled = false
+        reconnectPending = false
         manualStopped = true
         controllerAutoStart = false
         videoController.stop()
@@ -242,8 +271,10 @@ Rectangle {
         controllerAutoStart = true
         _setStatus("Reconnecting", "")
         videoEvent(title + " Reconnect requested")
+        reconnectPending = true
         videoController.stop()
-        reconnectDelay.restart()
+        restartTimer.interval = 2500
+        restartTimer.restart()
     }
 
     function restartVideo() {
@@ -264,14 +295,16 @@ Rectangle {
     function _syncForUrl() {
         restartTimer.stop()
         stalled = false
+        reconnectPending = false
         _markProgress()
         retryCount = 0
         if (!videoEnabled || videoSource.length === 0) {
             manualStopped = false
             controllerAutoStart = false
             videoController.stop()
-            _setStatus("Waiting", "URL empty")
-            videoEvent(title + " watchdog disabled: empty url")
+            var syncReason = videoSource.length > 0 ? "Channel disabled" : "URL empty"
+            _setStatus("Waiting", syncReason)
+            videoEvent(title + " watchdog disabled: " + syncReason.toLowerCase())
             return
         }
         if (!manualStopped) {
@@ -290,7 +323,7 @@ Rectangle {
         if (videoEnabled && videoSource.length > 0) {
             _setStatus("Connecting", "")
         } else {
-            _setStatus("Waiting", "URL empty")
+            _setStatus("Waiting", videoSource.length > 0 ? "Channel disabled" : "URL empty")
         }
     }
 
@@ -299,6 +332,7 @@ Rectangle {
         restartTimer.stop()
         watchdogTimer.stop()
         reconnectDelay.stop()
+        reconnectPending = false
         manualStopped = true
         controllerAutoStart = false
         videoController.stop()
@@ -332,12 +366,22 @@ Rectangle {
 
         function onStatusTextChanged() {
             var text = videoController.statusText
-            if (text.indexOf("Start failed") >= 0 || text.indexOf("Decode failed") >= 0 || text.indexOf("unavailable") >= 0 || text.indexOf("not ready") >= 0) {
+            if (text.indexOf("Start failed") >= 0 || text.indexOf("Decode failed") >= 0 || text.indexOf("unavailable") >= 0 || text.indexOf("not ready") >= 0 || text.toLowerCase().indexOf("timeout") >= 0) {
                 root._scheduleReconnect(text)
             } else if (text.indexOf("Connecting") >= 0) {
                 root._setStatus("Connecting", "")
-            } else if (text.indexOf("Stopped") >= 0 && root.manualStopped) {
-                root._setStatus("Stopped", "")
+            } else if (text.indexOf("Streaming") >= 0) {
+                root._setStatus("Streaming", "")
+            } else if (text.indexOf("Playing") >= 0) {
+                root._setStatus("Playing", "")
+            } else if (text.indexOf("Stopped") >= 0) {
+                if (root.reconnectPending && !root.manualStopped) {
+                    restartTimer.stop()
+                    restartTimer.interval = 250
+                    restartTimer.restart()
+                } else if (root.manualStopped) {
+                    root._setStatus("Stopped", "")
+                }
             }
         }
 
@@ -410,7 +454,48 @@ Rectangle {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
-        onClicked: root.tileClicked()
-        onDoubleClicked: root.tileDoubleClicked()
+        property real pressX: 0
+        property real pressY: 0
+        property bool dragging: false
+
+        function pointInParent(mouse) {
+            return root.mapToItem(root.parent, mouse.x, mouse.y)
+        }
+
+        onPressed: function(mouse) {
+            pressX = mouse.x
+            pressY = mouse.y
+            dragging = false
+        }
+        onPositionChanged: function(mouse) {
+            if (!pressed || !root.dragEnabled) {
+                return
+            }
+            var dx = mouse.x - pressX
+            var dy = mouse.y - pressY
+            if (!dragging && Math.sqrt(dx * dx + dy * dy) >= 10) {
+                dragging = true
+                var startPoint = pointInParent(mouse)
+                root.tileDragStarted(startPoint.x, startPoint.y)
+            }
+            if (dragging) {
+                var movePoint = pointInParent(mouse)
+                root.tileDragMoved(movePoint.x, movePoint.y)
+            }
+        }
+        onReleased: function(mouse) {
+            if (dragging) {
+                var releasePoint = pointInParent(mouse)
+                root.tileDragReleased(releasePoint.x, releasePoint.y)
+                dragging = false
+            } else {
+                root.tileClicked()
+            }
+        }
+        onDoubleClicked: function(mouse) {
+            if (!dragging) {
+                root.tileDoubleClicked()
+            }
+        }
     }
 }

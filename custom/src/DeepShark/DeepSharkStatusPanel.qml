@@ -154,7 +154,7 @@ Rectangle {
                                     QGCLabel {
                                         Layout.fillWidth: true
                                         text: qsTr("%1 | retry:%2 | watchdog:%3 age:%4")
-                                              .arg(modelData.status)
+                                              .arg(modelData.enabled ? modelData.status : "Disabled")
                                               .arg(modelData.retry)
                                               .arg(modelData.watchdog || "Disabled")
                                               .arg(modelData.lastProgressAge >= 0 ? modelData.lastProgressAge + "s" : "--")
@@ -178,6 +178,7 @@ Rectangle {
 
                                 QGCButton {
                                     text: qsTr("重连")
+                                    enabled: modelData.enabled
                                     backgroundColor: "#059669"
                                     textColor: "#ecfdf5"
                                     showBorder: true

@@ -4,7 +4,6 @@ setlocal
 set "GST_ROOT=D:\Develop\Toolchains\GStreamer\1.0\msvc_x86_64"
 set "QT_ROOT=D:\Develop\Toolchains\Qt\6.8.3\msvc2022_64"
 set "QGC_ROOT=D:\Develop\QGC_for_GRobot"
-set "DEEPSHARK_RTSP_START=%QGC_ROOT%\tools\rtsp\StartDeepSharkRTSP.cmd"
 set "VS_ROOT=D:\Develop\Toolchains\VS2022BuildTools"
 set "VS_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT"
 set "VS_DEBUG_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\debug_nonredist\x64\Microsoft.VC143.DebugCRT"
@@ -29,18 +28,9 @@ set "GST_PLUGIN_SYSTEM_PATH_1_0=%GST_ROOT%\lib\gstreamer-1.0"
 set "GST_PLUGIN_SCANNER=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
 set "GST_PLUGIN_SCANNER_1_0=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
 set "GIO_EXTRA_MODULES=%GST_ROOT%\lib\gio\modules"
+set "QT_LOGGING_RULES=qgc.videomanager.videoreceiver.gstreamer*.debug=true;qgc.videomanager.videoreceiver.gstreamer*.warning=true;qgc.videomanager.videoreceiver.gstreamer*.critical=true"
 
 cd /d "%QGC_ROOT%"
-if exist "%DEEPSHARK_RTSP_START%" (
-    call "%DEEPSHARK_RTSP_START%"
-    if errorlevel 1 (
-        echo Failed to start DeepShark RTSP server.
-        pause
-        exit /b 1
-    )
-) else (
-    echo DeepShark RTSP startup script was not found: "%DEEPSHARK_RTSP_START%"
-)
 
 if not defined QGC_EXE (
     echo QGC_KevinJiang.exe was not found.

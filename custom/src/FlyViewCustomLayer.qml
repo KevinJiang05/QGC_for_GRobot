@@ -30,6 +30,7 @@ Item {
     property real minimizedControlTopMargin: Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
     property real minimizedControlRightMargin: ScreenTools.defaultFontPixelWidth * 2
     property real minimizedControlGap: ScreenTools.defaultFontPixelHeight * 0.6
+    property real statusPanelTopOffset: ScreenTools.defaultFontPixelHeight * 2
     property real restorePanelButtonWidth: Math.max(ScreenTools.defaultFontPixelWidth * 20, 190)
     property bool statusPanelManualOpen: false
     property bool statusPanelAutoCompact: width < ScreenTools.defaultFontPixelWidth * 145
@@ -162,7 +163,7 @@ Item {
         anchors.rightMargin: ScreenTools.defaultFontPixelWidth
         anchors.topMargin: _root.panelMinimized
                            ? _root.minimizedControlTopMargin + _root.compactStatusButtonHeight + _root.minimizedControlGap
-                           : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight)
+                           : Math.max(parentToolInsets.topEdgeCenterInset, ScreenTools.defaultFontPixelHeight) + _root.statusPanelTopOffset
         anchors.bottomMargin: _root.attitudePreviewVisible
                               ? _root.statusPanelGap
                               : _root.rightPanelBottomMargin

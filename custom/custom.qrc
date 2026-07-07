@@ -6,5 +6,6 @@
         <file alias="QGroundControl/FlightDisplay/DeepShark/DeepSharkStatusPanel.qml">src/DeepShark/DeepSharkStatusPanel.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/Attitude3DPanel.qml">src/DeepShark/Attitude3DPanel.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/AuvMissionPanel.qml">src/DeepShark/AuvMissionPanel.qml</file>
+        <file alias="QGroundControl/Controls/DeepSharkThrusterMappingTool.qml">src/DeepShark/ThrusterMappingTool.qml</file>
     </qresource>
 </RCC>

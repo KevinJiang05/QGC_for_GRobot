@@ -249,6 +249,10 @@ void DeepSharkVideoController::_ensureReceiver()
         }
     });
 
+    connect(_receiver, &VideoReceiver::timeout, this, [this]() {
+        _setStatusText(tr("Stream timeout"));
+    });
+
     connect(_receiver, &VideoReceiver::streamingChanged, this, [this](bool active) {
         _setStreaming(active);
         if (active && !_decoding) {

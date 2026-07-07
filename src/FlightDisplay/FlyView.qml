@@ -137,7 +137,7 @@ Item {
             anchors.bottom:         parent.bottom
             anchors.left:           parent.left
             anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
-            z:                      _fullItemZorder + 2 // we need to add one extra layer for map 3d viewer (normally was 1)
+            z:                      _fullItemZorder + 3 // Keep native confirmation sliders above custom DeepShark overlays.
             parentToolInsets:       _toolInsets
             mapControl:             _mapControl
             visible:                !QGroundControl.videoManager.fullScreen

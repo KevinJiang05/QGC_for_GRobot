@@ -154,84 +154,101 @@ Rectangle {
                     }
                 }
 
-                // Take Photo, Start/Stop Video button
-                Rectangle {
+                RowLayout {
                     Layout.alignment:   Qt.AlignHCenter
-                    color:              Qt.rgba(0,0,0,0)
-                    width:              ScreenTools.defaultFontPixelWidth * 6
-                    height:             width
-                    radius:             width * 0.5
-                    border.color:       qgcPal.buttonText
-                    border.width:       3
+                    spacing:            _margins
 
+                    // Take Photo, Start/Stop Video button
                     Rectangle {
-                        // anchors.centerIn snaps to integer coordinates, which
-                        // depending on DPI can throw the centering off.
-                        // Setting alignWhenCentered to false avoids this issue.
-                        anchors {
-                            centerIn:           parent
-                            alignWhenCentered:  false
+                        Layout.alignment:       Qt.AlignVCenter
+                        color:                  Qt.rgba(0,0,0,0)
+                        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 6
+                        Layout.preferredHeight: Layout.preferredWidth
+                        radius:                 width * 0.5
+                        border.color:           qgcPal.buttonText
+                        border.width:           3
+
+                        Rectangle {
+                            // anchors.centerIn snaps to integer coordinates, which
+                            // depending on DPI can throw the centering off.
+                            // Setting alignWhenCentered to false avoids this issue.
+                            anchors {
+                                centerIn:           parent
+                                alignWhenCentered:  false
+                            }
+                            width:              parent.width * (_isShootingInCurrentMode ? 0.5 : 0.75)
+                            height:             width
+                            radius:             _isShootingInCurrentMode ? 0 : width * 0.5
+                            color:              _isShootingInCurrentMode || _canShootInCurrentMode ? qgcPal.colorRed : qgcPal.colorGrey
+
+                            property bool _isShootingInPhotoMode:   _cameraInPhotoMode && _camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_IN_PROGRESS
+                            property bool _isShootingInVideoMode:   (!_cameraInPhotoMode && _camera.videoCaptureStatus === MavlinkCameraControl.VIDEO_CAPTURE_STATUS_RUNNING)
+                            property bool _isShootingInCurrentMode: _cameraInPhotoMode ? _isShootingInPhotoMode : _isShootingInVideoMode
+                            property bool _isShootingInOtherMode:   _cameraInPhotoMode ? _isShootingInVideoMode : _isShootingInPhotoMode
+                            property bool _canShootInCurrentMode:   _isShootingInOtherMode ?
+                                                                        (_cameraInPhotoMode ? _camera.photosInVideoMode : _camera.videoInPhotoMode) :
+                                                                        true
                         }
-                        width:              parent.width * (_isShootingInCurrentMode ? 0.5 : 0.75)
-                        height:             width
-                        radius:             _isShootingInCurrentMode ? 0 : width * 0.5
-                        color:              _isShootingInCurrentMode || _canShootInCurrentMode ? qgcPal.colorRed : qgcPal.colorGrey
 
-                        property bool _isShootingInPhotoMode:   _cameraInPhotoMode && _camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_IN_PROGRESS
-                        property bool _isShootingInVideoMode:   (!_cameraInPhotoMode && _camera.videoCaptureStatus === MavlinkCameraControl.VIDEO_CAPTURE_STATUS_RUNNING)
-                        property bool _isShootingInCurrentMode: _cameraInPhotoMode ? _isShootingInPhotoMode : _isShootingInVideoMode
-                        property bool _isShootingInOtherMode:   _cameraInPhotoMode ? _isShootingInVideoMode : _isShootingInPhotoMode
-                        property bool _canShootInCurrentMode:   _isShootingInOtherMode ? 
-                                                                    (_cameraInPhotoMode ? _camera.photosInVideoMode : _camera.videoInPhotoMode) :
-                                                                    true
-                    }
+                        MouseArea {
+                            anchors.fill:   parent
+                            onClicked:      toggleShooting()
 
-                    MouseArea {
-                        anchors.fill:   parent
-                        onClicked:      toggleShooting()
-
-                        function toggleShooting() {
-                            if (_cameraInPhotoMode) {
-                                if (_camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_INTERVAL_IN_PROGRESS) {
-                                    _camera.stopTakePhoto()
-                                } else if (_camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_IDLE || _camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_INTERVAL_IDLE) {
-                                    _camera.takePhoto()
+                            function toggleShooting() {
+                                if (_cameraInPhotoMode) {
+                                    if (_camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_INTERVAL_IN_PROGRESS) {
+                                        _camera.stopTakePhoto()
+                                    } else if (_camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_IDLE || _camera.photoCaptureStatus === MavlinkCameraControl.PHOTO_CAPTURE_INTERVAL_IDLE) {
+                                        _camera.takePhoto()
+                                    }
+                                } else {
+                                    _camera.toggleVideoRecording()
                                 }
-                            } else {
-                                _camera.toggleVideoRecording()
                             }
                         }
                     }
-                }
 
-                // Record time / Capture count
-                Rectangle {
-                    Layout.alignment:       Qt.AlignHCenter
-                    color:                  !_videoCaptureIdle && !_photoCaptureIdle ? "transparent" : qgcPal.colorRed
-                    Layout.preferredWidth:  (_cameraInVideoMode ? videoRecordTime.width : photoCaptureCount.width) + (_smallMargins * 2)
-                    Layout.preferredHeight: (_cameraInVideoMode ? videoRecordTime.height : photoCaptureCount.height)
-                    radius:                 _margins / 2
+                    // Record time / Capture count
+                    Rectangle {
+                        Layout.alignment:       Qt.AlignVCenter
+                        color:                  !_videoCaptureIdle && !_photoCaptureIdle ? "transparent" : qgcPal.colorRed
+                        Layout.preferredWidth:  (_cameraInVideoMode ? videoRecordTime.width : photoCaptureCount.width) + (_smallMargins * 2)
+                        Layout.preferredHeight: (_cameraInVideoMode ? videoRecordTime.height : photoCaptureCount.height) + _smallMargins
+                        radius:                 _margins / 2
 
-                    // Video record time
-                    QGCLabel {
-                        id:                 videoRecordTime
-                        anchors.leftMargin: _smallMargins
-                        anchors.left:       parent.left
-                        anchors.top:        parent.top
-                        text:               _videoCaptureIdle ? "00:00:00" : _camera.recordTimeStr
-                        font.pointSize:     ScreenTools.largeFontPointSize
-                        visible:            _cameraInVideoMode
+                        // Video record time
+                        QGCLabel {
+                            id:                 videoRecordTime
+                            anchors.centerIn:   parent
+                            text:               _videoCaptureIdle ? "00:00:00" : _camera.recordTimeStr
+                            font.pointSize:     ScreenTools.largeFontPointSize
+                            visible:            _cameraInVideoMode
+                        }
+
+                        // Photo capture count
+                        QGCLabel {
+                            id:                 photoCaptureCount
+                            anchors.centerIn:   parent
+                            text:               _activeVehicle ? ('00000' + _activeVehicle.cameraTriggerPoints.count).slice(-5) : "00000"
+                            font.pointSize:     ScreenTools.largeFontPointSize
+                            visible:            _cameraInPhotoMode
+                        }
                     }
 
-                    // Photo capture count
-                    QGCLabel {
-                        id:                 photoCaptureCount
-                        anchors.leftMargin: _smallMargins
-                        anchors.left:       parent.left
-                        anchors.top:        parent.top
-                        text:               _activeVehicle ? ('00000' + _activeVehicle.cameraTriggerPoints.count).slice(-5) : "00000"
-                        font.pointSize:     ScreenTools.largeFontPointSize
-                        visible:            _cameraInPhotoMode
+                    QGCColoredImage {
+                        Layout.alignment:       Qt.AlignVCenter
+                        source:                 "/res/gear-black.svg"
+                        mipmap:                 true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                        Layout.preferredWidth:  Layout.preferredHeight
+                        sourceSize.height:      Layout.preferredHeight
+                        color:                  qgcPal.text
+                        fillMode:               Image.PreserveAspectFit
+
+                        QGCMouseArea {
+                            fillItem:   parent
+                            onClicked:  settingsDialogComponent.createObject(mainWindow).open()
+                        }
                     }
                 }
 
@@ -299,21 +316,6 @@ Rectangle {
                 }
             }
 
-            QGCColoredImage {
-                Layout.alignment:       Qt.AlignHCenter
-                source:                 "/res/gear-black.svg"
-                mipmap:                 true
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
-                Layout.preferredWidth:  Layout.preferredHeight
-                sourceSize.height:      Layout.preferredHeight
-                color:                  qgcPal.text
-                fillMode:               Image.PreserveAspectFit
-
-                QGCMouseArea {
-                    fillItem:   parent
-                    onClicked:  settingsDialogComponent.createObject(mainWindow).open()
-                }
-            }
         }
 
         Component {

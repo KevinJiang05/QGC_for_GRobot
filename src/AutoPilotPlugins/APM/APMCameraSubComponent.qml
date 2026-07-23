@@ -34,30 +34,32 @@ SetupPage {
 
             QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-            property bool _oldFW:               !(globals.activeVehicle.firmwareMajorVersion > 3 || globals.activeVehicle.firmwareMinorVersion > 5 || globals.activeVehicle.firmwarePatchVersion >= 2)
+            property bool _oldFW:                       !(globals.activeVehicle.firmwareMajorVersion > 3 || globals.activeVehicle.firmwareMinorVersion > 5 || globals.activeVehicle.firmwarePatchVersion >= 2)
+            property bool _legacyMountParamsAvailable:  controller.parameterExists(-1, "MNT_RC_IN_TILT")
+            property bool _mount1ParamsAvailable:       controller.parameterExists(-1, "MNT1_TYPE")
 
-            property Fact _mountRetractX:       controller.getParameterFact(-1, "MNT_RETRACT_X")
-            property Fact _mountRetractY:       controller.getParameterFact(-1, "MNT_RETRACT_Y")
-            property Fact _mountRetractZ:       controller.getParameterFact(-1, "MNT_RETRACT_Z")
+            property Fact _mountRetractX:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RETRACT_X", false) : null
+            property Fact _mountRetractY:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RETRACT_Y", false) : null
+            property Fact _mountRetractZ:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RETRACT_Z", false) : null
 
-            property Fact _mountNeutralX:       controller.getParameterFact(-1, "MNT_NEUTRAL_X")
-            property Fact _mountNeutralY:       controller.getParameterFact(-1, "MNT_NEUTRAL_Y")
-            property Fact _mountNeutralZ:       controller.getParameterFact(-1, "MNT_NEUTRAL_Z")
+            property Fact _mountNeutralX:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_NEUTRAL_X", false) : null
+            property Fact _mountNeutralY:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_NEUTRAL_Y", false) : null
+            property Fact _mountNeutralZ:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_NEUTRAL_Z", false) : null
 
-            property Fact _mountRCInTilt:       controller.getParameterFact(-1, "MNT_RC_IN_TILT")
-            property Fact _mountStabTilt:       controller.getParameterFact(-1, "MNT_STAB_TILT")
-            property Fact _mountAngMinTilt:     controller.getParameterFact(-1, "MNT_ANGMIN_TIL")
-            property Fact _mountAngMaxTilt:     controller.getParameterFact(-1, "MNT_ANGMAX_TIL")
+            property Fact _mountRCInTilt:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RC_IN_TILT", false) : null
+            property Fact _mountStabTilt:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_STAB_TILT", false) : null
+            property Fact _mountAngMinTilt:     _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMIN_TIL", false) : null
+            property Fact _mountAngMaxTilt:     _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMAX_TIL", false) : null
 
-            property Fact _mountRCInRoll:       controller.getParameterFact(-1, "MNT_RC_IN_ROLL")
-            property Fact _mountStabRoll:       controller.getParameterFact(-1, "MNT_STAB_ROLL")
-            property Fact _mountAngMinRoll:     controller.getParameterFact(-1, "MNT_ANGMIN_ROL")
-            property Fact _mountAngMaxRoll:     controller.getParameterFact(-1, "MNT_ANGMAX_ROL")
+            property Fact _mountRCInRoll:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RC_IN_ROLL", false) : null
+            property Fact _mountStabRoll:       _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_STAB_ROLL", false) : null
+            property Fact _mountAngMinRoll:     _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMIN_ROL", false) : null
+            property Fact _mountAngMaxRoll:     _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMAX_ROL", false) : null
 
-            property Fact _mountRCInPan:        controller.getParameterFact(-1, "MNT_RC_IN_PAN")
-            property Fact _mountStabPan:        controller.getParameterFact(-1, "MNT_STAB_PAN")
-            property Fact _mountAngMinPan:      controller.getParameterFact(-1, "MNT_ANGMIN_PAN")
-            property Fact _mountAngMaxPan:      controller.getParameterFact(-1, "MNT_ANGMAX_PAN")
+            property Fact _mountRCInPan:        _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_RC_IN_PAN", false) : null
+            property Fact _mountStabPan:        _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_STAB_PAN", false) : null
+            property Fact _mountAngMinPan:      _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMIN_PAN", false) : null
+            property Fact _mountAngMaxPan:      _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_ANGMAX_PAN", false) : null
 
             property Fact _rc5Function:         controller.getParameterFact(-1, "r.SERVO5_FUNCTION")
             property Fact _rc6Function:         controller.getParameterFact(-1, "r.SERVO6_FUNCTION")
@@ -94,6 +96,9 @@ SetupPage {
             Component.onCompleted: {
                 if (_showGimbaLSettings) {
                     gimbalSettingsLoader.sourceComponent = gimbalSettings
+                }
+                if (!_legacyMountParamsAvailable) {
+                    return
                 }
                 calcGimbalOutValues()
                 slide.from = 10
@@ -201,21 +206,31 @@ SetupPage {
             QGCCheckBox {
                 id:     _allVisible
                 text:   qsTr("Show all settings (advanced)")
+                visible: _legacyMountParamsAvailable
             }
 
             QGCLabel {
-                visible:     !_oldFW
+                width:      parent.width
+                visible:    !_legacyMountParamsAvailable
+                wrapMode:   Text.WordWrap
+                text:       _mount1ParamsAvailable
+                            ? qsTr("This firmware uses the ArduPilot MNT1_/MNT2_ mount parameter system. The legacy mount editor is hidden to prevent invalid parameter writes. Configure the mount from the full parameter list.")
+                            : qsTr("This firmware does not provide the legacy mount parameters. Mount controls may be excluded from this firmware build.")
+            }
+
+            QGCLabel {
+                visible:     _legacyMountParamsAvailable && !_oldFW
                 text:        qsTr("Camera mount tilt speed:")
                 font.bold:   true
             }
 
             QGCSlider {
-                visible:    !_oldFW
+                visible:    _legacyMountParamsAvailable && !_oldFW
                 id:         slide
                 width:      gimbalDirectionTiltLoader.width
-                stepSize:   _fact.increment ? _fact.increment : 1
+                stepSize:   _fact && _fact.increment ? _fact.increment : 1
 
-                property var  _fact:            controller.getParameterFact(-1, "MNT_JSTICK_SPD")
+                property var  _fact:            _legacyMountParamsAvailable ? controller.getParameterFact(-1, "MNT_JSTICK_SPD", false) : null
                 property bool _loadComplete:    false
 
                 /*
@@ -237,7 +252,7 @@ SetupPage {
                 */
 
                 onValueChanged: {
-                    if (_loadComplete) {
+                    if (_loadComplete && _fact) {
                         _fact.value = value
                     }
                 }
@@ -515,7 +530,7 @@ SetupPage {
 
             Loader {
                 id:                 gimbalDirectionTiltLoader
-                sourceComponent:    gimbalDirectionSettings
+                sourceComponent:    _legacyMountParamsAvailable ? gimbalDirectionSettings : null
 
                 property int    hardCodedChanned:   8 // ArduSub/joystick.cpp cam_tilt
                 property string directionTitle:     qsTr("Tilt")
@@ -534,7 +549,7 @@ SetupPage {
 
             Loader {
                 id:                 gimbalDirectionRollLoader
-                sourceComponent:    gimbalDirectionSettings
+                sourceComponent:    _legacyMountParamsAvailable ? gimbalDirectionSettings : null
                 visible:            _allVisible.checked
 
                 property int    hardCodedChanned:   0 // ArduSub/joystick.cpp cam_roll does not exist
@@ -554,7 +569,7 @@ SetupPage {
 
             Loader {
                 id:                 gimbalDirectionPanLoader
-                sourceComponent:    gimbalDirectionSettings
+                sourceComponent:    _legacyMountParamsAvailable ? gimbalDirectionSettings : null
                 visible:            _allVisible.checked
 
                 property int    hardCodedChanned:   7 // ArduSub/joystick.cpp cam_pan

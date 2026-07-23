@@ -150,10 +150,21 @@ SetupPage {
                 Component.onCompleted: {
                     // Number of main outputs
                     var baseValue = 8
-                    // Extra outputs
-                    // http://ardupilot.org/copter/docs/parameters.html#brd-pwm-count-auxiliary-pin-config
-                    var brd_pwm_count_value = controller.getParameterFact(-1, "BRD_PWM_COUNT").value
-                    update(8 + (brd_pwm_count_value == 7 ? 3 : brd_pwm_count_value))
+                    if (controller.parameterExists(-1, "BRD_PWM_COUNT")) {
+                        // Legacy firmware exposes the number of auxiliary PWM outputs.
+                        var brd_pwm_count_value = controller.getParameterFact(-1, "BRD_PWM_COUNT", false).value
+                        update(baseValue + (brd_pwm_count_value == 7 ? 3 : brd_pwm_count_value))
+                    } else {
+                        // BRD_PWM_COUNT was removed in ArduPilot 4.2. Infer the available
+                        // output range from the SERVOx_FUNCTION parameters instead.
+                        var lastServoChannel = baseValue
+                        for (var channel = baseValue + 1; channel <= _lastLightsOutChannel; channel++) {
+                            if (controller.parameterExists(-1, "SERVO" + channel + "_FUNCTION")) {
+                                lastServoChannel = channel
+                            }
+                        }
+                        update(lastServoChannel)
+                    }
                 }
             }
 

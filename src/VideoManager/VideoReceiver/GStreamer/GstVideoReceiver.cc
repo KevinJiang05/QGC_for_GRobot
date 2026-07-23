@@ -743,6 +743,16 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                 break;
             }
 
+            if (lowLatency()) {
+                // tsdemux otherwise adds 700 ms of smoothing latency by
+                // default.  DeepShark's local MPEG-TS bridge is latest-frame
+                // video, so retaining that broadcast-oriented buffer defeats
+                // the receiver's existing low-latency mode.
+                g_object_set(tsdemux,
+                             "latency", 0,
+                             nullptr);
+            }
+
             (void) gst_bin_add(GST_BIN(bin), tsdemux);
 
             if (!gst_element_link(source, tsdemux)) {

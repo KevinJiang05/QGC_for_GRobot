@@ -754,101 +754,120 @@ QGCPopupDialog {
             text:               qsTr("逐路点动板载输出，现场记录主板接口/线束和实际推进器位置。当前功能列只读取 SERVOx_FUNCTION，不会写入飞控参数。请确认机器人固定、推进器周围无人员和障碍物。")
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            spacing:            ScreenTools.defaultFontPixelHeight * 0.5
 
-            QGCCheckBox {
-                id:         enableTestCheck
-                text:       qsTr("启用测试")
-                checked:    root.testEnabled
-                enabled:    root.activeVehicle !== null
-                onClicked: {
-                    if (!root.activeVehicle) {
-                        root.testEnabled = false
-                        checked = false
-                        return
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+                QGCCheckBox {
+                    id:         enableTestCheck
+                    text:       qsTr("启用测试")
+                    checked:    root.testEnabled
+                    enabled:    root.activeVehicle !== null
+                    onClicked: {
+                        if (!root.activeVehicle) {
+                            root.testEnabled = false
+                            checked = false
+                            return
+                        }
+                        root.testEnabled = checked
+                        if (checked) {
+                            root.testStatusText = qsTr("启用后先等待冷却倒计时，再点击点动。")
+                            root.startCooldown(11)
+                        }
                     }
-                    root.testEnabled = checked
-                    if (checked) {
-                        root.testStatusText = qsTr("启用后先等待冷却倒计时，再点击点动。")
-                        root.startCooldown(11)
-                    }
+                }
+
+                QGCLabel {
+                    text:   root.activeVehicle ? qsTr("已连接载具") : qsTr("未连接载具")
+                    color:  root.activeVehicle ? root._qgcPal.text : root._qgcPal.warningText
+                }
+
+                QGCLabel {
+                    visible: root.activeVehicle !== null
+                    text:    root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁")
+                    color:   root.activeVehicle && root.activeVehicle.armed ? root._qgcPal.text : root._qgcPal.warningText
+                }
+
+                QGCLabel {
+                    visible: root.cooldownRemaining > 0
+                    text:    qsTr("冷却 %1 秒").arg(root.cooldownRemaining)
+                    color:   root._qgcPal.warningText
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QGCButton {
+                    text:    root.activeVehicle && root.activeVehicle.armed ?
+                                 (root.cooldownRemaining > 0 ? qsTr("冷却中") : qsTr("已准备")) :
+                                 qsTr("准备下一次测试")
+                    enabled: root.activeVehicle !== null && root.runningOutput === -1 && root.cooldownRemaining === 0 && !root.armingRequested
+                    onClicked: root.prepareForNextTest()
                 }
             }
 
-            QGCLabel {
-                text:   root.activeVehicle ? qsTr("已连接载具") : qsTr("未连接载具")
-                color:  root.activeVehicle ? root._qgcPal.text : root._qgcPal.warningText
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth
+
+                Item { Layout.fillWidth: true }
+
+                QGCLabel { text: qsTr("功率") }
+
+                SpinBox {
+                    from:           1
+                    to:             15
+                    value:          mappingSettings.testPercent
+                    editable:       true
+                    onValueModified: mappingSettings.testPercent = value
+                }
+
+                QGCLabel { text: qsTr("%") }
+
+                QGCLabel { text: qsTr("时长") }
+
+                SpinBox {
+                    from:           1
+                    to:             3
+                    value:          mappingSettings.testSeconds
+                    editable:       true
+                    onValueModified: mappingSettings.testSeconds = value
+                }
+
+                QGCLabel { text: qsTr("秒") }
             }
-
-            QGCLabel {
-                visible: root.activeVehicle !== null
-                text:    root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁")
-                color:   root.activeVehicle && root.activeVehicle.armed ? root._qgcPal.text : root._qgcPal.warningText
-            }
-
-            QGCLabel {
-                visible: root.cooldownRemaining > 0
-                text:    qsTr("冷却 %1 秒").arg(root.cooldownRemaining)
-                color:   root._qgcPal.warningText
-            }
-
-            QGCButton {
-                text:    root.activeVehicle && root.activeVehicle.armed ?
-                             (root.cooldownRemaining > 0 ? qsTr("冷却中") : qsTr("已准备")) :
-                             qsTr("准备下一次测试")
-                enabled: root.activeVehicle !== null && root.runningOutput === -1 && root.cooldownRemaining === 0 && !root.armingRequested
-                onClicked: root.prepareForNextTest()
-            }
-
-            Item { Layout.fillWidth: true }
-
-            QGCLabel { text: qsTr("功率") }
-
-            SpinBox {
-                from:           1
-                to:             15
-                value:          mappingSettings.testPercent
-                editable:       true
-                onValueModified: mappingSettings.testPercent = value
-            }
-
-            QGCLabel { text: qsTr("%") }
-
-            QGCLabel { text: qsTr("时长") }
-
-            SpinBox {
-                from:           1
-                to:             3
-                value:          mappingSettings.testSeconds
-                editable:       true
-                onValueModified: mappingSettings.testSeconds = value
-            }
-
-            QGCLabel { text: qsTr("秒") }
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            spacing:            ScreenTools.defaultFontPixelHeight * 0.35
 
-            QGCLabel {
-                text: qsTr("Motor Test发送方式")
-            }
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth * 2
 
-            QGCRadioButton {
-                text:    qsTr("按测试编号")
-                checked: !mappingSettings.useServoFunctionForMotorTest
-                enabled: root.runningOutput === -1 && root.cooldownRemaining === 0
-                onClicked: mappingSettings.useServoFunctionForMotorTest = false
-            }
+                QGCLabel {
+                    text: qsTr("Motor Test发送方式")
+                }
 
-            QGCRadioButton {
-                text:    qsTr("按SERVO_FUNCTION映射")
-                checked: mappingSettings.useServoFunctionForMotorTest
-                enabled: root.runningOutput === -1 && root.cooldownRemaining === 0
-                onClicked: mappingSettings.useServoFunctionForMotorTest = true
+                QGCRadioButton {
+                    text:    qsTr("按测试编号")
+                    checked: !mappingSettings.useServoFunctionForMotorTest
+                    enabled: root.runningOutput === -1 && root.cooldownRemaining === 0
+                    onClicked: mappingSettings.useServoFunctionForMotorTest = false
+                }
+
+                QGCRadioButton {
+                    text:    qsTr("按SERVO_FUNCTION映射")
+                    checked: mappingSettings.useServoFunctionForMotorTest
+                    enabled: root.runningOutput === -1 && root.cooldownRemaining === 0
+                    onClicked: mappingSettings.useServoFunctionForMotorTest = true
+                }
+
+                Item { Layout.fillWidth: true }
             }
 
             QGCLabel {
@@ -861,70 +880,78 @@ QGCPopupDialog {
             }
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            spacing:            ScreenTools.defaultFontPixelHeight * 0.5
 
-            QGCCheckBox {
-                text:       qsTr("高级：直接 SERVO 输出")
-                checked:    root.directServoMode
-                enabled:    root.activeVehicle !== null && root.runningOutput === -1 && root.directServoOutput === -1 && root.directServoPendingOutput === -1
-                onClicked:  root.directServoMode = checked
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+                QGCCheckBox {
+                    text:       qsTr("高级：直接 SERVO 输出")
+                    checked:    root.directServoMode
+                    enabled:    root.activeVehicle !== null && root.runningOutput === -1 && root.directServoOutput === -1 && root.directServoPendingOutput === -1
+                    onClicked:  root.directServoMode = checked
+                }
+
+                QGCButton {
+                    text:       qsTr("备份SERVO功能")
+                    visible:    root.directServoMode
+                    enabled:    root.activeVehicle !== null && (!root.activeVehicle.armed) && root.directServoOutput === -1 && root.directServoPendingOutput === -1
+                    onClicked:  root.backupServoFunctions()
+                }
+
+                QGCButton {
+                    text:       qsTr("恢复备份")
+                    visible:    root.directServoMode
+                    enabled:    root.activeVehicle !== null && (!root.activeVehicle.armed) && mappingSettings.hasFunctionBackup && root.directServoOutput === -1 && root.directServoPendingOutput === -1
+                    onClicked:  root.restoreServoFunctions()
+                }
+
+                QGCLabel {
+                    visible: root.directServoMode
+                    text:    mappingSettings.hasFunctionBackup ? qsTr("已备份") : qsTr("未备份")
+                    color:   mappingSettings.hasFunctionBackup ? root._qgcPal.text : root._qgcPal.warningText
+                }
+
+                Item { Layout.fillWidth: true }
             }
 
-            QGCButton {
-                text:       qsTr("备份SERVO功能")
-                visible:    root.directServoMode
-                enabled:    root.activeVehicle !== null && (!root.activeVehicle.armed) && root.directServoOutput === -1 && root.directServoPendingOutput === -1
-                onClicked:  root.backupServoFunctions()
-            }
+            RowLayout {
+                Layout.fillWidth:   true
+                visible:            root.directServoMode
+                spacing:            ScreenTools.defaultFontPixelWidth
 
-            QGCButton {
-                text:       qsTr("恢复备份")
-                visible:    root.directServoMode
-                enabled:    root.activeVehicle !== null && (!root.activeVehicle.armed) && mappingSettings.hasFunctionBackup && root.directServoOutput === -1 && root.directServoPendingOutput === -1
-                onClicked:  root.restoreServoFunctions()
-            }
+                Item { Layout.fillWidth: true }
 
-            QGCLabel {
-                visible: root.directServoMode
-                text:    mappingSettings.hasFunctionBackup ? qsTr("已备份") : qsTr("未备份")
-                color:   mappingSettings.hasFunctionBackup ? root._qgcPal.text : root._qgcPal.warningText
-            }
+                QGCLabel {
+                    text: qsTr("PWM")
+                }
 
-            Item { Layout.fillWidth: true }
+                SpinBox {
+                    from:           1000
+                    to:             2000
+                    value:          mappingSettings.directServoPwm
+                    editable:       true
+                    onValueModified: mappingSettings.directServoPwm = value
+                }
 
-            QGCLabel {
-                visible: root.directServoMode
-                text:    qsTr("PWM")
-            }
+                QGCLabel {
+                    text: qsTr("时长")
+                }
 
-            SpinBox {
-                visible:        root.directServoMode
-                from:           1000
-                to:             2000
-                value:          mappingSettings.directServoPwm
-                editable:       true
-                onValueModified: mappingSettings.directServoPwm = value
-            }
+                SpinBox {
+                    from:           1
+                    to:             3
+                    value:          mappingSettings.directServoSeconds
+                    editable:       true
+                    onValueModified: mappingSettings.directServoSeconds = value
+                }
 
-            QGCLabel {
-                visible: root.directServoMode
-                text:    qsTr("时长")
-            }
-
-            SpinBox {
-                visible:        root.directServoMode
-                from:           1
-                to:             3
-                value:          mappingSettings.directServoSeconds
-                editable:       true
-                onValueModified: mappingSettings.directServoSeconds = value
-            }
-
-            QGCLabel {
-                visible: root.directServoMode
-                text:    qsTr("秒")
+                QGCLabel {
+                    text: qsTr("秒")
+                }
             }
         }
 
@@ -1051,23 +1078,30 @@ QGCPopupDialog {
             color:              root._qgcPal.warningText
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth
+            spacing:            ScreenTools.defaultFontPixelHeight * 0.5
 
-            QGCButton {
-                text:       qsTr("清空记录")
-                onClicked:  root.clearMappings()
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth
+
+                QGCButton {
+                    text:       qsTr("清空记录")
+                    onClicked:  root.clearMappings()
+                }
+
+                QGCButton {
+                    text:       qsTr("导出CSV")
+                    onClicked:  exportFileDialog.openForSave()
+                }
+
+                Item { Layout.fillWidth: true }
             }
-
-            QGCButton {
-                text:       qsTr("导出CSV")
-                onClicked:  exportFileDialog.openForSave()
-            }
-
-            Item { Layout.fillWidth: true }
 
             QGCLabel {
+                Layout.fillWidth:   true
+                wrapMode:           Text.WordWrap
                 text:       qsTr("普通 Motor Test 不写飞控参数；高级直测会临时改当前 SERVOx_FUNCTION 并自动恢复，接口/位置记录保存在本机 QGC 设置中。")
                 color:      root._qgcPal.text
             }

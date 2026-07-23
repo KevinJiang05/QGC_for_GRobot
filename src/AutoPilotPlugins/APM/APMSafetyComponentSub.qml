@@ -56,7 +56,14 @@ SetupPage {
             property Fact _failsafeBatteryCapacity:      controller.getParameterFact(-1, "r.BATT_LOW_MAH", false)
             property bool _batteryDetected:              controller.parameterExists(-1, "r.BATT_LOW_MAH")
 
-            property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK")
+            // ArduPilot 4.7 replaced ARMING_CHECK (checks to run) with
+            // ARMING_SKIPCHK (checks to skip). Prefer the new parameter when it
+            // is available and only report ARMING_CHECK as missing when neither
+            // parameter exists.
+            property bool _armingSkipCheckAvailable:       controller.parameterExists(-1, "ARMING_SKIPCHK")
+            property Fact _armingSkipCheck:                _armingSkipCheckAvailable ? controller.getParameterFact(-1, "ARMING_SKIPCHK", false) : null
+            property Fact _armingCheck:                    _armingSkipCheckAvailable ? null : controller.getParameterFact(-1, "ARMING_CHECK")
+            property int  _arduSubDefaultArmingSkipCheck:  0x00fffe3f
 
             property real _margins:     ScreenTools.defaultFontPixelHeight
             property bool _showIcon:    !ScreenTools.isTinyScreen
@@ -353,7 +360,7 @@ SetupPage {
                 spacing: _margins / 2
 
                 QGCLabel {
-                    text:           qsTr("Arming Checks")
+                    text:           _armingSkipCheckAvailable ? qsTr("Arming Checks to Skip") : qsTr("Arming Checks")
                     font.bold:      true
                 }
 
@@ -376,6 +383,42 @@ SetupPage {
                             anchors.right:      parent.right
                             firstEntryIsAll:    true
                             fact:               _armingCheck
+                            visible:            !_armingSkipCheckAvailable
+                        }
+
+                        Row {
+                            spacing: _margins / 2
+                            visible: _armingSkipCheckAvailable
+
+                            QGCLabel {
+                                text:                   qsTr("Skip bitmask:")
+                                anchors.verticalCenter: armingSkipCheckField.verticalCenter
+                            }
+
+                            FactTextField {
+                                id:     armingSkipCheckField
+                                width:  ScreenTools.defaultFontPixelWidth * 20
+                                fact:   _armingSkipCheck
+                            }
+                        }
+
+                        QGCLabel {
+                            anchors.left:   parent.left
+                            anchors.right:  parent.right
+                            wrapMode:       Text.WordWrap
+                            visible:        _armingSkipCheckAvailable
+                            text: {
+                                if (!_armingSkipCheck) {
+                                    return ""
+                                }
+                                if (_armingSkipCheck.value === 0) {
+                                    return qsTr("No optional arming checks are skipped.")
+                                }
+                                if (_armingSkipCheck.value === _arduSubDefaultArmingSkipCheck) {
+                                    return qsTr("ArduSub default: RC input, board voltage, and battery checks remain enabled.")
+                                }
+                                return qsTr("A custom set of optional arming checks is skipped. Verify this value before operation.")
+                            }
                         }
 
                         QGCLabel {
@@ -384,8 +427,17 @@ SetupPage {
                             anchors.right:  parent.right
                             wrapMode:       Text.WordWrap
                             color:          qgcPal.warningText
-                            text:            qsTr("Warning: Turning off arming checks can lead to loss of Vehicle control.")
-                            visible:        _armingCheck.value != 1
+                            text:            _armingSkipCheckAvailable
+                                                ? qsTr("Warning: Skipping required arming checks can lead to loss of Vehicle control.")
+                                                : qsTr("Warning: Turning off arming checks can lead to loss of Vehicle control.")
+                            visible: {
+                                if (_armingSkipCheckAvailable) {
+                                    return _armingSkipCheck &&
+                                           _armingSkipCheck.value !== 0 &&
+                                           _armingSkipCheck.value !== _arduSubDefaultArmingSkipCheck
+                                }
+                                return _armingCheck && _armingCheck.value !== 1
+                            }
                         }
                     }
                 } // Rectangle - Arming checks

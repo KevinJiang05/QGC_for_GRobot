@@ -13,6 +13,7 @@
 
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
+#include <QtNetwork/QNetworkProxy>
 #include <QtNetwork/QTcpSocket>
 
 QGC_LOGGING_CATEGORY(TCPLinkLog, "qgc.comms.tcplink")
@@ -100,6 +101,7 @@ void TCPWorker::setupSocket()
 {
     Q_ASSERT(!_socket);
     _socket = new QTcpSocket(this);
+    _socket->setProxy(QNetworkProxy::NoProxy);
 
     _socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
     _socket->setSocketOption(QAbstractSocket::KeepAliveOption, 1);

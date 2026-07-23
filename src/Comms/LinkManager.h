@@ -133,6 +133,7 @@ private:
     void _updateAutoConnectLinks();
     void _removeConfiguration(const LinkConfiguration *config);
     void _addUDPAutoConnectLink();
+    void _addGRobotDefaultTCPLinkIfNeeded();
     void _addMAVLinkForwardingLink();
     void _createDynamicForwardLink(const char *linkName, const QString &hostName);
 #ifdef QGC_ZEROCONF_ENABLED

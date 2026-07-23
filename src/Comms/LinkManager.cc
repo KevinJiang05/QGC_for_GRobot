@@ -379,8 +379,72 @@ void LinkManager::loadLinkConfigurationList()
         }
     }
 
+    _addGRobotDefaultTCPLinkIfNeeded();
+
     // Enable automatic Serial PX4/3DR Radio hunting
     _configurationsLoaded = true;
+}
+
+void LinkManager::_addGRobotDefaultTCPLinkIfNeeded()
+{
+    static constexpr const char *defaultLinkName = "GRobot_Default";
+    static constexpr const char *defaultHost = "192.168.1.200";
+    static constexpr quint16 defaultPort = 4019;
+
+    for (const SharedLinkConfigurationPtr &config : _rgLinkConfigs) {
+        if (!config || config->isDynamic()) {
+            continue;
+        }
+
+        const bool hasDefaultName = config->name() == QLatin1String(defaultLinkName);
+        if (config->type() != LinkConfiguration::TypeTcp) {
+            if (hasDefaultName) {
+                qCWarning(LinkManagerLog) << "GRobot default link name is already used by a non-TCP configuration";
+            }
+            continue;
+        }
+
+        TCPConfiguration *const tcpConfig = qobject_cast<TCPConfiguration *>(config.get());
+        if (!tcpConfig) {
+            continue;
+        }
+
+        const bool hasDefaultEndpoint = (tcpConfig->host() == QLatin1String(defaultHost))
+                                     && (tcpConfig->port() == defaultPort);
+        if (!hasDefaultName && !hasDefaultEndpoint) {
+            continue;
+        }
+
+        bool configurationChanged = false;
+        if (hasDefaultName && !hasDefaultEndpoint) {
+            tcpConfig->setHost(QLatin1String(defaultHost));
+            tcpConfig->setPort(defaultPort);
+            configurationChanged = true;
+        }
+        if (!tcpConfig->isAutoConnect()) {
+            tcpConfig->setAutoConnect(true);
+            configurationChanged = true;
+        }
+
+        if (configurationChanged) {
+            saveLinkConfigurationList();
+        }
+
+        qCInfo(LinkManagerLog) << "GRobot TCP link ready:" << tcpConfig->name() << tcpConfig->host() << tcpConfig->port()
+                               << "autoConnect=" << tcpConfig->isAutoConnect();
+        return;
+    }
+
+    TCPConfiguration *tcpConfig = new TCPConfiguration(QLatin1String(defaultLinkName));
+    tcpConfig->setHost(QLatin1String(defaultHost));
+    tcpConfig->setPort(defaultPort);
+    tcpConfig->setAutoConnect(true);
+    tcpConfig->setHighLatency(false);
+
+    addConfiguration(tcpConfig);
+    saveLinkConfigurationList();
+
+    qCInfo(LinkManagerLog) << "Created GRobot TCP link:" << tcpConfig->host() << tcpConfig->port() << "autoConnect=true";
 }
 
 void LinkManager::_addUDPAutoConnectLink()

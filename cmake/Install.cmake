@@ -43,6 +43,8 @@ if(ANDROID)
     # get_target_property(QGC_ANDROID_DEPLOY_FILE ${CMAKE_PROJECT_NAME} QT_ANDROID_DEPLOYMENT_SETTINGS_FILE)
     # cmake_print_variables(QGC_ANDROID_DEPLOY_FILE)
 elseif(LINUX)
+    install(CODE "set(TARGET_APP_NAME ${CMAKE_PROJECT_NAME})")
+    install(CODE "set(TARGET_DESKTOP_FILE org.mavlink.qgroundcontrol.desktop)")
     configure_file(
         ${CMAKE_SOURCE_DIR}/deploy/linux/org.mavlink.qgroundcontrol.desktop.in
         ${CMAKE_BINARY_DIR}/org.mavlink.qgroundcontrol.desktop

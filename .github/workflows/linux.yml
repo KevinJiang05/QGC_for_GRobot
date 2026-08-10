@@ -37,8 +37,8 @@ jobs:
         shell: bash
 
     env:
-      ARTIFACT: QGroundControl-x86_64.AppImage
-      PACKAGE: QGroundControl-x86_64
+      ARTIFACT: QGC_KevinJiang-x86_64.AppImage
+      PACKAGE: QGC_KevinJiang-x86_64
       QT_VERSION: 6.8.3
 
     steps:

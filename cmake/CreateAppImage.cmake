@@ -37,8 +37,8 @@ endif()
 
 execute_process(COMMAND ${LD_PATH}
     --appdir ${APPDIR_PATH}
-    --executable ${APPDIR_PATH}/usr/bin/QGroundControl
-    --desktop-file ${APPDIR_PATH}/usr/share/applications/org.mavlink.qgroundcontrol.desktop
+    --executable ${APPDIR_PATH}/usr/bin/${TARGET_APP_NAME}
+    --desktop-file ${APPDIR_PATH}/usr/share/applications/${TARGET_DESKTOP_FILE}
     --custom-apprun ${CMAKE_BINARY_DIR}/AppRun)
 # --exclude-library "libgst*"
 # --plugin qt --plugin gtk --plugin gstreamer

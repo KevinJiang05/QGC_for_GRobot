@@ -34,8 +34,9 @@ jobs:
         shell: bash
 
     env:
-      ARTIFACT: QGroundControl.dmg
-      PACKAGE: QGroundControl
+      ARTIFACT: QGC_KevinJiang.dmg
+      PACKAGE: QGC_KevinJiang
+      MACOS_SIGNING_ENABLED: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_P12_PASSWORD != '' && secrets.MACOS_SIGNING_IDENTITY != '' && secrets.MACOS_NOTARIZATION_USERNAME != '' && secrets.MACOS_NOTARIZATION_PASSWORD != '' && secrets.MACOS_NOTARIZATION_TEAM_ID != '' }}
       QT_VERSION: 6.8.3
 
     steps:
@@ -57,7 +58,7 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '<=16.x'
+          xcode-version: latest-stable
 
       - name: Install Dependencies (include GStreamer)
         working-directory: ${{ github.workspace }}/tools/setup
@@ -88,18 +89,18 @@ jobs:
               -DCMAKE_BUILD_TYPE=${{ matrix.BuildType }}
               -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
               -DQGC_STABLE_BUILD=${{ github.ref_type == 'tag' || contains(github.ref, 'Stable') && 'ON' || 'OFF' }}
-              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ github.event_name != 'pull_request' && 'ON' || 'OFF' }}
+              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.MACOS_SIGNING_ENABLED == 'true' && 'ON' || 'OFF' }}
 
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --build . --target all --config ${{ matrix.BuildType }}
 
       - name: Sanity check dev build executable
-        working-directory: ${{ runner.temp }}/shadow_build_dir/Release/QGroundControl.app/Contents/MacOS
-        run: ./QGroundControl --simple-boot-test
+        working-directory: ${{ runner.temp }}/shadow_build_dir/Release/QGC_KevinJiang.app/Contents/MacOS
+        run: ./QGC_KevinJiang --simple-boot-test
 
       - name: Import Code Signing Certificate
-        if: github.event_name != 'pull_request'
+        if: env.MACOS_SIGNING_ENABLED == 'true'
         uses: apple-actions/import-codesign-certs@v5
         with:
           p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
@@ -116,11 +117,11 @@ jobs:
 
       - name: Mount DMG
         working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: hdiutil attach QGroundControl.dmg
+        run: hdiutil attach QGC_KevinJiang.dmg
 
       - name: Sanity check DMG executable
-        working-directory: /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS
-        run: ./QGroundControl --simple-boot-test
+        working-directory: /Volumes/QGC_KevinJiang/QGC_KevinJiang.app/Contents/MacOS
+        run: ./QGC_KevinJiang --simple-boot-test
   
       - name: Upload Build File
         if: matrix.BuildType == 'Release'

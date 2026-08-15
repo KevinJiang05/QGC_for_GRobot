@@ -27,6 +27,8 @@ qrc_*.cpp
 tmp
 debug
 release
+!tools/release/
+!tools/release/build-windows-release.ps1
 /qgroundcontrol
 qgroundcontrol.xcodeproj/**
 doc/html

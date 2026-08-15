@@ -116,7 +116,9 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Settings")
-        visible:            !_videoSourceDisabled
+        // Decoder priority also controls custom GStreamer receivers, so keep
+        // this group available when QGC's built-in video source is disabled.
+        visible:            !_videoSourceDisabled || (_isGST && _videoSettings.forceVideoDecoder.visible)
 
         LabelledFactTextField {
             Layout.fillWidth:   true

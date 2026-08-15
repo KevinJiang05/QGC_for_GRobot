@@ -145,9 +145,14 @@ ColumnLayout {
             Row {
                 spacing: ScreenTools.defaultFontPixelWidth
                 visible: globals.activeVehicle.supportsJSButton
-                property var parameterName: `BTN${index}_FUNCTION`
-                property var parameterShiftName: `BTN${index}_SFUNCTION`
-                property bool hasFirmwareSupport: controller.parameterExists(-1, parameterName)
+                property int buttonIndex: index
+                property var parameterName: `BTN${buttonIndex}_FUNCTION`
+                property var parameterShiftName: `BTN${buttonIndex}_SFUNCTION`
+                // parameterExists() is not a reactive QML call. Make the Fact
+                // lookup depend on parametersReady so rows created while the
+                // initial parameter download is running refresh afterwards.
+                property bool parametersReady: controller.vehicle && controller.vehicle.parameterManager.parametersReady
+                property bool hasFirmwareSupport: parametersReady && controller.parameterExists(-1, parameterName)
 
                 property bool pressed
                 property var  currentAssignableAction: _activeJoystick ? _activeJoystick.assignableActions.get(buttonActionCombo.currentIndex) : null
@@ -173,9 +178,9 @@ ColumnLayout {
                 QGCComboBox {
                     id:                         buttonActionCombo
                     width:                      ScreenTools.defaultFontPixelWidth * 26
-                    property Fact fact:         controller.parameterExists(-1, parameterName) ? controller.getParameterFact(-1, parameterName) : null
-                    property Fact fact_shift:   controller.parameterExists(-1, parameterShiftName) ? controller.getParameterFact(-1, parameterShiftName) : null
-                    property var factOptions:   fact ? fact.enumStrings : [];
+                    property Fact fact:         parametersReady && controller.parameterExists(-1, parameterName) ? controller.getParameterFact(-1, parameterName) : null
+                    property Fact fact_shift:   parametersReady && controller.parameterExists(-1, parameterShiftName) ? controller.getParameterFact(-1, parameterShiftName) : null
+                    property var factOptions:   fact ? fact.enumStrings : []
                     property var qgcActions:    _activeJoystick.assignableActionTitles.filter(
                         function(s) {
                             return [
@@ -190,37 +195,71 @@ ColumnLayout {
                     )
 
                     model:                      [...qgcActions, ...factOptions]
-                    property var isFwAction:    currentIndex >= qgcActions.length
+                    property bool isFwAction:   currentIndex >= qgcActions.length && currentIndex < model.length
                     sizeToContents: true
 
                     function _findCurrentButtonAction() {
-                        // Find the index in the dropdown of the current action, checks FW and QGC actions
-                        if(_activeJoystick) {
-                            if (fact && fact.value > 0) {
-                                // This is a firmware function
-                                currentIndex = qgcActions.length + fact.enumIndex
-                                // For sanity reasons, make sure qgc is set to "no action" if the firmware is set to do something
-                                _activeJoystick.setButtonAction(modelData, "No Action")
-                            } else {
-                                // If there is not firmware function, check QGC ones
-                                currentIndex = find(_activeJoystick.buttonActions[modelData])
+                        if (!_activeJoystick) {
+                            currentIndex = 0
+                            return
+                        }
+
+                        // Fact metadata can arrive after this delegate is created. Defer the
+                        // lookup so the combined QGC/firmware model is complete before setting
+                        // currentIndex. Otherwise ComboBox clamps an out-of-range firmware
+                        // index to the final QGC action, which makes unrelated buttons appear
+                        // as Gimbal Yaw Follow.
+                        Qt.callLater(function() {
+                            if (fact && fact.value > 0 && factOptions.length > 0) {
+                                const firmwareIndex = fact.enumIndex
+                                if (firmwareIndex >= 0 && firmwareIndex < factOptions.length) {
+                                    currentIndex = qgcActions.length + firmwareIndex
+                                    // Firmware and QGC must not handle the same button.
+                                    _activeJoystick.setButtonAction(buttonIndex, "No Action")
+                                    return
+                                }
+                            }
+
+                            const qgcIndex = qgcActions.indexOf(_activeJoystick.buttonActions[buttonIndex])
+                            currentIndex = qgcIndex >= 0 ? qgcIndex : 0
+                        })
+                    }
+
+                    Component.onCompleted: {
+                        _findCurrentButtonAction()
+                    }
+                    onModelChanged:         _findCurrentButtonAction()
+                    onFactChanged:          _findCurrentButtonAction()
+                    onActivated:            function (optionIndex) {
+                        if (optionIndex >= qgcActions.length) {
+                            // This is a FW action, set parameter to the action and set QGC's handler to No Action
+                            const firmwareIndex = optionIndex - qgcActions.length
+                            if (fact && firmwareIndex >= 0 && firmwareIndex < fact.enumValues.length) {
+                                fact.value = fact.enumValues[firmwareIndex]
+                                _activeJoystick.setButtonAction(buttonIndex, "No Action")
+                            }
+                        } else {
+                            // This is a QGC action, set parameters to Disabled and QGC to the desired action
+                            const func = textAt(optionIndex)
+                            _activeJoystick.setButtonAction(buttonIndex, func)
+                            if (fact) {
+                                fact.value = 0
+                            }
+                            if (fact_shift) {
+                                fact_shift.value = 0
                             }
                         }
                     }
 
-                    Component.onCompleted:  _findCurrentButtonAction()
-                    onModelChanged:         _findCurrentButtonAction()
-                    onActivated:            function (optionIndex) {
-                        var func = textAt(optionIndex)
-                        if (factOptions.indexOf(func) > -1) {
-                            // This is a FW action, set parameter to the action and set QGC's handler to No Action
-                            fact.enumStringValue = func
-                            _activeJoystick.setButtonAction(modelData, "No Action")
-                        } else {
-                            // This is a QGC action, set parameters to Disabled and QGC to the desired action
-                            _activeJoystick.setButtonAction(modelData, func)
-                            fact.value = 0
-                            fact_shift.value = 0
+                    Connections {
+                        target: buttonActionCombo.fact
+
+                        function onEnumsChanged() {
+                            buttonActionCombo._findCurrentButtonAction()
+                        }
+
+                        function onValueChanged() {
+                            buttonActionCombo._findCurrentButtonAction()
                         }
                     }
                 }
@@ -248,9 +287,9 @@ ColumnLayout {
                 FactComboBox {
                     id:         shiftJSButtonActionCombo
                     width:      ScreenTools.defaultFontPixelWidth * 26
-                    fact:       controller.parameterExists(-1, parameterShiftName) ? controller.getParameterFact(-1, parameterShiftName) : null;
+                    fact:       buttonActionCombo.fact_shift
                     indexModel: false
-                    visible:    buttonActionCombo.isFwAction
+                    visible:    buttonActionCombo.isFwAction && fact
                     sizeToContents: true
                 }
 

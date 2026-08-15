@@ -517,9 +517,10 @@ FactMetaData *APMParameterMetaData::getMetaDataForFact(const QString &name, MAV_
                                                  << "type:" << metaData->type()
                                                  << "value:" << enumPair.first
                                                  << "error:" << errorString;
-                enumStrings.clear();
-                enumValues.clear();
-                break;
+                // Keep valid enum entries when newer metadata contains values
+                // which cannot be represented by an older/narrower firmware
+                // parameter type. Clearing the entire list hides otherwise
+                // usable actions such as ArduSub actuator_4_inc/dec.
             }
         }
 

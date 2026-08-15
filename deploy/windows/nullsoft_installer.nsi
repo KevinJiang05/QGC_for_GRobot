@@ -38,6 +38,14 @@
 !macroend
 
 Name "${APPNAME}"
+RequestExecutionLevel admin
+VIProductVersion "${APPVERSION}.0"
+VIAddVersionKey "ProductName" "${APPNAME}"
+VIAddVersionKey "ProductVersion" "${APPVERSION}"
+VIAddVersionKey "CompanyName" "${ORGNAME}"
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${ORGNAME}. Based on QGroundControl."
+VIAddVersionKey "FileDescription" "${APPNAME} Windows Installer"
+VIAddVersionKey "FileVersion" "${APPVERSION}"
 Var StartMenuFolder
 
 InstallDir "$PROGRAMFILES64\${APPNAME}"
@@ -72,7 +80,7 @@ check64BitUninstall:
 
 doUninstall:
   DetailPrint "Uninstalling previous version..."
-  ExecWait "$R0 /S -LEAVE_DATA=1 _?=$INSTDIR"
+  ExecWait "$R0 /S -LEAVE_DATA=1 _?=$INSTDIR" $0
   IntCmp $0 0 doInstall
 
   MessageBox MB_OK|MB_ICONEXCLAMATION \
@@ -90,6 +98,10 @@ doInstall:
 
   WriteUninstaller $INSTDIR\${EXENAME}-Uninstall.exe
   WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME}"
+  WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${APPVERSION}"
+  WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${ORGNAME}"
+  WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayIcon" "$INSTDIR\bin\${EXENAME}.exe"
   WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" "$\"$INSTDIR\${EXENAME}-Uninstall.exe$\""
   WriteRegDWORD HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe" "DumpCount" 5
   WriteRegDWORD HKLM "SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\${EXENAME}.exe" "DumpType" 1

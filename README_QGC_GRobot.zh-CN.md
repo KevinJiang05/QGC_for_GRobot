@@ -1,6 +1,6 @@
 # QGC_GRobot / DeepShark 地面站
 
-本仓库是在 **QGroundControl v5.0.8 Stable** 基础上，为水下机器人比赛和后续 AUV/ROV 实验开发的定制地面站。当前策略是保留 QGC 原生 ArduPilot、MAVLink、参数、模式、遥测和控制链路，通过 QGC custom build 机制叠加 DeepShark 专用视频面板与 YOLO 目标检测叠加层。
+本仓库是在 **QGroundControl v5.0.8 Stable** 基础上，为水下机器人比赛和后续 AUV/ROV 实验开发的定制地面站。当前内部 Windows 发行版本为 **QGC_KevinJiang v1.3.1**。项目保留 QGC 原生 ArduPilot、MAVLink、参数、模式、遥测和控制链路，通过 QGC custom build 机制叠加 DeepShark 专用视频面板、YOLO 目标检测叠加层和设备配置工具。
 
 核心原则是小步改造：优先复用 QGC 原有视频、GStreamer、MAVLink 和设置体系，不重构无关架构，不替换原生飞控插件。
 
@@ -16,6 +16,10 @@
 - 支持按视频源路由检测框：`deepSharkVideo1` 到 `deepSharkVideo4` 分别对应四个 tile。
 - 支持在 QGC 视频设置和 DeepShark 设置面板中开关 `YOLO Detection Overlay`。
 - YOLO 桥接程序可自动读取 QGC 已保存的四路 RTSP URL，并为每路启动一个检测子进程。
+- 已加入 ArduSub 4.8 参数元数据和固件原生手柄动作，支持在 UI 中配置 `actuator_4_inc/dec`。
+- Servo12 机械爪可通过 Actuator4 实现“按住运动、松手保持当前位置”。
+- 推进器测试、物理输出 PWM 直发和舵机点动是三条独立路径，便于区分推进器与舵机调试需求。
+- “视频解码优先级”已显式显示，可在默认、软件和硬件解码策略间切换。
 
 ## 目录结构
 
@@ -36,6 +40,7 @@ custom/
       FourVideoPanel.qml
       VideoTile.qml
       DeepSharkStatusPanel.qml
+      ThrusterMappingTool.qml
 
 src/FlightDisplay/
   AIDetectionReceiver.h/.cc
@@ -47,24 +52,31 @@ tools/ai_detection/
   run_yolo_to_qgc_udp.bat
   send_sample_detection.py
   requirements.txt
+
+tools/diagnostics/
+  check-grobot-link.ps1
+
+tools/release/
+  build-windows-release.ps1
 ```
 
 ## 启动脚本
 
-根目录提供两个常用启动脚本：
+根目录提供三个开发/现场辅助脚本：
 
 ```powershell
 .\StartDeepSharkQGC.cmd
 .\StartYoloToQGC.cmd
+.\StopDeepSharkQGC.cmd
 ```
 
-`StartDeepSharkQGC.cmd` 负责设置 Qt、GStreamer、MSVC 运行库相关环境变量，然后启动：
+`StartDeepSharkQGC.cmd` 是**本机开发环境**入口：它负责设置 Qt、GStreamer、MSVC 运行库相关环境变量，然后优先启动：
 
 ```text
-build-debug-ai\Debug\QGroundControl.exe
+build-debug-ai\Debug\QGC_KevinJiang.exe
 ```
 
-不要直接双击 exe 启动视频版本。RTSP/GStreamer 依赖启动脚本中的环境变量。
+Debug 版不要直接双击 exe 启动视频版本，RTSP/GStreamer 依赖启动脚本中的环境变量。正式安装版已携带运行依赖，应从 Windows 开始菜单或安装目录启动，不应依赖本机 `D:\Develop` 工具链。
 
 `StartYoloToQGC.cmd` 负责使用共享 YOLO 环境启动桥接程序。无参数运行时，它会自动读取 QGC 保存的 DeepShark 四路 RTSP URL。
 
@@ -95,24 +107,34 @@ YOLO 共享环境:  D:\Develop\envs\yolo
 在仓库根目录执行：
 
 ```powershell
-cmd /s /c ""D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build-debug-ai --target QGroundControl"
+cmd /s /c ""D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build-debug-ai --target QGC_KevinJiang"
 ```
 
 如果链接时报错：
 
 ```text
-LINK : fatal error LNK1168: cannot open Debug\QGroundControl.exe for writing
+LINK : fatal error LNK1168: cannot open Debug\QGC_KevinJiang.exe for writing
 ```
 
 说明 QGC 仍在运行，占用了 exe。先关闭 QGC，或执行：
 
 ```powershell
-Get-Process QGroundControl -ErrorAction SilentlyContinue |
+Get-Process QGC_KevinJiang -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "*QGC_for_GRobot*build-debug-ai*" } |
     Stop-Process
 ```
 
 然后重新构建。
+
+## Windows 发布
+
+发布 Windows 安装包时，优先使用固化脚本：
+
+```powershell
+.\tools\release\build-windows-release.ps1 -Version 1.3.2
+```
+
+脚本会产生逐步日志、`release-state.json` 和 `release-report.md`。只有最终报告成功且版本、依赖、哈希和覆盖升级契约通过时，才建议分发。完整流程见 `docs/releases/windows-release-runbook.md`；当前 v1.3.1 发布说明见 `docs/releases/v1.3.1.zh-CN.md`。
 
 ## RTSP 使用流程
 
@@ -245,6 +267,30 @@ QGC 支持归一化框：
 
 关闭后，QGC 仍可接收 UDP 检测数据，但界面不绘制检测框。
 
+## ArduSub 4.8、机械爪与物理输出测试
+
+本项目定制 ArduSub 4.8 固件可使用固件原生按钮函数。Servo12 机械爪已验证的连续控制方案是：`SERVO12_FUNCTION=187`（Actuator4）、`BTN9_FUNCTION=116`（`actuator_4_dec`）、`BTN10_FUNCTION=115`（`actuator_4_inc`）。松开按键后机械爪保持当前位置；实际 PWM 行程必须根据每台机器的机械限位确认。
+
+完整参数、方向和速度调整说明见 `docs/research/problem/Servo12机械爪手柄配置说明.md`。首次测试前必须确认飞控上锁、机器人固定、推进器和机械爪周边无人。
+
+“SERVO 输出扫描向导”中三种测试方式不可混用：
+
+- `Motor Test`：飞控原生推进器测试。
+- `推进器直发PWM`：按物理输出口发 PWM，不走 `SERVOx_FUNCTION` 映射，结束回到 1500 PWM。
+- `舵机点动`：按物理输出口发 PWM，结束回到该通道 `SERVOx_TRIM`。
+
+## 飞控 TCP 连接诊断
+
+标准串口服务器配置为 `TCP Server / 192.168.1.200:4019 / 57600 / 8N1`。QGC 建立 TCP 会话只代表网络端口可达；只有持续收到 MAVLink HEARTBEAT 后，QGC 才会识别载具。
+
+无侵入检查：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\diagnostics\check-grobot-link.ps1
+```
+
+若 TCP 已建立但没有载具，应优先检查飞控供电、串口 TX/RX 交叉和共地、实际 `SERIALx_PROTOCOL=2`、`SERIALx_BAUD=57`，而不是反复修改 QGC 连接配置。详细复盘见 `docs/audits/flight_controller_connection_incident_2026-07-21.md`。
+
 ## 稳定性设计
 
 - 四路视频互相独立，一路断流不应影响其他三路。
@@ -253,7 +299,7 @@ QGC 支持归一化框：
 - Watchdog 会检测长时间无帧进展的通道，并触发受控重连。
 - 退出时会停止 DeepShark tile 的重连定时器、watchdog 和视频控制器，避免关闭阶段再次启动视频。
 
-当前为了优先保证退出稳定性，DeepShark 视频 tile 的 FPS 和 Latency 可能显示为 `--`。这不代表视频不可用，也不影响 YOLO 绘制。
+当前为了优先保证退出稳定性，DeepShark 视频 tile 的 FPS 和 Latency 可能显示为 `--`。这不代表视频不可用，也不影响 YOLO 绘制。多路 RTSP 在不同显卡、驱动和解码策略下仍可能偶发少一路；可先使用“全部重连”，或在“应用设置 → 视频”调整“视频解码优先级”。
 
 ## 常见问题
 
@@ -264,6 +310,12 @@ QGC 支持归一化框：
 ```powershell
 .\StartDeepSharkQGC.cmd
 ```
+
+如果是正式安装版，先确认没有混用 Debug 目录中的 DLL；正式安装版应直接通过开始菜单或安装目录启动。
+
+### 启动后有一路 RTSP 未播放或 Debug 版出现 Qt QML 断言
+
+先点击“全部重连”，并记录卡住通道、视频解码优先级、显卡型号和驱动版本。可先切换为软件解码验证兼容性。当前措施是降低复现概率和提供回退设置，尚不能视为根因完全消除。
 
 ### YOLO 桥接窗口提示找不到 Python
 
@@ -316,9 +368,9 @@ D:\Develop\envs\yolo\Scripts\python.exe --version
 
 ## 后续路线建议
 
-1. 接入真实 ArduPilot / MAVLink 机器人，验证遥测、模式、解锁和安全控制链路。
-2. 用真实四路 RTSP 长时间测试 DeepShark Video Panel。
-3. 根据实测调 RTSP latency、watchdog 阈值和重连上限。
-4. 训练或微调水下目标专用模型，替换默认 COCO `yolov8n.pt`。
-5. 增加轻量 3D 姿态窗口，绑定 active vehicle 的 roll/pitch/yaw。
+1. 继续排查更换机器人后飞控未上电、无 MAVLink 字节流的问题，先恢复硬件供电再检查串口参数和接线。
+2. 用真实四路 RTSP 长时间测试 DeepShark Video Panel，并收集 Qt/GStreamer 兼容性证据。
+3. 使用电源侧仪表排查推进器高输出区间速度偏慢的问题；当前飞控电源遥测不可信。
+4. 根据实测调 RTSP latency、watchdog 阈值和重连上限。
+5. 训练或微调水下目标专用模型，替换默认 COCO `yolov8n.pt`。
 6. 在核心链路稳定后，再考虑录像、日志导出、云台或机械臂控制。

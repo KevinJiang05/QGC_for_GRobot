@@ -3,7 +3,7 @@
 QGC_KevinJiang is an internal GRobot ground control application maintained by Kevin Jiang. It is based on the open-source QGroundControl project and customized for DeepShark multi-camera operation and optional local AI detection.
 
 - Project name: QGC_KevinJiang
-- Current stable version: 1.3.0
+- Current stable version: 1.3.1
 - Upstream base: QGroundControl v5.0.8
 - Maintainer: Jiang Zhongze / KevinJiang1018@gmail.com
 - Distribution: Windows installer published through GitHub Releases
@@ -15,12 +15,14 @@ QGC_KevinJiang is an internal GRobot ground control application maintained by Ke
 - Built-in AI environment check and AI start/stop/restart controls in QGC video settings.
 - GRobot application icon and Windows NSIS installer packaging.
 - QGC native video source defaults to disabled and respects the disabled state when vehicle video stream information is received.
+- ArduSub 4.8 parameter metadata and firmware-backed joystick actions for Servo12/Actuator4 gripper control.
+- Separate physical-output test paths for thruster PWM and servo jog operation.
 
 ## Installation
 
-Download the Windows installer from the GitHub Release page for the required version. For v1.3.0, use:
+Download the Windows installer from the GitHub Release page for the required version. For v1.3.1, use:
 
-- `QGC_v1.3.0_KevinJiang-installer.exe`
+- `QGC_v1.3.1_KevinJiang-installer.exe`
 
 The installer is distributed as a Release asset. It is intentionally not committed into the normal source tree.
 
@@ -46,7 +48,7 @@ Upstream project:
 
 ## Documentation
 
-- Release notes: [docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
+- Release notes: [docs/releases/v1.3.1.md](docs/releases/v1.3.1.md)
 - Original QGroundControl user documentation: https://docs.qgroundcontrol.com/
 - Original QGroundControl developer documentation: https://dev.qgroundcontrol.com/
 

@@ -108,3 +108,7 @@ nsis-*.zip
 *-installer.exe
 package-root/
 staging/
+
+# USR-M0 local runtime configuration
+/software/DataSelf.txt
+/software/M0Cfg.ini

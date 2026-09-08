@@ -16,6 +16,8 @@
 
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
+#include <QtCore/QThread>
+#include <atomic>
 
 void VehicleLinkManagerTest::init()
 {
@@ -39,6 +41,41 @@ void VehicleLinkManagerTest::cleanup()
     UnitTest::cleanup();
 }
 
+void VehicleLinkManagerTest::_mockTrafficAndDisconnectUseOneThread()
+{
+    SharedLinkConfigurationPtr mockConfig;
+    SharedLinkInterfacePtr mockLink;
+    _startMockLink(1, false, true, mockConfig, mockLink);
+    QVERIFY(mockLink);
+    std::atomic_bool wrongThread{false};
+    std::atomic_int packets{0};
+    QObject observer;
+    QThread *const ownerThread = mockLink->thread();
+    connect(mockLink.get(), &LinkInterface::bytesReceived, &observer,
+            [&](LinkInterface *, const QByteArray &) {
+                if (QThread::currentThread() != ownerThread) { wrongThread = true; }
+                ++packets;
+            }, Qt::DirectConnection);
+    QTRY_VERIFY_WITH_TIMEOUT(packets.load() > 3, 3000);
+    QTest::qWait(350); // Include periodic heartbeats and parameter traffic.
+
+    mavlink_message_t request{};
+    mavlink_msg_param_request_list_pack(255, MAV_COMP_ID_MISSIONPLANNER, &request,
+                                       qobject_cast<MockLink *>(mockLink.get())->vehicleId(), MAV_COMP_ID_AUTOPILOT1);
+    uint8_t buffer[MAVLINK_MAX_PACKET_LEN]{};
+    const int length = mavlink_msg_to_send_buffer(buffer, &request);
+    const QByteArray bytes(reinterpret_cast<const char *>(buffer), length);
+    // Leave an input callback queued while disconnect releases the channels.
+    QVERIFY(QMetaObject::invokeMethod(mockLink.get(), "_writeBytesQueued", Qt::QueuedConnection,
+                                     Q_ARG(QByteArray, bytes)));
+    mockLink->disconnect();
+    const int packetsAtDisconnect = packets.load();
+    QTest::qWait(250);
+    QCOMPARE(packets.load(), packetsAtDisconnect);
+    QVERIFY2(!wrongThread.load(), "MockLink timer traffic must share the link's owner thread");
+    QTRY_COMPARE(MultiVehicleManager::instance()->vehicles()->count(), 0);
+}
+
 void VehicleLinkManagerTest::_simpleLinkTest()
 {
     SharedLinkConfigurationPtr mockConfig;
@@ -60,13 +97,13 @@ void VehicleLinkManagerTest::_simpleLinkTest()
     Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
     QSignalSpy spyVehicleDelete(vehicle, &QObject::destroyed);
-    QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
 
     QCOMPARE(mockConfig.use_count(), 2); // Refs: This method, MockLink
     QCOMPARE(mockLink.use_count(), 3); // Refs: This method, LinkManager, Vehicle
 
     // We wait for the full initial connect sequence to complete to catch anby ComponentInformationManager bugs
-    QCOMPARE(spyVehicleInitialConnectComplete.wait(3000), true);
+    QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
+    QVERIFY(vehicle->isInitialConnectComplete() || spyVehicleInitialConnectComplete.wait(_initialConnectTimeoutMs));
 
     mockLink->disconnect();
 
@@ -103,7 +140,7 @@ void VehicleLinkManagerTest::_simpleCommLossTest()
     Vehicle* vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
     QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
-    QCOMPARE(spyVehicleInitialConnectComplete.wait(3000), true);
+    QVERIFY(vehicle->isInitialConnectComplete() || spyVehicleInitialConnectComplete.wait(_initialConnectTimeoutMs));
 
     QSignalSpy spyCommLostChanged(vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged);
     pMockLink->setCommLost(true);
@@ -147,7 +184,7 @@ void VehicleLinkManagerTest::_multiLinkSingleVehicleTest()
     QVERIFY(vehicle);
     QVERIFY(vehicleLinkManager);
     QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
-    QCOMPARE(spyVehicleInitialConnectComplete.wait(3000), true);
+    QVERIFY(vehicle->isInitialConnectComplete() || spyVehicleInitialConnectComplete.wait(_initialConnectTimeoutMs));
 
     // The first link to start sending a heartbeat will be the primary link.
     // Depending on how the thread scheduling works, that could be the mockLink2.
@@ -239,7 +276,7 @@ void VehicleLinkManagerTest::_connectionRemovedTest()
     Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
     QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
-    QCOMPARE(spyVehicleInitialConnectComplete.wait(3000), true);
+    QVERIFY(vehicle->isInitialConnectComplete() || spyVehicleInitialConnectComplete.wait(_initialConnectTimeoutMs));
 
     QSignalSpy spyCommLostChanged(vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged);
 
@@ -284,7 +321,7 @@ void VehicleLinkManagerTest::_highLatencyLinkTest()
 
     QCOMPARE(multiSpyVLM.waitForSignal(_primaryLinkChangedSignalName, 100), true);
     QCOMPARE(pMockLink2, vehicleLinkManager->primaryLink().lock().get());
-    QCOMPARE(spyTransmissionEnabledChanged.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(spyTransmissionEnabledChanged.count(), 1, 1000);
     QCOMPARE(spyTransmissionEnabledChanged.takeFirst()[0].toBool(), false);
     multiSpyVLM.clearAllSignals();
     spyTransmissionEnabledChanged.clear();
@@ -296,7 +333,7 @@ void VehicleLinkManagerTest::_highLatencyLinkTest()
     pMockLink2->setCommLost(true);
     QCOMPARE(multiSpyVLM.waitForSignal(_primaryLinkChangedSignalName, VehicleLinkManager::_heartbeatMaxElpasedMSecs * 2), true);
     QCOMPARE(pMockLink1, vehicleLinkManager->primaryLink().lock().get());
-    QCOMPARE(spyTransmissionEnabledChanged.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(spyTransmissionEnabledChanged.count(), 1, 1000);
     QCOMPARE(spyTransmissionEnabledChanged.takeFirst()[0].toBool(), true);
     spyTransmissionEnabledChanged.clear();
 }

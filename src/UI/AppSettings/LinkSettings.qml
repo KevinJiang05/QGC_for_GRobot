@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 import QtQuick
+import DeepShark 1.0
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
@@ -170,6 +171,7 @@ SettingsPage {
                                         qsTr("Are you sure you want to delete '%1'?").arg(object.name), 
                                         Dialog.Ok | Dialog.Cancel, 
                                         function () {
+                                            DeepSharkConnectionMonitor.prepareLinkDisconnect(object.link)
                                             _linkManager.removeConfiguration(object)
                                         })
                     }
@@ -178,6 +180,7 @@ SettingsPage {
                     text:       object.link ? qsTr("Disconnect") : qsTr("Connect")
                     onClicked: {
                         if (object.link) {
+                            DeepSharkConnectionMonitor.prepareLinkDisconnect(object.link)
                             object.link.disconnect()
                         } else {
                             _linkManager.createConnectedLink(object)

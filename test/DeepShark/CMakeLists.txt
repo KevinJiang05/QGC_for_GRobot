@@ -1,5 +1,7 @@
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        DeepSharkConnectionMonitorTest.cc
+        DeepSharkConnectionMonitorTest.h
         AIDetectionReceiverTest.cc
         AIDetectionReceiverTest.h
         DeepSharkAuvControllerTest.cc

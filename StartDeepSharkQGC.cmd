@@ -28,7 +28,9 @@ set "GST_PLUGIN_SYSTEM_PATH_1_0=%GST_ROOT%\lib\gstreamer-1.0"
 set "GST_PLUGIN_SCANNER=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
 set "GST_PLUGIN_SCANNER_1_0=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
 set "GIO_EXTRA_MODULES=%GST_ROOT%\lib\gio\modules"
-set "QT_LOGGING_RULES=qgc.videomanager.videoreceiver.gstreamer*.debug=true;qgc.videomanager.videoreceiver.gstreamer*.warning=true;qgc.videomanager.videoreceiver.gstreamer*.critical=true"
+set "QT_LOGGING_RULES="
+set "QGC_LOGGING_ARGS="
+if /I "%~1"=="--diagnostics" set "QGC_LOGGING_ARGS=--logging:VideoAllLog,qgc.deepshark.videocontroller --log-output"
 
 cd /d "%QGC_ROOT%"
 
@@ -40,7 +42,7 @@ if not defined QGC_EXE (
 )
 
 echo Starting "%QGC_EXE%"
-start "QGC_KevinJiang Logs" /min /D "%QGC_ROOT%" cmd.exe /d /s /c ""%QGC_EXE%" 1>>"%TEMP%\QGC_KevinJiang.stdout.log" 2>>"%TEMP%\QGC_KevinJiang.stderr.log""
+start "QGC_KevinJiang Logs" /min /D "%QGC_ROOT%" cmd.exe /d /s /c ""%QGC_EXE%" %QGC_LOGGING_ARGS% 1>>"%TEMP%\QGC_KevinJiang.stdout.log" 2>>"%TEMP%\QGC_KevinJiang.stderr.log""
 if errorlevel 1 (
     echo Failed to start QGC_KevinJiang.exe.
     pause

@@ -19,8 +19,6 @@
 #include <QtCore/QMutexLocker>
 #include <QtCore/QRandomGenerator>
 #include <QtCore/QTemporaryFile>
-#include <QtCore/QThread>
-#include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(MockLinkLog, "qgc.comms.mocklink.mocklink")
 QGC_LOGGING_CATEGORY(MockLinkVerboseLog, "qgc.comms.mocklink.mocklink:verbose")
@@ -86,12 +84,9 @@ MockLink::MockLink(SharedLinkConfigurationPtr &config, QObject *parent)
     _loadParams();
     _runningTime.start();
 
-    _workerThread = new QThread(this);
-    _worker = new MockLinkWorker(this);
-    _worker->moveToThread(_workerThread);
-    (void) connect(_workerThread, &QThread::started, _worker, &MockLinkWorker::startWork);
-    (void) connect(_workerThread, &QThread::finished, _worker, &QObject::deleteLater);
-    _workerThread->start();
+    // Timer callbacks, queued input and disconnect must share the link's thread.
+    // The worker directly accesses MockLink state and MAVLink channels.
+    _worker = new MockLinkWorker(this, this);
 }
 
 MockLink::~MockLink()
@@ -100,11 +95,6 @@ MockLink::~MockLink()
 
     if (!_logDownloadFilename.isEmpty()) {
         QFile::remove(_logDownloadFilename);
-    }
-
-    if (_workerThread) {
-        _workerThread->quit();
-        _workerThread->wait();
     }
 
     // qCDebug(MockLinkLog) << Q_FUNC_INFO << this;
@@ -118,6 +108,7 @@ bool MockLink::_connect()
         mavlinkStatus->flags &= ~MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
         mavlink_status_t *const auxStatus = mavlink_get_channel_status(_getMavlinkAuxChannel());
         auxStatus->flags &= ~MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
+        _worker->startWork();
         emit connected();
     }
 
@@ -126,6 +117,7 @@ bool MockLink::_connect()
 
 void MockLink::disconnect()
 {
+    _worker->stopWork();
     _missionItemHandler->shutdown();
 
     if (_connected) {
@@ -238,6 +230,7 @@ void MockLink::_freeMavlinkChannel()
     }
 
     LinkManager::instance()->freeMavlinkChannel(_mavlinkAuxChannel);
+    _mavlinkAuxChannel = LinkManager::invalidMavlinkChannel();
     LinkInterface::_freeMavlinkChannel();
 }
 
@@ -521,6 +514,10 @@ void MockLink::_writeBytes(const QByteArray &bytes)
 
 void MockLink::_writeBytesQueued(const QByteArray &bytes)
 {
+    // Writes queued before disconnect may arrive after channel release.
+    if (!_connected) {
+        return;
+    }
     if (_inNSH) {
         _handleIncomingNSHBytes(bytes.constData(), bytes.length());
         return;

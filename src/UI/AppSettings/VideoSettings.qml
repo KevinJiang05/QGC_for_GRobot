@@ -19,6 +19,7 @@ import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.FlightDisplay
 import QGroundControl.Controllers
+import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
 
 SettingsPage {
     property var    _settingsManager:            QGroundControl.settingsManager
@@ -67,6 +68,10 @@ SettingsPage {
     }
 
     Component.onCompleted: syncAIDetectionPort()
+
+    ConnectionAlertSettings {
+        Layout.fillWidth: true
+    }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true

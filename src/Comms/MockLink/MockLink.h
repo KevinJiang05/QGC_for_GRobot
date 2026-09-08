@@ -23,7 +23,6 @@
 
 class MockLinkFTP;
 class MockLinkWorker;
-class QThread;
 
 Q_DECLARE_LOGGING_CATEGORY(MockLinkLog)
 Q_DECLARE_LOGGING_CATEGORY(MockLinkVerboseLog)
@@ -196,7 +195,6 @@ private:
     /// @return Fully qualified path to created file
     static QString _createRandomFile(uint32_t byteCount);
 
-    QThread *_workerThread = nullptr;
     MockLinkWorker *_worker = nullptr;
 
     const MockConfiguration *_mockConfig = nullptr;

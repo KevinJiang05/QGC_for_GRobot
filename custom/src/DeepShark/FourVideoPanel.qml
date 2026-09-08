@@ -26,7 +26,33 @@ Rectangle {
     property bool attitudeMode: false
     property bool auvMissionMode: false
     property string mainViewName: titleForIndex(mainIndex)
-    property var videoRows: []
+    readonly property var videoRows: [videoRow1, videoRow2, videoRow3, videoRow4]
+
+    component VideoStatusRow: QtObject {
+        required property int index
+        required property var tile
+        readonly property string name: root.titleForIndex(index - 1)
+        readonly property string url: root.urlForIndex(index - 1)
+        readonly property bool enabled: root.enabledForIndex(index - 1)
+        readonly property string status: tile.currentStatus
+        readonly property int retry: tile.retryCount
+        readonly property bool streaming: tile.streaming
+        readonly property bool decoding: tile.decoding
+        readonly property int streamCount: tile.streamCount
+        readonly property int decodeCount: tile.decodeCount
+        readonly property string fps: tile.frameRateText
+        readonly property string latency: tile.latencyText
+        readonly property int estimatedLatencyMs: tile.estimatedLatencyMs
+        readonly property string lastError: tile.lastError
+        readonly property string watchdog: tile.watchdogStatus
+        readonly property int lastProgressAge: tile.lastProgressAgeSeconds
+        readonly property int watchdogReconnectCount: tile.watchdogReconnectCount
+    }
+
+    VideoStatusRow { id: videoRow1; index: 1; tile: videoTile1 }
+    VideoStatusRow { id: videoRow2; index: 2; tile: videoTile2 }
+    VideoStatusRow { id: videoRow3; index: 3; tile: videoTile3 }
+    VideoStatusRow { id: videoRow4; index: 4; tile: videoTile4 }
     property var tileOrder: [0, 1, 2, 3]
     property bool tileDragging: false
     property int draggedTileIndex: -1
@@ -61,15 +87,6 @@ Rectangle {
     QGCPalette {
         id: qgcPal
         colorGroupEnabled: enabled
-    }
-
-    Component.onCompleted: refreshVideoRows()
-
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: root.refreshVideoRows()
     }
 
     Timer {
@@ -130,36 +147,29 @@ Rectangle {
     function startVideo(index) {
         if (!enabledForIndex(index)) {
             deepSharkEvent(qsTr("%1：通道已停用").arg(titleForIndex(index)))
-            refreshVideoRows()
             return
         }
         if (urlForIndex(index).length === 0) {
             deepSharkEvent(qsTr("%1：RTSP URL 为空，无法启动").arg(titleForIndex(index)))
-            refreshVideoRows()
             return
         }
         tileForIndex(index).startVideo()
-        refreshVideoRows()
     }
 
     function stopVideo(index) {
         tileForIndex(index).stopVideo()
-        refreshVideoRows()
     }
 
     function reconnectVideo(index) {
         if (!enabledForIndex(index)) {
             deepSharkEvent(qsTr("%1：通道已停用，跳过重连").arg(titleForIndex(index)))
-            refreshVideoRows()
             return
         }
         if (urlForIndex(index).length === 0) {
             deepSharkEvent(qsTr("%1：RTSP URL 为空，无法重连").arg(titleForIndex(index)))
-            refreshVideoRows()
             return
         }
         tileForIndex(index).reconnectVideo()
-        refreshVideoRows()
     }
 
     function reconnectAllVideos() {
@@ -426,37 +436,6 @@ Rectangle {
         }
     }
 
-    function videoRow(index, tile) {
-        return {
-            "index": index + 1,
-            "name": titleForIndex(index),
-            "url": urlForIndex(index),
-            "enabled": enabledForIndex(index),
-            "status": tile ? tile.currentStatus : "Unknown",
-            "retry": tile ? tile.retryCount : 0,
-            "streaming": tile ? tile.streaming : false,
-            "decoding": tile ? tile.decoding : false,
-            "streamCount": tile ? tile.streamCount : 0,
-            "decodeCount": tile ? tile.decodeCount : 0,
-            "fps": tile ? tile.frameRateText : "FPS: --",
-            "latency": tile ? tile.latencyText : "Latency: --",
-            "estimatedLatencyMs": tile ? tile.estimatedLatencyMs : -1,
-            "lastError": tile ? tile.lastError : "",
-            "watchdog": tile ? tile.watchdogStatus : "Disabled",
-            "lastProgressAge": tile ? tile.lastProgressAgeSeconds : -1,
-            "watchdogReconnectCount": tile ? tile.watchdogReconnectCount : 0
-        }
-    }
-
-    function refreshVideoRows() {
-        videoRows = [
-            videoRow(0, videoTile1),
-            videoRow(1, videoTile2),
-            videoRow(2, videoTile3),
-            videoRow(3, videoTile4)
-        ]
-    }
-
     function openSettings() {
         camera1EnabledCheck.checked = DeepSharkVideoSettings.camera1Enabled
         camera1NameField.text = DeepSharkVideoSettings.camera1Name
@@ -501,7 +480,6 @@ Rectangle {
             }
         }
 
-        refreshVideoRows()
         settingsOverlay.visible = false
     }
 
@@ -689,7 +667,7 @@ Rectangle {
                 onTileDragStarted: function(centerX, centerY) { root.beginTileDrag(0, centerX, centerY) }
                 onTileDragMoved: function(centerX, centerY) { root.updateTileDrag(0, centerX, centerY) }
                 onTileDragReleased: function(centerX, centerY) { root.finishTileDrag(0, centerX, centerY) }
-                onVideoEvent: function(message) { root.deepSharkEvent(message); root.refreshVideoRows() }
+                onVideoEvent: function(message) { root.deepSharkEvent(message) }
             }
 
             VideoTile {
@@ -707,7 +685,7 @@ Rectangle {
                 onTileDragStarted: function(centerX, centerY) { root.beginTileDrag(1, centerX, centerY) }
                 onTileDragMoved: function(centerX, centerY) { root.updateTileDrag(1, centerX, centerY) }
                 onTileDragReleased: function(centerX, centerY) { root.finishTileDrag(1, centerX, centerY) }
-                onVideoEvent: function(message) { root.deepSharkEvent(message); root.refreshVideoRows() }
+                onVideoEvent: function(message) { root.deepSharkEvent(message) }
             }
 
             VideoTile {
@@ -725,7 +703,7 @@ Rectangle {
                 onTileDragStarted: function(centerX, centerY) { root.beginTileDrag(2, centerX, centerY) }
                 onTileDragMoved: function(centerX, centerY) { root.updateTileDrag(2, centerX, centerY) }
                 onTileDragReleased: function(centerX, centerY) { root.finishTileDrag(2, centerX, centerY) }
-                onVideoEvent: function(message) { root.deepSharkEvent(message); root.refreshVideoRows() }
+                onVideoEvent: function(message) { root.deepSharkEvent(message) }
             }
 
             VideoTile {
@@ -743,7 +721,7 @@ Rectangle {
                 onTileDragStarted: function(centerX, centerY) { root.beginTileDrag(3, centerX, centerY) }
                 onTileDragMoved: function(centerX, centerY) { root.updateTileDrag(3, centerX, centerY) }
                 onTileDragReleased: function(centerX, centerY) { root.finishTileDrag(3, centerX, centerY) }
-                onVideoEvent: function(message) { root.deepSharkEvent(message); root.refreshVideoRows() }
+                onVideoEvent: function(message) { root.deepSharkEvent(message) }
             }
         }
     }

@@ -17,4 +17,5 @@ class QGCCameraManagerTest : public UnitTest
 
 private slots:
     void _testCameraList();
+    void _lateCameraReplyAfterManagerDestroyed();
 };

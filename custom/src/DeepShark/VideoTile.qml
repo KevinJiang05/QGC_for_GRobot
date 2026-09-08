@@ -107,10 +107,12 @@ Rectangle {
 
     DeepSharkVideoController {
         id: videoController
-        videoItem: videoOutput
+        videoItem: root.videoEnabled ? videoOutput : null
         receiverName: root.receiverName
         uri: root.videoSource
         autoStart: root.controllerAutoStart
+        alertExpected: root.videoEnabled && !root.manualStopped && !root.shuttingDown
+        alertTitle: root.title
         lowLatency: true
     }
 
@@ -270,6 +272,7 @@ Rectangle {
     }
 
     function reconnectVideo() {
+        DeepSharkConnectionMonitor.manualReconnect(videoController)
         stalled = false
         _markProgress()
         manualStopped = false
@@ -311,6 +314,7 @@ Rectangle {
     onVideoEnabledChanged: _syncForUrl()
 
     Component.onCompleted: {
+        DeepSharkConnectionMonitor.track(videoController)
         if (videoEnabled && videoSource.length > 0) {
             _setStatus("Connecting", "")
         } else {
@@ -420,15 +424,19 @@ Rectangle {
         visible: true
     }
 
-    AIDetectionVideoOverlay {
+    Loader {
         anchors.fill: parent
-        sourceId: root.receiverName
-        videoWidth: videoController.videoWidth
-        videoHeight: videoController.videoHeight
-        showStatus: false
-        visible: root.videoEnabled
-                 && QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        active: root.videoEnabled
+                && QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        visible: active
         z: 20
+        sourceComponent: AIDetectionVideoOverlay {
+            anchors.fill: parent
+            sourceId: root.receiverName
+            videoWidth: videoController.videoWidth
+            videoHeight: videoController.videoHeight
+            showStatus: false
+        }
     }
 
     MouseArea {

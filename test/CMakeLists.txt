@@ -72,6 +72,7 @@ add_subdirectory(DeepShark)
 add_qgc_test(AIDetectionReceiverTest)
 add_qgc_test(DeepSharkAuvControllerTest)
 add_qgc_test(DeepSharkVideoControllerTest)
+add_qgc_test(DeepSharkConnectionMonitorTest)
 add_qgc_test(ThrusterDirectControlControllerTest)
 
 add_subdirectory(FactSystem)

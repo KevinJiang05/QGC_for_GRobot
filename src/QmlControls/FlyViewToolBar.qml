@@ -11,6 +11,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
 
 import QGroundControl
 import QGroundControl.Controls
@@ -92,21 +93,36 @@ Rectangle {
         anchors.bottomMargin:   1
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
-        anchors.right:          parent.right
+        width:                  Math.max(0, Math.min(contentWidth,
+                                    _root.width - x - (brandingLogo.visible ? brandingLogo.width + ScreenTools.defaultFontPixelHeight : 0)
+                                    - (connectionAlert.visible ? Math.min(ScreenTools.defaultFontPixelWidth * 26, Math.max(0, (_root.width - x) * 0.4)) : 0)
+                                    - ScreenTools.defaultFontPixelWidth * 2))
+        clip:                   true
         contentWidth:           toolIndicators.width
         flickableDirection:     Flickable.HorizontalFlick
 
         FlyViewToolBarIndicators { id: toolIndicators }
     }
 
+    ConnectionAlertBanner {
+        id: connectionAlert
+        objectName: "toolbarConnectionAlert"
+        x: toolsFlickable.x + toolsFlickable.width + ScreenTools.defaultFontPixelWidth
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.max(0, (brandingLogo.visible ? brandingLogo.x : _root.width) - x - ScreenTools.defaultFontPixelWidth)
+        height: _root.height * 0.72
+    }
+
     //-------------------------------------------------------------------------
     //-- Branding Logo
     Image {
+        id: brandingLogo
         anchors.right:          parent.right
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
         anchors.margins:        ScreenTools.defaultFontPixelHeight * 0.66
-        visible:                _activeVehicle && !_communicationLost && x > (toolsFlickable.x + toolsFlickable.contentWidth + ScreenTools.defaultFontPixelWidth)
+        visible:                _activeVehicle && !_communicationLost
+                                && x > toolsFlickable.x + toolsFlickable.contentWidth + ScreenTools.defaultFontPixelWidth * (connectionAlert.visible ? 28 : 1)
         fillMode:               Image.PreserveAspectFit
         source:                 _outdoorPalette ? _brandImageOutdoor : _brandImageIndoor
         mipmap:                 true

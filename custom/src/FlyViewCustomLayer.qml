@@ -6,6 +6,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import DeepShark 1.0
 
 import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
 
@@ -127,6 +128,11 @@ Item {
         bottomEdgeLeftInset:    parentToolInsets.bottomEdgeLeftInset
         bottomEdgeCenterInset:  parentToolInsets.bottomEdgeCenterInset
         bottomEdgeRightInset:   parentToolInsets.bottomEdgeRightInset
+    }
+
+    Connections {
+        target: DeepSharkConnectionMonitor
+        function onEventOccurred(message) { _root.addDeepSharkEvent(message) }
     }
 
     FourVideoPanel {

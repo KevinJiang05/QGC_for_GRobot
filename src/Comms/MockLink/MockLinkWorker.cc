@@ -16,7 +16,17 @@ MockLinkWorker::MockLinkWorker(MockLink *link, QObject *parent)
     : QObject(parent)
     , _mockLink(link)
 {
+    _timer1Hz = new QTimer(this);
+    _timer10Hz = new QTimer(this);
+    _timer500Hz = new QTimer(this);
+    // Parameter streaming needs a 2 ms cadence, not coarse GUI timer scheduling.
+    _timer500Hz->setTimerType(Qt::PreciseTimer);
+    _timerStatusText = new QTimer(this);
 
+    (void) connect(_timer1Hz, &QTimer::timeout, this, &MockLinkWorker::run1HzTasks);
+    (void) connect(_timer10Hz, &QTimer::timeout, this, &MockLinkWorker::run10HzTasks);
+    (void) connect(_timer500Hz, &QTimer::timeout, this, &MockLinkWorker::run500HzTasks);
+    (void) connect(_timerStatusText, &QTimer::timeout, this, &MockLinkWorker::sendStatusTextMessages);
 }
 
 MockLinkWorker::~MockLinkWorker()
@@ -26,16 +36,6 @@ MockLinkWorker::~MockLinkWorker()
 
 void MockLinkWorker::startWork()
 {
-    _timer1Hz = new QTimer(this);
-    _timer10Hz = new QTimer(this);
-    _timer500Hz = new QTimer(this);
-    _timerStatusText = new QTimer(this);
-
-    (void) connect(_timer1Hz, &QTimer::timeout, this, &MockLinkWorker::run1HzTasks);
-    (void) connect(_timer10Hz, &QTimer::timeout, this, &MockLinkWorker::run10HzTasks);
-    (void) connect(_timer500Hz, &QTimer::timeout, this, &MockLinkWorker::run500HzTasks);
-    (void) connect(_timerStatusText, &QTimer::timeout, this, &MockLinkWorker::sendStatusTextMessages);
-
     _timer1Hz->start(1000);
     _timer10Hz->start(100);
     _timer500Hz->start(2);

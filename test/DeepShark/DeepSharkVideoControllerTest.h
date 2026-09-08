@@ -14,4 +14,7 @@ private slots:
     void _failedRestartCanScheduleAgain();
     void _startedRestartCanScheduleAgain();
     void _flyViewStatusQmlLoads();
+    void _videoRowsUpdateWithoutReplacingDelegates();
+    void _disabledVideoResourcesCanBeRecreated();
+    void _coreOptionsSurviveGarbageCollection();
 };

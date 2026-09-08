@@ -32,7 +32,7 @@ class QGCMAVLinkMessageField : public QObject
     Q_PROPERTY(QString                  value       READ value      NOTIFY valueChanged)
     Q_PROPERTY(bool                     selectable  READ selectable NOTIFY selectableChanged)
     Q_PROPERTY(int                      chartIndex  READ chartIndex CONSTANT)
-    Q_PROPERTY(const QAbstractSeries    *series     READ series     NOTIFY seriesChanged)
+    Q_PROPERTY(QAbstractSeries          *series     READ series     NOTIFY seriesChanged)
 
 public:
     QGCMAVLinkMessageField(const QString &name, const QString &type, QGCMAVLinkMessage *parent = nullptr);
@@ -44,7 +44,7 @@ public:
     QString value() const { return _value; }
     bool selectable() const { return _selectable; }
     bool selected() const { return !!_pSeries; }
-    const QAbstractSeries *series() const { return _pSeries; }
+    QAbstractSeries *series() const { return _pSeries; }
     const QList<QPointF> *values() const { return &_values; }
     qreal rangeMin() const { return _rangeMin; }
     qreal rangeMax() const { return _rangeMax; }

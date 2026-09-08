@@ -22,6 +22,7 @@ protected:
     void cleanup() final;
 
 private slots:
+    void _mockTrafficAndDisconnectUseOneThread();
     void _simpleLinkTest();
     void _simpleCommLossTest();
     void _multiLinkSingleVehicleTest();
@@ -29,6 +30,8 @@ private slots:
     void _highLatencyLinkTest();
 
 private:
+    // Full initialization includes downloading the entire mock parameter set.
+    static constexpr int _initialConnectTimeoutMs = 30000;
     void _startMockLink(int mockIndex, bool highLatency, bool incrementVehicleId, SharedLinkConfigurationPtr &sharedConfig, SharedLinkInterfacePtr &mockLink);
 
     static constexpr const char *_primaryLinkChangedSignalName = "primaryLinkChanged";

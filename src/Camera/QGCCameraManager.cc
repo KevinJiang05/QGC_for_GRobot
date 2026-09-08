@@ -23,6 +23,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QPointer>
 #include <QtQml/QQmlEngine>
 
 QGC_LOGGING_CATEGORY(CameraManagerLog, "qgc.camera.qgccameramanager")
@@ -433,6 +434,14 @@ QGCCameraManager::_handleTrackingImageStatus(const mavlink_message_t& message)
 }
 
 // Forward declarations for mutually recursive handler functions
+// Vehicle owns pending command callbacks and may outlive the camera manager.
+// Keep callback storage alive with Vehicle, but only weakly reference the camera.
+struct CameraInfoRequestContext : QObject {
+    explicit CameraInfoRequestContext(QGCCameraManager::CameraStruct *info)
+        : QObject(info->vehicle), cameraInfo(info) {}
+    QPointer<QGCCameraManager::CameraStruct> cameraInfo;
+};
+
 static void _requestCameraInfoCommandResultHandler(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, Vehicle::MavCmdResultFailureCode_t failureCode);
 static void _requestCameraInfoMessageResultHandler(void* resultHandlerData, MAV_RESULT result, Vehicle::RequestMessageResultHandlerFailureCode_t failureCode, const mavlink_message_t& message);
 static void _requestCameraInfoHelper(QGCCameraManager* manager, QGCCameraManager::CameraStruct* pInfo);
@@ -467,7 +476,10 @@ static void _handleCameraInfoRetry(QGCCameraManager::CameraStruct* cameraInfo)
 
 static void _requestCameraInfoCommandResultHandler(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, Vehicle::MavCmdResultFailureCode_t failureCode)
 {
-    auto  cameraInfo = static_cast<QGCCameraManager::CameraStruct*>(resultHandlerData);
+    auto context = static_cast<CameraInfoRequestContext*>(resultHandlerData);
+    auto cameraInfo = context->cameraInfo;
+    context->deleteLater();
+    if (!cameraInfo) { return; }
 
     if (ack.result != MAV_RESULT_ACCEPTED) {
         qCDebug(CameraManagerLog) << "MAV_CMD_REQUEST_CAMERA_INFORMATION failed. compId" << cameraInfo->compID << "Result:" << ack.result << "FailureCode:" << failureCode << "retryCount:" << cameraInfo->retryCount;
@@ -478,7 +490,10 @@ static void _requestCameraInfoCommandResultHandler(void* resultHandlerData, int 
 
 static void _requestCameraInfoMessageResultHandler(void* resultHandlerData, MAV_RESULT result, Vehicle::RequestMessageResultHandlerFailureCode_t failureCode, [[maybe_unused]] const mavlink_message_t& message)
 {
-    auto cameraInfo = static_cast<QGCCameraManager::CameraStruct*>(resultHandlerData);
+    auto context = static_cast<CameraInfoRequestContext*>(resultHandlerData);
+    auto cameraInfo = context->cameraInfo;
+    context->deleteLater();
+    if (!cameraInfo) { return; }
 
     if (result != MAV_RESULT_ACCEPTED) {
         qCDebug(CameraManagerLog) << "MAV_CMD_REQUEST_MESSAGE:MAVLINK_MSG_ID_CAMERA_INFORMATION failed. compId" << cameraInfo->compID << "Result:" << result << "FailureCode:" << failureCode << "retryCount:" << cameraInfo->retryCount;
@@ -499,13 +514,13 @@ static void _requestCameraInfoHelper(QGCCameraManager* manager, QGCCameraManager
     // Make immediate request - alternate between REQUEST_MESSAGE and REQUEST_CAMERA_INFORMATION
     if (pInfo->retryCount % 2 == 0) {
         qCDebug(CameraManagerLog) << "Using MAV_CMD_REQUEST_MESSAGE for compId" << pInfo->compID;
-        manager->vehicle()->requestMessage(_requestCameraInfoMessageResultHandler, pInfo, pInfo->compID, MAVLINK_MSG_ID_CAMERA_INFORMATION);
+        manager->vehicle()->requestMessage(_requestCameraInfoMessageResultHandler, new CameraInfoRequestContext(pInfo), pInfo->compID, MAVLINK_MSG_ID_CAMERA_INFORMATION);
     } else {
         qCDebug(CameraManagerLog) << "Using MAV_CMD_REQUEST_CAMERA_INFORMATION for compId" << pInfo->compID;
 
         Vehicle::MavCmdAckHandlerInfo_t ackHandlerInfo;
         ackHandlerInfo.resultHandler        = _requestCameraInfoCommandResultHandler;
-        ackHandlerInfo.resultHandlerData    = pInfo;
+        ackHandlerInfo.resultHandlerData    = new CameraInfoRequestContext(pInfo);
         ackHandlerInfo.progressHandler      = nullptr;
         ackHandlerInfo.progressHandlerData  = nullptr;
 

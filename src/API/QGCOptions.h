@@ -88,7 +88,7 @@ class QGCOptions : public QObject
     Q_PROPERTY(double toolbarHeightMultiplier       READ toolbarHeightMultiplier        CONSTANT)
     Q_PROPERTY(float devicePixelDensity             READ devicePixelDensity             NOTIFY devicePixelDensityChanged)
     Q_PROPERTY(float devicePixelRatio               READ devicePixelRatio               NOTIFY devicePixelRatioChanged)
-    Q_PROPERTY(const QGCFlyViewOptions *flyView     READ flyViewOptions                 CONSTANT)
+    Q_PROPERTY(QGCFlyViewOptions *flyView           READ flyViewOptions                 CONSTANT)
     Q_PROPERTY(QString firmwareUpgradeSingleURL     READ firmwareUpgradeSingleURL       CONSTANT)
     Q_PROPERTY(QStringList surveyBuiltInPresetNames READ surveyBuiltInPresetNames       CONSTANT)
     Q_PROPERTY(QUrl preFlightChecklistUrl           READ preFlightChecklistUrl          CONSTANT)
@@ -177,7 +177,7 @@ public:
     virtual float devicePixelRatio() const { return 0.0f; }
     virtual float devicePixelDensity() const { return 0.0f; }
 
-    virtual const QGCFlyViewOptions *flyViewOptions() const { return _defaultFlyViewOptions; }
+    virtual QGCFlyViewOptions *flyViewOptions() const { return _defaultFlyViewOptions; }
 
 signals:
     void allowJoystickSelectionChanged(bool allow);
@@ -197,5 +197,5 @@ signals:
     void showSimpleMissionStartChanged();
 
 protected:
-    const QGCFlyViewOptions *_defaultFlyViewOptions = nullptr;
+    QGCFlyViewOptions *_defaultFlyViewOptions = nullptr;
 };

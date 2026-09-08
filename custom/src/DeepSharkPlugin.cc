@@ -16,6 +16,7 @@
 #include "ThrusterDirectControlController.h"
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
+#include "DeepSharkConnectionMonitor.h"
 
 Q_APPLICATION_STATIC(DeepSharkPlugin, _deepSharkPluginInstance);
 
@@ -45,6 +46,9 @@ void DeepSharkPlugin::init()
     static DeepSharkVideoSettings videoSettings;
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkAuvController", &auvController);
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", &videoSettings);
+    auto *connectionMonitor = DeepSharkConnectionMonitor::instance();
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkConnectionMonitor", connectionMonitor);
+    connectionMonitor->start();
     qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
     qmlRegisterType<ThrusterMappingExportController>("DeepShark", 1, 0, "ThrusterMappingExportController");
     qmlRegisterType<ThrusterDirectControlController>("DeepShark", 1, 0, "ThrusterDirectControlController");

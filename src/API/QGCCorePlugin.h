@@ -42,8 +42,10 @@ class QGCCorePlugin : public QObject
     Q_PROPERTY(int defaultSettings                      READ defaultSettings                                                CONSTANT)
     Q_PROPERTY(int offlineVehicleFirstRunPromptId       MEMBER kOfflineVehicleFirstRunPromptId                              CONSTANT)
     Q_PROPERTY(int unitsFirstRunPromptId                MEMBER kUnitsFirstRunPromptId                                       CONSTANT)
-    Q_PROPERTY(const QGCOptions *options                READ options                                                        CONSTANT)
-    Q_PROPERTY(const QmlObjectListModel *customMapItems READ customMapItems                                                 CONSTANT)
+    // Avoid Qt 6.8.3's const QObject wrapper GC assertion across QML engines.
+    // CONSTANT keeps the property read-only without a second const wrapper.
+    Q_PROPERTY(QGCOptions *options                      READ options                                                        CONSTANT)
+    Q_PROPERTY(QmlObjectListModel *customMapItems        READ customMapItems                                                 CONSTANT)
     Q_PROPERTY(QString brandImageIndoor                 READ brandImageIndoor                                               CONSTANT)
     Q_PROPERTY(QString brandImageOutdoor                READ brandImageOutdoor                                              CONSTANT)
     Q_PROPERTY(QString showAdvancedUIMessage            READ showAdvancedUIMessage                                          CONSTANT)
@@ -119,7 +121,7 @@ public:
     virtual bool mavlinkMessage(Vehicle *vehicle, LinkInterface *link, const mavlink_message_t &message) { Q_UNUSED(vehicle); Q_UNUSED(link); Q_UNUSED(message); return true; }
 
     /// Allows custom builds to add custom items to the FlightMap. Objects put into QmlObjectListModel should derive from QmlComponentInfo and set the url property.
-    virtual const QmlObjectListModel *customMapItems();
+    virtual QmlObjectListModel *customMapItems();
 
     /// Allows custom builds to add custom items to the plan file before the document is created.
     virtual void preSaveToJson(PlanMasterController *pController, QJsonObject &json) { Q_UNUSED(pController); Q_UNUSED(json); }

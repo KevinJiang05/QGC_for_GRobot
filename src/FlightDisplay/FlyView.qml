@@ -134,6 +134,16 @@ Item {
             z:                  _pipView.z + 1
         }
 
+        // Keep the optional action buttons below the custom video panel,
+        // while confirmations in widgetLayer remain above it.
+        Item {
+            id:                     flightActionUnderlay
+            anchors.fill:           widgetLayer
+            z:                      _fullItemZorder + 1
+            visible:                widgetLayer.visible
+            enabled:                !customOverlay.mapHidden
+        }
+
         FlyViewWidgetLayer {
             id:                     widgetLayer
             anchors.top:            parent.top
@@ -146,6 +156,8 @@ Item {
             visible:                !QGroundControl.videoManager.fullScreen
             utmspActTrigger:        utmspSendActTrigger
             isViewer3DOpen:         viewer3DWindow.isOpen
+            flightActionLayer:     flightActionUnderlay
+            mapObscured:           _customContentBlocksMap
         }
 
         FlyViewCustomLayer {

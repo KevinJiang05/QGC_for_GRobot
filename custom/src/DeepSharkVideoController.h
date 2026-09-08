@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QSize>
@@ -40,6 +41,8 @@ class DeepSharkVideoController : public QObject
     Q_PROPERTY(quint64 frameCount READ frameCount NOTIFY frameCountChanged)
     Q_PROPERTY(int estimatedLatencyMs READ estimatedLatencyMs NOTIFY latencyChanged)
     Q_PROPERTY(QString latencyText READ latencyText NOTIFY latencyChanged)
+    Q_PROPERTY(bool alertExpected MEMBER _alertExpected NOTIFY alertExpectedChanged)
+    Q_PROPERTY(QString alertTitle MEMBER _alertTitle NOTIFY alertTitleChanged)
 
 public:
     explicit DeepSharkVideoController(QObject *parent = nullptr);
@@ -61,6 +64,9 @@ public:
     quint64 frameCount() const;
     int estimatedLatencyMs() const;
     QString latencyText() const;
+    bool alertExpected() const { return _alertExpected; }
+    QString alertTitle() const { return _alertTitle; }
+    quint64 totalFrameCount() const { return _totalFrameCount.load(std::memory_order_relaxed); }
 
     void setVideoItem(QQuickItem *videoItem);
     void setReceiverName(const QString &receiverName);
@@ -87,11 +93,15 @@ signals:
     void frameRateTextChanged();
     void frameCountChanged();
     void latencyChanged();
+    void alertExpectedChanged();
+    void alertTitleChanged();
 
 private:
     friend class DeepSharkVideoControllerTest;
+    friend class DeepSharkConnectionMonitorTest;
 
     void _ensureReceiver();
+    void _releaseReceiver();
     void _rebuildSink();
     void _prepareRestart(int delayMs);
     void _scheduleStart(int delayMs);
@@ -129,6 +139,11 @@ private:
     QSize _videoSize;
     double _frameRate = 0.0;
     int _estimatedLatencyMs = -1;
+    QElapsedTimer _startupElapsedTimer;
+    bool _firstFrameLogged = false;
+    bool _alertExpected = false;
+    QString _alertTitle;
+    std::atomic<quint64> _totalFrameCount { 0 }; // Never reset during reconnects.
     QTimer _startTimer;
     QTimer _frameRateTimer;
 

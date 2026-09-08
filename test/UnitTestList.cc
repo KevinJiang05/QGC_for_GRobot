@@ -37,6 +37,7 @@
 #include "AIDetectionReceiverTest.h"
 #include "DeepSharkAuvControllerTest.h"
 #include "DeepSharkVideoControllerTest.h"
+#include "DeepSharkConnectionMonitorTest.h"
 #include "ThrusterDirectControlControllerTest.h"
 
 // FactSystem
@@ -148,6 +149,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(AIDetectionReceiverTest)
     UT_REGISTER_TEST(DeepSharkAuvControllerTest)
     UT_REGISTER_TEST(DeepSharkVideoControllerTest)
+    UT_REGISTER_TEST(DeepSharkConnectionMonitorTest)
     UT_REGISTER_TEST(ThrusterDirectControlControllerTest)
 
     // FactSystem

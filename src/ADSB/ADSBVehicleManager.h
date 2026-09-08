@@ -28,7 +28,7 @@ class ADSBVehicleManager : public QObject
     Q_OBJECT
     Q_MOC_INCLUDE("QmlObjectListModel.h")
 
-    Q_PROPERTY(const QmlObjectListModel *adsbVehicles READ adsbVehicles CONSTANT)
+    Q_PROPERTY(QmlObjectListModel *adsbVehicles READ adsbVehicles CONSTANT)
 
 public:
     explicit ADSBVehicleManager(ADSBVehicleManagerSettings *settings, QObject *parent = nullptr);
@@ -36,7 +36,7 @@ public:
 
     static ADSBVehicleManager *instance();
 
-    const QmlObjectListModel *adsbVehicles() const { return _adsbVehicles; }
+    QmlObjectListModel *adsbVehicles() const { return _adsbVehicles; }
 
     void mavlinkMessageReceived(const mavlink_message_t &message);
 

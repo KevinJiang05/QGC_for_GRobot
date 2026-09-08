@@ -77,7 +77,7 @@ class Joystick : public QThread
     Q_PROPERTY(int                      axisCount               READ    axisCount                                           CONSTANT)
     Q_PROPERTY(int                      throttleMode            READ    throttleMode            WRITE setThrottleMode       NOTIFY throttleModeChanged)
     Q_PROPERTY(int                      totalButtonCount        READ    totalButtonCount                                    CONSTANT)
-    Q_PROPERTY(const QmlObjectListModel *assignableActions      READ    assignableActions                                   NOTIFY assignableActionsChanged)
+    Q_PROPERTY(QmlObjectListModel *assignableActions            READ    assignableActions                                   NOTIFY assignableActionsChanged)
     Q_PROPERTY(QString                  disabledActionName      READ    disabledActionName                                  CONSTANT)
     Q_PROPERTY(QString                  name                    READ    name                                                CONSTANT)
     Q_PROPERTY(QStringList              assignableActionTitles  READ    assignableActionTitles                              NOTIFY assignableActionsChanged)
@@ -126,7 +126,7 @@ public:
     int totalButtonCount() const { return _totalButtonCount; }
     int axisCount() const { return _axisCount; }
     QStringList buttonActions() const;
-    const QmlObjectListModel *assignableActions() const { return _assignableButtonActions; }
+    QmlObjectListModel *assignableActions() const { return _assignableButtonActions; }
     QStringList assignableActionTitles() const { return _availableActionTitles; }
     QString disabledActionName() const { return _buttonActionNone; }
 

@@ -7,10 +7,9 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QProcess>
 #include <QtCore/QString>
 #include <QtCore/QVariant>
-
-class QProcess;
 
 class AIDetectionManager : public QObject
 {
@@ -73,7 +72,8 @@ signals:
 private slots:
     void _checkFinished(int exitCode);
     void _detectFinished(int exitCode);
-    void _detectError();
+    void _detectError(QProcess::ProcessError error);
+    void _detectStarted();
     void _readDetectOutput();
 
 private:
@@ -84,6 +84,7 @@ private:
     QString _settingsFilePath() const;
     QString _validateConfiguration() const;
     QStringList _detectionArguments() const;
+    void _requestDetectionStop(bool restartAfterStop);
     void _setStatusText(const QString &statusText);
     void _setCheckReport(const QString &checkReport);
     void _deleteProcess(QProcess *&process);
@@ -92,6 +93,8 @@ private:
     QProcess *_detectProcess = nullptr;
     QProcess *_checkProcess = nullptr;
     bool _shuttingDown = false;
+    bool _restartPending = false;
+    bool _stopRequested = false;
     QString _pythonPathValue;
     QString _modelPathValue;
     QString _device;

@@ -161,29 +161,98 @@ bool DeepSharkAuvController::importPlan(const QString &filePath)
         return false;
     }
 
-    const QJsonArray items = root.value(QStringLiteral("mission")).toObject().value(QStringLiteral("items")).toArray();
+    const QJsonValue missionValue = root.value(QStringLiteral("mission"));
+    if (!missionValue.isObject()) {
+        _setMissionError(tr("任务文件格式错误：mission 必须是对象"));
+        return false;
+    }
+
+    const QJsonValue itemsValue = missionValue.toObject().value(QStringLiteral("items"));
+    if (!itemsValue.isArray()) {
+        _setMissionError(tr("任务文件格式错误：mission.items 必须是数组"));
+        return false;
+    }
+
+    const QJsonArray items = itemsValue.toArray();
     QVariantList parsedWaypoints;
     double distance = 0.0;
     double previousLatitude = 0.0;
     double previousLongitude = 0.0;
     bool havePrevious = false;
 
-    for (const QJsonValue &itemValue : items) {
-        const QJsonObject item = itemValue.toObject();
-        const QJsonArray coordinate = item.value(QStringLiteral("coordinate")).toArray();
-        if (coordinate.size() < 2 || !coordinate.at(0).isDouble() || !coordinate.at(1).isDouble()) {
-            continue;
+    for (qsizetype itemIndex = 0; itemIndex < items.size(); ++itemIndex) {
+        const QJsonValue itemValue = items.at(itemIndex);
+        if (!itemValue.isObject()) {
+            _setMissionError(tr("任务文件格式错误：第 %1 个任务项必须是对象").arg(itemIndex + 1));
+            return false;
         }
 
-        const double latitude = coordinate.at(0).toDouble();
-        const double longitude = coordinate.at(1).toDouble();
+        const QJsonObject item = itemValue.toObject();
+        const QString itemType = item.value(QStringLiteral("type")).toString();
+        if (itemType == QStringLiteral("ComplexItem")) {
+            _setMissionError(tr("任务包含暂不支持预览的复杂任务项（第 %1 项）").arg(itemIndex + 1));
+            return false;
+        }
+        if (itemType.isEmpty()
+            || (itemType != QStringLiteral("SimpleItem")
+                && itemType != QStringLiteral("MissionItem")
+                && itemType != QStringLiteral("missionItem"))) {
+            _setMissionError(tr("任务文件格式错误：第 %1 个任务项类型无效").arg(itemIndex + 1));
+            return false;
+        }
+
+        double latitude = 0.0;
+        double longitude = 0.0;
+        double altitude = _defaultDepth;
+        const QJsonValue coordinateValue = item.value(QStringLiteral("coordinate"));
+        if (!coordinateValue.isUndefined()) {
+            if (!coordinateValue.isArray()) {
+                _setMissionError(tr("任务文件格式错误：第 %1 个任务项的 coordinate 必须是数组").arg(itemIndex + 1));
+                return false;
+            }
+            const QJsonArray coordinate = coordinateValue.toArray();
+            if (coordinate.size() < 2 || !coordinate.at(0).isDouble() || !coordinate.at(1).isDouble()) {
+                _setMissionError(tr("任务文件格式错误：第 %1 个任务项的经纬度无效").arg(itemIndex + 1));
+                return false;
+            }
+            latitude = coordinate.at(0).toDouble();
+            longitude = coordinate.at(1).toDouble();
+            if (coordinate.size() > 2 && coordinate.at(2).isDouble()) {
+                altitude = coordinate.at(2).toDouble();
+            }
+        } else {
+            const QJsonValue paramsValue = item.value(QStringLiteral("params"));
+            if (!paramsValue.isArray()) {
+                _setMissionError(tr("任务文件格式错误：第 %1 个任务项缺少坐标参数").arg(itemIndex + 1));
+                return false;
+            }
+            const QJsonArray params = paramsValue.toArray();
+            if (params.size() != 7) {
+                _setMissionError(tr("任务文件格式错误：第 %1 个任务项的 params 坐标无效").arg(itemIndex + 1));
+                return false;
+            }
+            if (params.at(4).isNull() && params.at(5).isNull()) {
+                continue;
+            }
+            if (!params.at(4).isDouble() || !params.at(5).isDouble()) {
+                _setMissionError(tr("任务文件格式错误：第 %1 个任务项的 params 坐标无效").arg(itemIndex + 1));
+                return false;
+            }
+            latitude = params.at(4).toDouble();
+            longitude = params.at(5).toDouble();
+            if (params.at(6).isDouble()) {
+                altitude = params.at(6).toDouble();
+            }
+        }
+
+        if (latitude < -90.0 || latitude > 90.0 || longitude < -180.0 || longitude > 180.0) {
+            _setMissionError(tr("任务文件格式错误：第 %1 个任务项的经纬度超出范围").arg(itemIndex + 1));
+            return false;
+        }
         if (qFuzzyIsNull(latitude) && qFuzzyIsNull(longitude)) {
             continue;
         }
 
-        const double altitude = coordinate.size() > 2 && coordinate.at(2).isDouble()
-                                    ? coordinate.at(2).toDouble()
-                                    : _defaultDepth;
         QVariantMap waypoint;
         waypoint.insert(QStringLiteral("sequence"), parsedWaypoints.count() + 1);
         waypoint.insert(QStringLiteral("latitude"), latitude);

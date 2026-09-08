@@ -132,6 +132,74 @@ function Invoke-VsCommand {
     Invoke-NativeCommand -Executable $env:ComSpec -Arguments @('/d', '/s', '/c', $wrapped)
 }
 
+function Invoke-StagedBootTest {
+    param([Parameter(Mandatory = $true)][string]$ApplicationPath)
+
+    $stagedBin = Split-Path -Parent $ApplicationPath
+    $stagedRoot = Split-Path -Parent $stagedBin
+    $stdoutPath = Join-Path $runDirectory 'simple-boot.stdout.log'
+    $stderrPath = Join-Path $runDirectory 'simple-boot.stderr.log'
+    $environmentNames = @(
+        'PATH',
+        'QT_PLUGIN_PATH',
+        'QT_QPA_PLATFORM_PLUGIN_PATH',
+        'GST_PLUGIN_PATH_1_0',
+        'GST_PLUGIN_SYSTEM_PATH_1_0',
+        'GST_PLUGIN_SCANNER_1_0',
+        'GST_REGISTRY_1_0'
+    )
+    $environmentBackup = @{}
+
+    foreach ($name in $environmentNames) {
+        $environmentBackup[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
+
+    try {
+        $systemRoot = [Environment]::GetEnvironmentVariable('SystemRoot', 'Process')
+        $cleanPath = @($stagedBin, (Join-Path $systemRoot 'System32'), $systemRoot) -join ';'
+        [Environment]::SetEnvironmentVariable('PATH', $cleanPath, 'Process')
+        [Environment]::SetEnvironmentVariable('QT_PLUGIN_PATH', (Join-Path $stagedRoot 'plugins'), 'Process')
+        [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM_PLUGIN_PATH', (Join-Path $stagedRoot 'plugins\platforms'), 'Process')
+        [Environment]::SetEnvironmentVariable('GST_PLUGIN_PATH_1_0', (Join-Path $stagedRoot 'lib\gstreamer-1.0'), 'Process')
+        [Environment]::SetEnvironmentVariable('GST_PLUGIN_SYSTEM_PATH_1_0', (Join-Path $stagedRoot 'lib\gstreamer-1.0'), 'Process')
+        [Environment]::SetEnvironmentVariable('GST_PLUGIN_SCANNER_1_0', (Join-Path $stagedRoot 'libexec\gstreamer-1.0\gst-plugin-scanner.exe'), 'Process')
+        [Environment]::SetEnvironmentVariable('GST_REGISTRY_1_0', (Join-Path $runDirectory 'gst-registry.bin'), 'Process')
+
+        $process = Start-Process -FilePath $ApplicationPath `
+            -ArgumentList '--simple-boot-test' `
+            -WorkingDirectory $stagedBin `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -PassThru
+        if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit()
+            $stderr = if (Test-Path -LiteralPath $stderrPath) { (Get-Content -LiteralPath $stderrPath -Raw).Trim() } else { '' }
+            throw "Staged application simple boot test timed out after 30 seconds. $stderr"
+        }
+        $process.WaitForExit()
+
+        $stdout = if (Test-Path -LiteralPath $stdoutPath) { (Get-Content -LiteralPath $stdoutPath -Raw).Trim() } else { '' }
+        $stderr = if (Test-Path -LiteralPath $stderrPath) { (Get-Content -LiteralPath $stderrPath -Raw).Trim() } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($stdout)) {
+            Write-Host $stdout
+        }
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+            Write-Host $stderr
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "Staged application simple boot test failed with exit code $($process.ExitCode)."
+        }
+        Write-Host 'Staged application simple boot test passed.'
+    }
+    finally {
+        foreach ($name in $environmentNames) {
+            [Environment]::SetEnvironmentVariable($name, $environmentBackup[$name], 'Process')
+        }
+    }
+}
+
 function Replace-Required {
     param(
         [Parameter(Mandatory = $true)][string]$Content,
@@ -150,7 +218,6 @@ function Replace-Required {
 function Set-ReleaseVersion {
     $overridesPath = Join-Path $projectRoot 'custom\cmake\CustomOverrides.cmake'
     $resourcePath = Join-Path $projectRoot 'custom\GRobot.rc'
-    $helpPath = Join-Path $projectRoot 'src\UI\AppSettings\HelpSettings.qml'
     $commaVersion = ($Version -replace '\.', ',') + ',0'
 
     $content = Get-Content -LiteralPath $overridesPath -Raw
@@ -164,10 +231,6 @@ function Set-ReleaseVersion {
     $content = Replace-Required $content 'VALUE "FileVersion", "\d+\.\d+\.\d+"' ("VALUE `"FileVersion`", `"{0}`"" -f $Version) 'Windows FileVersion string'
     $content = Replace-Required $content 'VALUE "ProductVersion", "\d+\.\d+\.\d+"' ("VALUE `"ProductVersion`", `"{0}`"" -f $Version) 'Windows ProductVersion string'
     Write-Utf8NoBom -LiteralPath $resourcePath -Content $content
-
-    $content = Get-Content -LiteralPath $helpPath -Raw
-    $content = Replace-Required $content 'QGC_KevinJiang \d+\.\d+\.\d+ 基于开源' ("QGC_KevinJiang {0} 基于开源" -f $Version) 'Help page version'
-    Write-Utf8NoBom -LiteralPath $helpPath -Content $content
 
     Write-Host "Version sources updated to $Version"
 }
@@ -237,6 +300,12 @@ try {
             }
             Write-Host "OK: $path"
         }
+
+        $helpContent = Get-Content -LiteralPath (Join-Path $projectRoot 'src\UI\AppSettings\HelpSettings.qml') -Raw
+        if ($helpContent -notmatch '\.arg\(QGroundControl\.qgcVersion\)') {
+            throw 'Help page must display the runtime QGroundControl.qgcVersion instead of a fixed release number.'
+        }
+        Write-Host 'OK: Help page version is bound to QGroundControl.qgcVersion'
 
         if (-not (Test-Path -LiteralPath 'D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat')) {
             throw 'Visual Studio build environment is missing.'
@@ -312,6 +381,7 @@ try {
             'bin\Qt6Gui.dll',
             'bin\Qt6Qml.dll',
             'bin\Qt6Quick.dll',
+            'bin\gstgl-1.0-0.dll',
             'bin\gstreamer-1.0-0.dll'
         )
         foreach ($relativePath in $requiredRuntimeFiles) {
@@ -321,6 +391,8 @@ try {
             }
             Write-Host "Runtime OK: $relativePath"
         }
+
+        Invoke-StagedBootTest -ApplicationPath $applicationPath
 
         $installer = Get-Item -LiteralPath $installerPath
         $application = Get-Item -LiteralPath $applicationPath

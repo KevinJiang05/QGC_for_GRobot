@@ -75,6 +75,9 @@ ui_*
 *.moc
 *.prl
 .qmlls.ini
+*.qmlc
+__pycache__/
+*.pyc
 
 # android
 android/local.properties

@@ -20,7 +20,7 @@ import DeepShark
 
 QGCPopupDialog {
     id:             root
-    title:          qsTr("SERVO输出扫描向导")
+    title:          qsTr("SERVO 输出扫描向导")
     buttons:        Dialog.Close
 
     readonly property var currentActiveVehicle: QGroundControl.multiVehicleManager.activeVehicle
@@ -40,16 +40,15 @@ QGCPopupDialog {
     property bool   directServoMode:    false
     property bool   servoJogMode:       false
     property string directServoOperation: "thruster"
-    property int    directServoOutput:  -1
-    property int    directServoPendingOutput: -1
-    property int    directServoOriginalFunction: -1
+    readonly property int directServoOutput: directControl.output
+    readonly property int directServoPendingOutput: directControl.pendingOutput
+    readonly property int directServoOriginalFunction: directControl.originalFunction
     property int    directServoTestPwm: 1500
     property int    directServoTestSeconds: 1
     property int    directServoNeutralPwm: 1500
     property var    directServoFact:    null
-    property string directServoState:   "idle"
-    property int    directServoWaitTicks: 0
-    property string directServoFailureReason: ""
+    readonly property string directServoState: directControl.stateName
+    readonly property string directServoFailureReason: directControl.failureReason
     property bool   recoveryDiscardConfirmation: false
     property var    recoveryVehicleObject: null
     property bool   disarmRequested:     false
@@ -86,6 +85,73 @@ QGCPopupDialog {
         id: exportController
     }
 
+    ThrusterDirectControlController {
+        id: directControl
+
+        onFunctionWriteRequested: (value) => {
+            if (root.directServoFact === null) {
+                directControl.reportParameterUnavailable(qsTr("参数对象不可用"))
+                return
+            }
+            root.directServoFact.rawValue = value
+        }
+
+        onParameterCheckRequested: {
+            if (root.directServoFact === null || root.activeVehicle === null) {
+                directControl.reportParameterUnavailable(qsTr("载具连接或参数对象不可用"))
+                return
+            }
+            directControl.observeParameterState(Number(root.directServoFact.rawValue),
+                                                 root.activeVehicle.parameterManager.pendingWrites)
+        }
+
+        onServoPwmRequested: (output, pwm) => root.sendDirectServoPwm(output, pwm)
+
+        onStateChanged: {
+            switch (directControl.stateName) {
+            case "disableSettling":
+                root.directServoStatusText = qsTr("%1 已确认 Disabled，准备发送测试 PWM。")
+                        .arg(root.directServoFact ? root.directServoFact.name : root.servoParamName(mappingSettings.recoveryOutput))
+                break
+            case "waitingTestAck":
+                root.directServoStatusText = qsTr("已发送 SERVO%1=%2 PWM，等待飞控确认。")
+                        .arg(directControl.output)
+                        .arg(root.directServoTestPwm)
+                break
+            case "testing":
+                root.directServoStatusText = qsTr("正在直接输出 SERVO%1 = %2 PWM。")
+                        .arg(directControl.output)
+                        .arg(root.directServoTestPwm)
+                break
+            case "waitingNeutralAck":
+                root.directServoStatusText = qsTr("正在将 SERVO%1 回中到 TRIM=%2，等待飞控确认。")
+                        .arg(directControl.output)
+                        .arg(root.directServoNeutralPwm)
+                break
+            case "waitingRestore":
+                root.directServoStatusText = root.directServoFact
+                        ? qsTr("正在恢复 %1=%2。").arg(root.directServoFact.name).arg(directControl.originalFunction)
+                        : qsTr("正在恢复原功能参数。")
+                break
+            }
+        }
+
+        onRecoveryCompleted: (output, failureReason) => {
+            root.clearRecoveryJournal()
+            root.directServoFact = null
+            root.directServoNeutralPwm = 1500
+            root.directServoStatusText = failureReason.length > 0
+                    ? qsTr("SERVO%1 已确认恢复；本次%2提前结束：%3。").arg(output).arg(root.directServoOperationText()).arg(failureReason)
+                    : qsTr("SERVO%1 已回中，并确认恢复原功能参数。").arg(output)
+            root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("%1已结束").arg(root.directServoOperationText()))
+        }
+
+        onRecoveryRequired: (reason) => {
+            root.closeAfterSafeShutdown = false
+            root.directServoStatusText = qsTr("恢复尚未确认：%1。请保持飞控上锁并使用“恢复异常通道”。").arg(reason)
+        }
+    }
+
     Settings {
         id:         mappingSettings
         category:   "DeepSharkServoOutputMapping"
@@ -97,33 +163,15 @@ QGCPopupDialog {
         property int    directServoSeconds: 1
         property int    servoJogPwm:    1200
         property int    servoJogSeconds: 1
-        property bool   hasFunctionBackup: false
 
-        // Legacy backup values remain readable for compatibility, but are never
-        // automatically restored. Recovery below is scoped to one vehicle/output.
+        // Recovery is scoped to one vehicle/output. Obsolete whole-vehicle
+        // backup settings are intentionally not loaded or restored.
         property bool   recoveryPending: false
         property int    recoveryVehicleId: -1
         property string recoveryVehicleUid: ""
         property int    recoveryOutput: -1
         property int    recoveryFunction: -1
         property string recoveryTimestamp: ""
-
-        property int    backupServo1Function: 0
-        property int    backupServo2Function: 0
-        property int    backupServo3Function: 0
-        property int    backupServo4Function: 0
-        property int    backupServo5Function: 0
-        property int    backupServo6Function: 0
-        property int    backupServo7Function: 0
-        property int    backupServo8Function: 0
-        property int    backupServo9Function: 0
-        property int    backupServo10Function: 0
-        property int    backupServo11Function: 0
-        property int    backupServo12Function: 0
-        property int    backupServo13Function: 0
-        property int    backupServo14Function: 0
-        property int    backupServo15Function: 0
-        property int    backupServo16Function: 0
 
         property string port1Name:      ""
         property string port2Name:      ""
@@ -465,7 +513,7 @@ QGCPopupDialog {
     }
 
     function directServoBusy() {
-        return root.directServoState !== "idle" && root.directServoState !== "recoveryNeeded"
+        return directControl.busy
     }
 
     function directServoStateText() {
@@ -479,13 +527,6 @@ QGCPopupDialog {
         case "recoveryNeeded": return qsTr("需要人工恢复")
         default: return qsTr("空闲")
         }
-    }
-
-    function directParameterWriteConfirmed(expectedValue) {
-        return root.directServoFact !== null
-                && Number(root.directServoFact.rawValue) === expectedValue
-                && root.activeVehicle !== null
-                && !root.activeVehicle.parameterManager.pendingWrites
     }
 
     function recoveryJournalCanBeDiscarded() {
@@ -601,32 +642,19 @@ QGCPopupDialog {
         }
 
         root.directServoFact = fact
-        root.directServoOriginalFunction = originalFunction
-        root.directServoPendingOutput = outputNumber
-        root.directServoFailureReason = ""
-        root.directServoState = "waitingDisable"
-        root.directServoWaitTicks = 0
         root.saveRecoveryJournal(outputNumber, originalFunction)
         root.directServoStatusText = qsTr("%1：已备份 %2=%3，正在等待飞控确认 Disabled。")
                 .arg(root.directServoOperationText())
                 .arg(root.servoParamName(outputNumber))
                 .arg(originalFunction)
-        root.directServoFact.rawValue = 0
-        directParameterMonitor.restart()
-    }
-
-    function stopDirectServoTimers() {
-        if (directServoSettleTimer.running) {
-            directServoSettleTimer.stop()
-        }
-        if (directServoStopTimer.running) {
-            directServoStopTimer.stop()
-        }
-        if (directCommandTimeout.running) {
-            directCommandTimeout.stop()
-        }
-        if (directParameterMonitor.running) {
-            directParameterMonitor.stop()
+        if (!directControl.beginTest(outputNumber,
+                                     originalFunction,
+                                     root.directServoTestPwm,
+                                     root.directServoNeutralPwm,
+                                     Math.max(1, root.directServoTestSeconds) * 1000)) {
+            root.clearRecoveryJournal()
+            root.directServoFact = null
+            root.directServoStatusText = qsTr("直接输出状态初始化失败，未修改飞控参数。")
         }
     }
 
@@ -636,93 +664,6 @@ QGCPopupDialog {
         }
 
         root.activeVehicle.sendCommand(root.autopilotComponentId, root.setServoCommand, false, outputNumber, pwm)
-    }
-
-    function beginDirectServoOutput() {
-        if (!root.activeVehicle || root.directServoPendingOutput === -1 || root.directServoState !== "disableSettling") {
-            root.beginDirectServoRestore(qsTr("载具连接或直测状态发生变化"))
-            return
-        }
-
-        root.directServoOutput = root.directServoPendingOutput
-        root.directServoPendingOutput = -1
-        root.directServoState = "waitingTestAck"
-        root.sendDirectServoPwm(root.directServoOutput, root.directServoTestPwm)
-        root.directServoStatusText = qsTr("已发送 SERVO%1=%2 PWM，等待飞控确认。")
-                .arg(root.directServoOutput)
-                .arg(root.directServoTestPwm)
-        directCommandTimeout.restart()
-    }
-
-    function beginDirectServoNeutral() {
-        if (root.directServoOutput === -1) {
-            root.beginDirectServoRestore(qsTr("测试通道状态无效"))
-            return
-        }
-
-        directServoStopTimer.stop()
-        directCommandTimeout.stop()
-        root.directServoState = "waitingNeutralAck"
-        root.sendDirectServoPwm(root.directServoOutput, root.directServoNeutralPwm)
-        root.directServoStatusText = qsTr("正在将 SERVO%1 回中到 TRIM=%2，等待飞控确认。")
-                .arg(root.directServoOutput)
-                .arg(root.directServoNeutralPwm)
-        directCommandTimeout.restart()
-    }
-
-    function beginDirectServoRestore(reason) {
-        directServoSettleTimer.stop()
-        directServoStopTimer.stop()
-        directCommandTimeout.stop()
-
-        if (reason && reason.length > 0) {
-            root.directServoFailureReason = reason
-        }
-
-        root.directServoOutput = -1
-        root.directServoPendingOutput = -1
-
-        if (!root.directServoFact || root.directServoOriginalFunction < 0) {
-            root.directServoState = "recoveryNeeded"
-            root.directServoStatusText = qsTr("无法自动恢复：%1。恢复记录已保留。")
-                    .arg(root.directServoFailureReason.length > 0 ? root.directServoFailureReason : qsTr("参数对象不可用"))
-            return
-        }
-
-        root.directServoState = "waitingRestore"
-        root.directServoWaitTicks = 0
-        root.directServoFact.rawValue = root.directServoOriginalFunction
-        root.directServoStatusText = qsTr("正在恢复 %1=%2。")
-                .arg(root.directServoFact.name)
-                .arg(root.directServoOriginalFunction)
-        directParameterMonitor.restart()
-    }
-
-    function completeDirectServoRestore() {
-        var outputNumber = mappingSettings.recoveryOutput
-        var warning = root.directServoFailureReason
-        root.stopDirectServoTimers()
-        root.clearRecoveryJournal()
-        root.directServoState = "idle"
-        root.directServoOutput = -1
-        root.directServoPendingOutput = -1
-        root.directServoOriginalFunction = -1
-        root.directServoNeutralPwm = 1500
-        root.directServoFact = null
-        root.directServoFailureReason = ""
-        root.directServoStatusText = warning.length > 0
-                ? qsTr("SERVO%1 已确认恢复；本次%2提前结束：%3。").arg(outputNumber).arg(root.directServoOperationText()).arg(warning)
-                : qsTr("SERVO%1 已回中，并确认恢复原功能参数。").arg(outputNumber)
-        root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("%1已结束").arg(root.directServoOperationText()))
-    }
-
-    function markDirectServoRecoveryNeeded(reason) {
-        root.stopDirectServoTimers()
-        root.closeAfterSafeShutdown = false
-        root.directServoState = "recoveryNeeded"
-        root.directServoOutput = -1
-        root.directServoPendingOutput = -1
-        root.directServoStatusText = qsTr("恢复尚未确认：%1。请保持飞控上锁并使用“恢复异常通道”。").arg(reason)
     }
 
     function recoverPendingServoFunction() {
@@ -756,7 +697,8 @@ QGCPopupDialog {
         if (currentFunction === mappingSettings.recoveryFunction) {
             var restoredOutput = mappingSettings.recoveryOutput
             root.clearRecoveryJournal()
-            root.directServoState = "idle"
+            directControl.reset()
+            root.directServoFact = null
             root.directServoStatusText = qsTr("SERVO%1 已经是原值，恢复记录已清除。").arg(restoredOutput)
             return
         }
@@ -769,13 +711,13 @@ QGCPopupDialog {
         }
 
         root.directServoFact = fact
-        root.directServoOriginalFunction = mappingSettings.recoveryFunction
-        root.directServoFailureReason = qsTr("人工恢复")
-        root.directServoState = "waitingRestore"
-        root.directServoWaitTicks = 0
-        root.directServoFact.rawValue = root.directServoOriginalFunction
         root.directServoStatusText = qsTr("正在恢复异常通道 SERVO%1。").arg(mappingSettings.recoveryOutput)
-        directParameterMonitor.restart()
+        if (!directControl.beginRecovery(mappingSettings.recoveryOutput,
+                                         mappingSettings.recoveryFunction,
+                                         qsTr("人工恢复"))) {
+            root.directServoFact = null
+            root.directServoStatusText = qsTr("恢复状态初始化失败，未修改飞控参数。")
+        }
     }
 
     function discardRecoveryJournal() {
@@ -796,9 +738,8 @@ QGCPopupDialog {
         }
 
         root.clearRecoveryJournal()
-        root.directServoState = "idle"
+        directControl.reset()
         root.directServoFact = null
-        root.directServoOriginalFunction = -1
         root.directServoStatusText = qsTr("已忽略本机旧恢复记录；未向飞控写入任何参数。")
     }
 
@@ -807,40 +748,15 @@ QGCPopupDialog {
             return
         }
 
-        root.directServoFailureReason = reason
-        if (root.directServoState === "testing" || root.directServoState === "waitingTestAck") {
-            root.beginDirectServoNeutral()
-        } else if (root.directServoState !== "waitingNeutralAck" && root.directServoState !== "waitingRestore") {
-            root.beginDirectServoRestore(reason)
-        }
+        directControl.abort(reason)
     }
 
     function finishDirectServoTest() {
-        if (root.directServoState === "testing") {
-            root.beginDirectServoNeutral()
-        }
+        directControl.finishTest()
     }
 
     function handleDirectCommandResult(ackResult) {
-        directCommandTimeout.stop()
-
-        if (root.directServoState === "waitingTestAck") {
-            if (ackResult === 0) {
-                root.directServoState = "testing"
-                root.directServoStatusText = qsTr("正在直接输出 SERVO%1 = %2 PWM。")
-                        .arg(root.directServoOutput)
-                        .arg(root.directServoTestPwm)
-                directServoStopTimer.interval = Math.max(1, root.directServoTestSeconds) * 1000
-                directServoStopTimer.restart()
-            } else {
-                root.beginDirectServoRestore(qsTr("飞控拒绝测试 PWM 指令"))
-            }
-            return
-        }
-
-        if (root.directServoState === "waitingNeutralAck") {
-            root.beginDirectServoRestore(ackResult === 0 ? "" : qsTr("回中指令被拒绝"))
-        }
+        directControl.handleCommandResult(ackResult)
     }
 
     function testOutput(outputNumber) {
@@ -1047,71 +963,10 @@ QGCPopupDialog {
     }
 
     Timer {
-        id:         directServoSettleTimer
-        interval:   300
-        repeat:     false
-        onTriggered: root.beginDirectServoOutput()
-    }
-
-    Timer {
-        id:         directServoStopTimer
-        interval:   1000
-        repeat:     false
-        onTriggered: root.finishDirectServoTest()
-    }
-
-    Timer {
-        id:         directCommandTimeout
-        interval:   4500
-        repeat:     false
-        onTriggered: {
-            if (root.directServoState === "waitingTestAck") {
-                root.directServoFailureReason = qsTr("测试 PWM 指令无回执")
-                root.beginDirectServoNeutral()
-            } else if (root.directServoState === "waitingNeutralAck") {
-                root.beginDirectServoRestore(qsTr("回中指令无回执"))
-            }
-        }
-    }
-
-    Timer {
         id:         discardRecoveryConfirmTimer
         interval:   5000
         repeat:     false
         onTriggered: root.recoveryDiscardConfirmation = false
-    }
-
-    Timer {
-        id:         directParameterMonitor
-        interval:   100
-        repeat:     true
-        onTriggered: {
-            root.directServoWaitTicks++
-
-            if (root.directServoState === "waitingDisable") {
-                if (root.directParameterWriteConfirmed(0)) {
-                    stop()
-                    root.directServoState = "disableSettling"
-                    root.directServoStatusText = qsTr("%1 已确认 Disabled，准备发送测试 PWM。")
-                            .arg(root.directServoFact.name)
-                    directServoSettleTimer.restart()
-                } else if (root.directServoWaitTicks >= 80) {
-                    stop()
-                    root.beginDirectServoRestore(qsTr("等待 Disabled 写入确认超时"))
-                }
-                return
-            }
-
-            if (root.directServoState === "waitingRestore") {
-                if (root.directParameterWriteConfirmed(root.directServoOriginalFunction)) {
-                    stop()
-                    root.completeDirectServoRestore()
-                } else if (root.directServoWaitTicks >= 120) {
-                    stop()
-                    root.markDirectServoRecoveryNeeded(qsTr("等待原功能参数写回确认超时"))
-                }
-            }
-        }
     }
 
     Timer {
@@ -1230,7 +1085,7 @@ QGCPopupDialog {
         id:             exportFileDialog
         title:          qsTr("导出推进器映射")
         folder:         root.appSettings ? root.appSettings.parameterSavePath : ""
-        nameFilters:    [ qsTr("CSV Files (*.csv)"), qsTr("All Files (*)") ]
+        nameFilters:    [ qsTr("CSV 文件 (*.csv)"), qsTr("所有文件 (*)") ]
         defaultSuffix:  "csv"
 
         onAcceptedForSave: (file) => {
@@ -1353,7 +1208,7 @@ QGCPopupDialog {
             spacing:            ScreenTools.defaultFontPixelWidth
 
             QGCLabel {
-                text: qsTr("Motor Test发送方式")
+                text: qsTr("Motor Test 发送方式")
             }
 
             QGCRadioButton {

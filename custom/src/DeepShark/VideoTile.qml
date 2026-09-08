@@ -18,7 +18,6 @@ Rectangle {
     objectName: videoEnabled ? receiverName : ""
 
     property string title: ""
-    property string statusText: qsTr("Waiting for RTSP")
     property bool videoEnabled: false
     property string videoSource: ""
     property string receiverName: "deepSharkVideo"
@@ -41,7 +40,7 @@ Rectangle {
     property string frameRateText: videoController.frameRateText
     property string latencyText: videoController.latencyText
     property int estimatedLatencyMs: videoController.estimatedLatencyMs
-    property int maxAutoRetries: 0
+    property int maxAutoRetries: 6
     property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
     property bool stalled: false
     property bool dragEnabled: true
@@ -71,6 +70,35 @@ Rectangle {
         colorGroupEnabled: enabled
     }
 
+    function displayStatus(status) {
+        switch (status) {
+        case "Connecting":
+        case "Reconnecting":
+            return qsTr("连接中")
+        case "Streaming":
+        case "Playing":
+            return qsTr("在线")
+        case "Stopped":
+            return qsTr("已暂停")
+        case "Failed":
+            return qsTr("连接失败")
+        case "Stalled":
+            return qsTr("画面停滞")
+        default:
+            return qsTr("等待视频流")
+        }
+    }
+
+    function displayWatchdogStatus(status) {
+        if (status === "Stalled") {
+            return qsTr("停滞")
+        }
+        if (status === "Disabled") {
+            return qsTr("停用")
+        }
+        return qsTr("正常")
+    }
+
     QGCVideoBackground {
         id: videoOutput
         anchors.fill: parent
@@ -87,21 +115,6 @@ Rectangle {
     }
 
     Timer {
-        id: restartTimer
-        repeat: false
-        onTriggered: {
-            if (root.shuttingDown || root.manualStopped || !root.videoEnabled || root.videoSource.length === 0) {
-                root.reconnectPending = false
-                return
-            }
-            root.videoEvent(root.title + " Reconnecting retry=" + root.retryCount)
-            root._setStatus("Connecting", "")
-            root.reconnectPending = false
-            videoController.start()
-        }
-    }
-
-    Timer {
         id: watchdogTimer
         interval: 1000
         running: true
@@ -113,7 +126,7 @@ Rectangle {
         lastProgressTime = Date.now()
         if (stalled) {
             stalled = false
-            videoEvent(title + " watchdog OK")
+            videoEvent(qsTr("%1：watchdog 恢复正常").arg(title))
         }
         if (currentStatus === "Stalled" && !manualStopped) {
             if (videoController.decoding) {
@@ -145,7 +158,7 @@ Rectangle {
         if (reason.length > 0) {
             lastProgressAgeSeconds = -1
             if (watchdogStatus !== "Disabled") {
-                videoEvent(title + " watchdog disabled: " + reason)
+                videoEvent(qsTr("%1：watchdog 已停用").arg(title))
             }
             stalled = false
             return
@@ -177,13 +190,13 @@ Rectangle {
                     ? "Streaming without decoded frames for "
                     : "No frame progress for "
             _setStatus("Stalled", stalledReason + Math.floor(ageMs / 1000) + "s")
-            videoEvent(title + " stalled: " + stalledReason + Math.floor(ageMs / 1000) + "s")
+            videoEvent(qsTr("%1：画面停滞 %2 秒").arg(title).arg(Math.floor(ageMs / 1000)))
         }
 
         if (Date.now() - lastWatchdogReconnectTime >= 15000 && _canAutoRetry()) {
             lastWatchdogReconnectTime = Date.now()
             watchdogReconnectCount++
-            videoEvent(title + " watchdog reconnect")
+            videoEvent(qsTr("%1：watchdog 请求重连").arg(title))
             _scheduleReconnect("Watchdog stalled")
         }
     }
@@ -200,7 +213,7 @@ Rectangle {
             return
         }
         currentStatus = status
-        videoEvent(title + " " + status + (lastError.length > 0 && (status === "Failed" || status === "Waiting") ? ": " + lastError : ""))
+        videoEvent(qsTr("%1：%2").arg(title).arg(displayStatus(status)))
     }
 
     function _scheduleReconnect(error) {
@@ -213,24 +226,20 @@ Rectangle {
 
         retryCount++
         if (maxAutoRetries > 0 && retryCount > maxAutoRetries) {
-            _setStatus("Failed", error + " - manual reconnect required")
+            _setStatus("Failed", error)
             return
         }
 
-        var delayMs = retryCount === 1 ? 3000 : 5000
+        var delayMs = Math.min(30000, 2500 * Math.pow(2, retryCount - 1))
         if (currentStatus === "Stalled") {
-            videoEvent(title + " Reconnecting retry=" + retryCount)
+            videoEvent(qsTr("%1：正在重连，第 %2 次").arg(title).arg(retryCount))
         }
         _setStatus("Reconnecting", error)
         reconnectPending = true
-        videoController.stop()
-        // Prefer starting after VideoReceiver reports Stopped. This timer is only a fallback.
-        restartTimer.interval = Math.max(delayMs, 2500)
-        restartTimer.restart()
+        videoController.restart(delayMs)
     }
 
     function startVideo() {
-        restartTimer.stop()
         stalled = false
         reconnectPending = false
         _markProgress()
@@ -239,7 +248,7 @@ Rectangle {
             controllerAutoStart = false
             var startReason = videoSource.length > 0 ? "Channel disabled" : "URL empty"
             _setStatus("Waiting", startReason)
-            videoEvent(title + " watchdog disabled: " + startReason.toLowerCase())
+            videoEvent(qsTr("%1：无法启动，通道停用或 URL 为空").arg(title))
             return
         }
 
@@ -251,49 +260,32 @@ Rectangle {
     }
 
     function stopVideo() {
-        restartTimer.stop()
         stalled = false
         reconnectPending = false
         manualStopped = true
         controllerAutoStart = false
         videoController.stop()
         _setStatus("Stopped", "")
-        videoEvent(title + " Stopped manually")
-        videoEvent(title + " watchdog disabled: manual stopped")
+        videoEvent(qsTr("%1：已手动停止").arg(title))
     }
 
     function reconnectVideo() {
-        restartTimer.stop()
         stalled = false
         _markProgress()
         manualStopped = false
         retryCount = 0
         controllerAutoStart = true
         _setStatus("Reconnecting", "")
-        videoEvent(title + " Reconnect requested")
+        videoEvent(qsTr("%1：已请求重连").arg(title))
         reconnectPending = true
-        videoController.stop()
-        restartTimer.interval = 2500
-        restartTimer.restart()
+        videoController.restart(2500)
     }
 
     function restartVideo() {
         reconnectVideo()
     }
 
-    Timer {
-        id: reconnectDelay
-        interval: 650
-        repeat: false
-        onTriggered: {
-            if (!root.shuttingDown) {
-                videoController.start()
-            }
-        }
-    }
-
     function _syncForUrl() {
-        restartTimer.stop()
         stalled = false
         reconnectPending = false
         _markProgress()
@@ -304,15 +296,14 @@ Rectangle {
             videoController.stop()
             var syncReason = videoSource.length > 0 ? "Channel disabled" : "URL empty"
             _setStatus("Waiting", syncReason)
-            videoEvent(title + " watchdog disabled: " + syncReason.toLowerCase())
+            videoEvent(qsTr("%1：通道停用或 URL 为空").arg(title))
             return
         }
         if (!manualStopped) {
-            videoEvent(title + " URL changed")
+            videoEvent(qsTr("%1：URL 已更新").arg(title))
             controllerAutoStart = true
             _setStatus("Connecting", "")
-            videoController.stop()
-            reconnectDelay.restart()
+            videoController.restart(650)
         }
     }
 
@@ -329,9 +320,7 @@ Rectangle {
 
     Component.onDestruction: {
         shuttingDown = true
-        restartTimer.stop()
         watchdogTimer.stop()
-        reconnectDelay.stop()
         reconnectPending = false
         manualStopped = true
         controllerAutoStart = false
@@ -355,6 +344,7 @@ Rectangle {
 
         function onDecodingChanged() {
             if (videoController.decoding) {
+                root.reconnectPending = false
                 decodeCount++
                 root.retryCount = 0
                 root._markProgress()
@@ -364,25 +354,15 @@ Rectangle {
             }
         }
 
-        function onStatusTextChanged() {
-            var text = videoController.statusText
-            if (text.indexOf("Start failed") >= 0 || text.indexOf("Decode failed") >= 0 || text.indexOf("unavailable") >= 0 || text.indexOf("not ready") >= 0 || text.toLowerCase().indexOf("timeout") >= 0) {
-                root._scheduleReconnect(text)
-            } else if (text.indexOf("Connecting") >= 0) {
-                root._setStatus("Connecting", "")
-            } else if (text.indexOf("Streaming") >= 0) {
-                root._setStatus("Streaming", "")
-            } else if (text.indexOf("Playing") >= 0) {
-                root._setStatus("Playing", "")
-            } else if (text.indexOf("Stopped") >= 0) {
-                if (root.reconnectPending && !root.manualStopped) {
-                    restartTimer.stop()
-                    restartTimer.interval = 250
-                    restartTimer.restart()
-                } else if (root.manualStopped) {
-                    root._setStatus("Stopped", "")
-                }
-            }
+        function onFailure(message) {
+            root.reconnectPending = false
+            root._scheduleReconnect(message)
+        }
+
+        function onStartAttemptsChanged() {
+            // The delayed restart has now started. Keep the guard only for the
+            // stop/backoff window so a later watchdog stall can retry again.
+            root.reconnectPending = false
         }
 
         function onFrameCountChanged() {
@@ -413,7 +393,7 @@ Rectangle {
 
     QGCLabel {
         anchors.centerIn: parent
-        text: root.currentStatus
+        text: root.displayStatus(root.currentStatus)
         color: "#9aa6b2"
         font.pointSize: ScreenTools.defaultFontPointSize * 0.9
         visible: !videoOutput.visible
@@ -425,15 +405,15 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.margins: ScreenTools.defaultFontPixelWidth
         text: root.videoEnabled
-              ? qsTr("%1 | %2 | %3 | %4 wd:%5 age:%6s retry:%7")
+              ? qsTr("%1 | %2 | %3 | %4 | watchdog：%5 | 画面年龄：%6s | 重试：%7")
                     .arg(root.resolutionText)
                     .arg(root.frameRateText)
                     .arg(root.latencyText)
-                    .arg(root.currentStatus)
-                    .arg(root.watchdogStatus)
+                    .arg(root.displayStatus(root.currentStatus))
+                    .arg(root.displayWatchdogStatus(root.watchdogStatus))
                     .arg(root.lastProgressAgeSeconds < 0 ? "--" : root.lastProgressAgeSeconds)
                     .arg(root.retryCount)
-              : qsTr("Waiting for RTSP")
+              : qsTr("等待 RTSP")
         color: "#6b7280"
         font.pointSize: ScreenTools.defaultFontPointSize * 0.7
         elide: Text.ElideRight

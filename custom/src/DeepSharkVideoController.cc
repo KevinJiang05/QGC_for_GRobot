@@ -12,6 +12,7 @@
 #include <QtCore/QTimer>
 #include <QtQuick/QQuickItem>
 
+#include <algorithm>
 #include <cmath>
 
 #ifdef QGC_GST_STREAMING
@@ -24,6 +25,8 @@ DeepSharkVideoController::DeepSharkVideoController(QObject *parent)
     : QObject(parent)
 {
     _setStatusText(tr("Waiting for RTSP"));
+    _startTimer.setSingleShot(true);
+    connect(&_startTimer, &QTimer::timeout, this, &DeepSharkVideoController::start);
     _frameRateTimer.setInterval(1000);
     connect(&_frameRateTimer, &QTimer::timeout, this, &DeepSharkVideoController::_updateFrameRate);
     _frameRateTimer.start();
@@ -31,6 +34,7 @@ DeepSharkVideoController::DeepSharkVideoController(QObject *parent)
 
 DeepSharkVideoController::~DeepSharkVideoController()
 {
+    _startTimer.stop();
     _frameRateTimer.stop();
     _removeSinkFrameProbe();
 
@@ -86,13 +90,15 @@ void DeepSharkVideoController::setUri(const QString &uri)
         _receiver->setUri(_uri);
     }
 
+    if (_uri.isEmpty()) {
+        stop();
+        return;
+    }
+
     if (_autoStart) {
-        if (_receiver && _receiver->started()) {
-            stop();
-            QTimer::singleShot(1200, this, &DeepSharkVideoController::start);
-        } else {
-            QTimer::singleShot(250, this, &DeepSharkVideoController::start);
-        }
+        restart((_receiver && (_receiver->started() || _startPending)) ? 1200 : 250);
+    } else {
+        _startTimer.stop();
     }
 }
 
@@ -106,7 +112,8 @@ void DeepSharkVideoController::setAutoStart(bool autoStart)
     emit autoStartChanged();
 
     if (_autoStart) {
-        QTimer::singleShot(250, this, &DeepSharkVideoController::start);
+        _stopRequested = false;
+        _scheduleStart(250);
     } else {
         stop();
     }
@@ -129,19 +136,19 @@ void DeepSharkVideoController::setLowLatency(bool lowLatency)
 QString DeepSharkVideoController::resolutionText() const
 {
     if (!_videoSize.isValid() || _videoSize.isEmpty()) {
-        return QStringLiteral("分辨率: --");
+        return tr("分辨率：--");
     }
 
-    return QStringLiteral("分辨率: %1x%2").arg(_videoSize.width()).arg(_videoSize.height());
+    return tr("分辨率：%1x%2").arg(_videoSize.width()).arg(_videoSize.height());
 }
 
 QString DeepSharkVideoController::frameRateText() const
 {
     if (!_decoding || _frameRate <= 0.0) {
-        return QStringLiteral("FPS: --");
+        return tr("FPS：--");
     }
 
-    return QStringLiteral("FPS: %1").arg(_frameRate, 0, 'f', 1);
+    return tr("FPS：%1").arg(_frameRate, 0, 'f', 1);
 }
 
 quint64 DeepSharkVideoController::frameCount() const
@@ -161,30 +168,39 @@ int DeepSharkVideoController::estimatedLatencyMs() const
 QString DeepSharkVideoController::latencyText() const
 {
     if (_estimatedLatencyMs < 0) {
-        return QStringLiteral("Latency: --");
+        return tr("延迟：--");
     }
 
-    return QStringLiteral("Latency: %1 ms").arg(_estimatedLatencyMs);
+    return tr("延迟：%1 ms").arg(_estimatedLatencyMs);
 }
 
 void DeepSharkVideoController::start()
 {
+    _startTimer.stop();
+    if (!_autoStart) {
+        _setStatusText(tr("Stopped"));
+        return;
+    }
+
     _ensureReceiver();
 
     if (!_receiver || !_videoItem || !_sink) {
-        _setStatusText(tr("Video sink not ready"));
+        _reportFailure(tr("视频输出尚未就绪"));
         return;
     }
 
     if (_uri.isEmpty()) {
-        _setStatusText(tr("Set RTSP URL in Video Settings"));
+        _reportFailure(tr("请先在视频设置中填写 RTSP URL"));
         return;
     }
 
-    if (_receiver->started()) {
+    if (_receiver->started() || _startPending) {
         return;
     }
 
+    _stopRequested = false;
+    _restartRequested = false;
+    _startPending = true;
     _startAttempts++;
     emit startAttemptsChanged();
     _setStatusText(tr("Connecting"));
@@ -201,9 +217,60 @@ void DeepSharkVideoController::start()
 
 void DeepSharkVideoController::stop()
 {
+    _startTimer.stop();
+    _stopRequested = true;
+    _restartRequested = false;
+    _restartNeedsSinkRebuild = false;
     if (_receiver && _receiver->started()) {
         _receiver->stop();
+    } else if (!_startPending) {
+        _setStreaming(false);
+        _setDecoding(false);
+        _setStatusText(tr("Stopped"));
     }
+}
+
+void DeepSharkVideoController::restart(int delayMs)
+{
+    _startTimer.stop();
+    if (!_autoStart || _uri.isEmpty()) {
+        _restartRequested = false;
+        return;
+    }
+
+    _stopRequested = false;
+    _restartDelayMs = std::clamp(delayMs, 0, 30000);
+    _restartNeedsSinkRebuild = true;
+    if (_receiver && (_receiver->started() || _startPending)) {
+        _restartRequested = true;
+        _setStatusText(tr("Reconnecting"));
+        if (_receiver->started()) {
+            _receiver->stop();
+        }
+        return;
+    }
+
+    _restartRequested = false;
+    _prepareRestart(_restartDelayMs);
+}
+
+void DeepSharkVideoController::_prepareRestart(int delayMs)
+{
+    if (_restartNeedsSinkRebuild) {
+        _rebuildSink();
+        _restartNeedsSinkRebuild = false;
+    }
+    _setStatusText(tr("Reconnecting"));
+    _scheduleStart(delayMs);
+}
+
+void DeepSharkVideoController::_scheduleStart(int delayMs)
+{
+    _startTimer.stop();
+    if (!_autoStart || _uri.isEmpty()) {
+        return;
+    }
+    _startTimer.start(std::clamp(delayMs, 0, 30000));
 }
 
 void DeepSharkVideoController::_ensureReceiver()
@@ -214,7 +281,7 @@ void DeepSharkVideoController::_ensureReceiver()
 
     _receiver = QGCCorePlugin::instance()->createVideoReceiver(this);
     if (!_receiver) {
-        _setStatusText(tr("Video receiver unavailable"));
+        _reportFailure(tr("视频接收器不可用"));
         return;
     }
 
@@ -223,34 +290,57 @@ void DeepSharkVideoController::_ensureReceiver()
     _receiver->setUri(_uri);
 
     connect(_receiver, &VideoReceiver::onStartComplete, this, [this](VideoReceiver::STATUS status) {
+        _startPending = false;
         if (status == VideoReceiver::STATUS_OK) {
             _receiver->setStarted(true);
+            if (_stopRequested || !_autoStart || _restartRequested) {
+                _receiver->stop();
+                return;
+            }
             _setStatusText(tr("Streaming"));
             if (_sink) {
                 _receiver->startDecoding(_sink);
             }
         } else {
-            _setStatusText(tr("Start failed: %1").arg(status));
+            if (_restartRequested && _autoStart) {
+                const int delayMs = _restartDelayMs;
+                _restartRequested = false;
+                _prepareRestart(delayMs);
+            } else if (_stopRequested || !_autoStart) {
+                _setStatusText(tr("Stopped"));
+            } else {
+                _reportFailure(tr("视频启动失败：%1").arg(status));
+            }
         }
     });
 
     connect(_receiver, &VideoReceiver::onStopComplete, this, [this](VideoReceiver::STATUS) {
         _receiver->setStarted(false);
+        _startPending = false;
         _setStreaming(false);
         _setDecoding(false);
-        _setStatusText(tr("Stopped"));
+        if (_restartRequested && _autoStart && !_stopRequested) {
+            const int delayMs = _restartDelayMs;
+            _restartRequested = false;
+            _prepareRestart(delayMs);
+        } else {
+            _restartRequested = false;
+            _restartNeedsSinkRebuild = false;
+            _stopRequested = false;
+            _setStatusText(tr("Stopped"));
+        }
     });
 
     connect(_receiver, &VideoReceiver::onStartDecodingComplete, this, [this](VideoReceiver::STATUS status) {
         if (status == VideoReceiver::STATUS_OK) {
             _setStatusText(tr("Playing"));
         } else {
-            _setStatusText(tr("Decode failed: %1").arg(status));
+            _reportFailure(tr("视频解码失败：%1").arg(status));
         }
     });
 
     connect(_receiver, &VideoReceiver::timeout, this, [this]() {
-        _setStatusText(tr("Stream timeout"));
+        _reportFailure(tr("视频流超时"));
     });
 
     connect(_receiver, &VideoReceiver::streamingChanged, this, [this](bool active) {
@@ -302,6 +392,12 @@ void DeepSharkVideoController::_setStatusText(const QString &statusText)
 
     _statusText = statusText;
     emit statusTextChanged();
+}
+
+void DeepSharkVideoController::_reportFailure(const QString &message)
+{
+    _setStatusText(message);
+    emit failure(message);
 }
 
 void DeepSharkVideoController::_setStreaming(bool streaming)

@@ -10,7 +10,9 @@ import QtQuick.Controls
 import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
 
 import QGroundControl
+import QGroundControl.Controllers
 import QGroundControl.Controls
+import QGroundControl.FlightDisplay
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
@@ -19,7 +21,6 @@ Item {
 
     property var parentToolInsets
     property var totalToolInsets: _toolInsets
-    property var mapControl
     property bool videoMainMode: true
     property bool panelMinimized: false
     property bool mapHidden: videoMainMode && !panelMinimized
@@ -41,6 +42,30 @@ Item {
     property real rightPanelBottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset,
                                                    ScreenTools.defaultFontPixelHeight * 3)
     property int sidePreviewMode: 0
+    readonly property int effectiveSidePreviewMode: fourVideoPanel.attitudeMode ? 0 : sidePreviewMode
+    readonly property bool compactAttitudeSceneActive: visible
+                                                       && attitudePreviewVisible
+                                                       && effectiveSidePreviewMode === 1
+    property var activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
+    property var primaryBattery: activeVehicle && activeVehicle.batteries.count > 0
+                                 ? activeVehicle.batteries.get(0) : null
+    property bool vehicleCommunicationLost: activeVehicle
+                                            ? activeVehicle.vehicleLinkManager.communicationLost : false
+    property int vehicleConnectionLevel: !activeVehicle ? 0 : (vehicleCommunicationLost ? 2 : 1)
+    property string vehicleConnectionStatus: !activeVehicle
+                                              ? qsTr("未连接")
+                                              : (vehicleCommunicationLost ? qsTr("通信中断") : qsTr("已连接"))
+    property string vehicleFlightMode: activeVehicle && activeVehicle.flightMode.length > 0
+                                       ? activeVehicle.flightMode : qsTr("暂无数据")
+    property string vehicleArmStatus: !activeVehicle
+                                      ? qsTr("暂无数据")
+                                      : (activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁"))
+    property string vehicleBatteryStatus: {
+        if (!primaryBattery || isNaN(primaryBattery.percentRemaining.rawValue)) {
+            return qsTr("暂无数据")
+        }
+        return primaryBattery.percentRemaining.valueString + primaryBattery.percentRemaining.units
+    }
     property bool attitudePreviewVisible: _root.statusPanelExpanded
                                           && !_root.panelMinimized
     property real attitudePreviewHeight: Math.max(ScreenTools.defaultFontPixelHeight * 8,
@@ -62,45 +87,26 @@ Item {
         recentEvents = updatedEvents
     }
 
-    function syncMapControlVisibility() {
-        if (typeof mapControl === "undefined" || mapControl === null) {
-            return
-        }
-
-        var hideMap = videoMainMode && !panelMinimized
-        mapHidden = hideMap
-        mapControl.visible = !hideMap
-        mapControl.enabled = !hideMap
-        mapControl.opacity = hideMap ? 0 : 1
-    }
-
     function minimizeDeepSharkPanel() {
-        addDeepSharkEvent("DeepShark panel minimized")
+        addDeepSharkEvent(qsTr("DeepShark 面板已最小化"))
         panelMinimized = true
         videoMainMode = false
-        syncMapControlVisibility()
     }
 
     function restoreDeepSharkPanel() {
-        addDeepSharkEvent("DeepShark panel restored")
+        addDeepSharkEvent(qsTr("DeepShark 面板已恢复"))
         panelMinimized = false
         videoMainMode = true
-        syncMapControlVisibility()
     }
 
     onVideoMainModeChanged: {
-        addDeepSharkEvent(videoMainMode ? "Map hidden" : "Map visible")
-        syncMapControlVisibility()
+        addDeepSharkEvent(videoMainMode ? qsTr("地图已隐藏") : qsTr("地图已显示"))
     }
-    onPanelMinimizedChanged: syncMapControlVisibility()
-    onMapControlChanged: Qt.callLater(syncMapControlVisibility)
     onStatusPanelAutoCompactChanged: {
         if (statusPanelAutoCompact) {
             statusPanelManualOpen = false
         }
     }
-
-    Component.onCompleted: Qt.callLater(syncMapControlVisibility)
 
     QGCPalette {
         id: qgcPal
@@ -173,7 +179,15 @@ Item {
         mainName: fourVideoPanel.mainViewName
         mapHidden: _root.mapHidden
         deepSharkPanelMinimized: _root.panelMinimized
-        vehicleStatus: "Unknown"
+        vehicleConnectionStatus: _root.vehicleConnectionStatus
+        vehicleConnectionLevel: _root.vehicleConnectionLevel
+        vehicleFlightMode: _root.vehicleFlightMode
+        vehicleArmStatus: _root.vehicleArmStatus
+        vehicleBatteryStatus: _root.vehicleBatteryStatus
+        aiRunning: AIDetectionManager.running
+        aiReceiverBound: AIDetectionReceiver.bound
+        aiDetectionCount: AIDetectionReceiver.detections.length
+        aiDetail: AIDetectionManager.statusText
         videoRows: fourVideoPanel.videoRows
         rtspRows: fourVideoPanel.videoRows
         recentEvents: _root.recentEvents
@@ -188,7 +202,7 @@ Item {
         z: 20
         width: statusPanel.panelWidth
         height: _root.attitudePreviewHeight
-        color: _root.sidePreviewMode === 0 ? "#07090c" : "#f7f9fb"
+        color: _root.effectiveSidePreviewMode === 0 ? "#07090c" : "#f7f9fb"
         border.color: "#aeb9c2"
         border.width: 1
         clip: true
@@ -203,16 +217,16 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             height: Math.max(ScreenTools.defaultFontPixelHeight * 2.1, 30)
-            color: _root.sidePreviewMode === 0 ? "#e6141920" : "#efffffff"
-            border.color: _root.sidePreviewMode === 0 ? "#384453" : "#aeb9c2"
+            color: _root.effectiveSidePreviewMode === 0 ? "#e6141920" : "#efffffff"
+            border.color: _root.effectiveSidePreviewMode === 0 ? "#384453" : "#aeb9c2"
             z: 3
 
             QGCLabel {
                 anchors.left: parent.left
                 anchors.leftMargin: ScreenTools.defaultFontPixelWidth
                 anchors.verticalCenter: parent.verticalCenter
-                text: _root.sidePreviewMode === 0 ? qsTr("RTSP 1") : qsTr("3D 姿态")
-                color: _root.sidePreviewMode === 0 ? "#f2f5f8" : "#17212b"
+                text: _root.effectiveSidePreviewMode === 0 ? qsTr("RTSP 1") : qsTr("3D 姿态")
+                color: _root.effectiveSidePreviewMode === 0 ? "#f2f5f8" : "#17212b"
                 font.bold: true
             }
 
@@ -223,8 +237,10 @@ Item {
                 anchors.bottom: parent.bottom
                 width: Math.max(ScreenTools.defaultFontPixelWidth * 12, 92)
                 model: [qsTr("RTSP 1"), qsTr("3D 姿态")]
-                currentIndex: _root.sidePreviewMode
-                onActivated: function(index) { _root.sidePreviewMode = index }
+                currentIndex: _root.effectiveSidePreviewMode
+                onActivated: function(index) {
+                    _root.sidePreviewMode = fourVideoPanel.attitudeMode ? 0 : index
+                }
             }
         }
 
@@ -238,7 +254,7 @@ Item {
             Item {
                 id: rtspPreviewArea
                 anchors.fill: parent
-                visible: _root.sidePreviewMode === 0
+                visible: _root.effectiveSidePreviewMode === 0
 
                 ShaderEffectSource {
                     id: camera1Mirror
@@ -258,7 +274,9 @@ Item {
                                ? parent.width / sourceRatio : parent.height
                     }
                     sourceItem: fourVideoPanel.camera1PreviewItem
-                    live: true
+                    live: sidePreview.visible
+                          && rtspPreviewArea.visible
+                          && fourVideoPanel.camera1Decoding
                     recursive: true
                     visible: fourVideoPanel.camera1Decoding
                 }
@@ -271,11 +289,17 @@ Item {
                 }
             }
 
-            Attitude3DPanel {
+            Loader {
+                id: compactAttitudePanelLoader
                 anchors.fill: parent
-                visible: _root.sidePreviewMode === 1
-                compactMode: true
-                showCompactHeader: false
+                active: _root.compactAttitudeSceneActive
+                visible: active
+                sourceComponent: Component {
+                    Attitude3DPanel {
+                        compactMode: true
+                        showCompactHeader: false
+                    }
+                }
             }
         }
     }

@@ -29,12 +29,15 @@ the portable NSIS executable without changing version sources or building.
 The script performs these steps in order and stops on the first failure:
 
 1. Validate source files and build tools, including portable NSIS.
-2. Synchronize the version in CMake overrides, Windows resources, and the Help page.
+2. Synchronize the version in CMake overrides and Windows resources. The Help
+   page reads the same runtime version through `QGroundControl.qgcVersion`.
 3. Configure the Release build.
 4. Build Release with one compiler job.
 5. Stage dependencies into a new run-specific directory and build the NSIS installer.
-6. Verify installer/application versions, required Qt and GStreamer files,
-   the stable upgrade identity, user-data preservation behavior, and SHA-256.
+6. Verify installer/application versions, required Qt and GStreamer files
+   (including `gstgl-1.0-0.dll`), run the staged application with
+   `--simple-boot-test`, and verify the stable upgrade identity, user-data
+   preservation behavior, and SHA-256.
 
 ## Logs and artifacts
 
@@ -69,4 +72,3 @@ succeeded, no required runtime file is missing, the upgrade identity remains
 The current release workflow does not apply an Authenticode signature. A
 `NotSigned` result is reported explicitly and is not treated as a pipeline
 failure until a signing workflow and certificate are intentionally added.
-

@@ -308,6 +308,19 @@ void QGCApplication::init()
     qmlRegisterType<JoystickConfigController>("QGroundControl.Controllers", 1, 0, "JoystickConfigController");
     auto *aiDetectionReceiver = new AIDetectionReceiver(this);
     auto *aiDetectionManager = new AIDetectionManager(this);
+    aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
+    connect(aiDetectionManager, &AIDetectionManager::udpPortChanged, aiDetectionReceiver, [aiDetectionManager, aiDetectionReceiver]() {
+        if (!aiDetectionManager->running()) {
+            aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
+        }
+    });
+    connect(aiDetectionManager, &AIDetectionManager::runningChanged, aiDetectionReceiver, [aiDetectionManager, aiDetectionReceiver]() {
+        if (aiDetectionManager->running()) {
+            aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
+        } else {
+            aiDetectionReceiver->clearDetections();
+        }
+    });
     connect(this, &QCoreApplication::aboutToQuit, aiDetectionReceiver, [aiDetectionReceiver]() {
         aiDetectionReceiver->setEnabled(false);
     });

@@ -66,7 +66,7 @@ Rectangle {
                 Layout.columnSpan:   2
                 Layout.topMargin:    ScreenTools.defaultFontPixelHeight
                 Layout.fillWidth:    true
-                text:                qsTr("QGC_KevinJiang 1.3.1 基于开源 QGroundControl v5.0.8 二次开发，非官方发行版本。维护：蒋中泽 <KevinJiang1018@gmail.com>")
+                text:                qsTr("QGC_KevinJiang %1 基于开源 QGroundControl v5.0.8 二次开发，非官方发行版本。维护：蒋中泽 <KevinJiang1018@gmail.com>").arg(QGroundControl.qgcVersion)
                 wrapMode:            Text.WordWrap
                 color:               qgcPal.text
             }

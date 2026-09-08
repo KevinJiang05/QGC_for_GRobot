@@ -9,11 +9,14 @@
 
 #pragma once
 
-#include <QtCore/QObject>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QHash>
+#include <QtCore/QObject>
+#include <QtCore/QTimer>
 #include <QtCore/QVariantList>
 #include <QtNetwork/QHostAddress>
 
+class QJsonObject;
 class QUdpSocket;
 
 class AIDetectionReceiver : public QObject
@@ -42,6 +45,7 @@ public:
     QString statusText() const { return _statusText; }
 
     Q_INVOKABLE QVariantList detectionsForSource(const QString &sourceId) const;
+    Q_INVOKABLE void clearDetections();
 
 signals:
     void enabledChanged();
@@ -52,6 +56,7 @@ signals:
 
 private slots:
     void _readPendingDatagrams();
+    void _expireStaleDetections();
 
 private:
     void _updateSocket();
@@ -59,7 +64,8 @@ private:
     void _setStatusText(const QString &statusText);
     void _setDetections(const QVariantList &detections);
     void _setDetectionsForSource(const QString &sourceId, const QVariantList &detections);
-    QVariantMap _parseDetection(const QVariantMap &detection, double frameWidth, double frameHeight) const;
+    void _rebuildDetections();
+    QVariantMap _parseDetection(const QJsonObject &detection, double frameWidth, double frameHeight) const;
     static double _clampUnit(double value);
 
     QUdpSocket *_socket = nullptr;
@@ -67,5 +73,8 @@ private:
     quint16 _port = 57610;
     QVariantList _detections;
     QHash<QString, QVariantList> _detectionsBySource;
+    QHash<QString, qint64> _lastUpdateMsBySource;
+    QElapsedTimer _elapsedTimer;
+    QTimer _staleTimer;
     QString _statusText;
 };

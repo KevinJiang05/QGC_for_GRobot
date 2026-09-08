@@ -9,43 +9,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import socket
-import tempfile
 import time
 from typing import Any
 
-
-STREAM_SOURCE_PREFIXES = ("rtsp://", "rtmp://", "tcp://")
-
-
-def _clean_source(source: str) -> str:
-    cleaned = source.strip()
-    while len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ("'", '"'):
-        cleaned = cleaned[1:-1].strip()
-    return cleaned
-
-
-def _parse_source(source: str) -> str | int:
-    cleaned = _clean_source(source)
-    return int(cleaned) if cleaned.isdecimal() else cleaned
-
-
-def _prepare_source_for_ultralytics(source: str) -> tuple[str | int, str | None]:
-    parsed_source = _parse_source(source)
-    if not isinstance(parsed_source, str):
-        return parsed_source, None
-
-    if parsed_source.lower().startswith(STREAM_SOURCE_PREFIXES):
-        streams_file = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".streams", delete=False)
-        try:
-            streams_file.write(f"{parsed_source}\n")
-            return streams_file.name, streams_file.name
-        finally:
-            streams_file.close()
-
-    return parsed_source, None
-
+from ai_detection_core import LatestFrameReader, clean_source, collect_due_frames
 
 def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, value))
@@ -99,7 +67,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--iou", type=float, default=0.45, help="NMS IoU threshold.")
     parser.add_argument("--device", default=None, help="Inference device, for example cpu, 0, cuda:0.")
     parser.add_argument("--classes", type=int, nargs="*", default=None, help="Optional class IDs to keep.")
-    parser.add_argument("--max-fps", type=float, default=15.0, help="Maximum UDP send rate. Set 0 to send every result.")
+    parser.add_argument("--max-fps", type=float, default=15.0, help="Maximum inference rate. Set 0 for every fresh frame.")
     parser.add_argument("--log-every", type=float, default=2.0, help="Seconds between console status lines.")
     return parser.parse_args()
 
@@ -108,6 +76,7 @@ def main() -> int:
     args = _parse_args()
 
     try:
+        import cv2
         from ultralytics import YOLO
     except ImportError as exc:
         raise SystemExit(
@@ -117,32 +86,45 @@ def main() -> int:
     model = YOLO(args.model)
     destination = (args.host, args.port)
     interval = 1.0 / args.max_fps if args.max_fps > 0 else 0.0
-    last_sent = 0.0
     last_log = 0.0
-    predict_source, cleanup_path = _prepare_source_for_ultralytics(args.source)
+    reader = LatestFrameReader(
+        args.source_id or "default",
+        clean_source(args.source),
+        cv2.VideoCapture,
+        buffer_size_property=cv2.CAP_PROP_BUFFERSIZE,
+        log=lambda message: print(message, flush=True),
+    )
+    last_sequences: dict[str, int] = {}
+    next_due_times: dict[str, float] = {}
+    reader.start()
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-            results = model.predict(
-                source=predict_source,
-                stream=True,
-                imgsz=args.imgsz,
-                conf=args.conf,
-                iou=args.iou,
-                device=args.device,
-                classes=args.classes,
-                verbose=False,
-            )
-
-            for result in results:
-                now = time.time()
-                if interval > 0 and now - last_sent < interval:
+            while True:
+                _source_ids, frames = collect_due_frames(
+                    [reader],
+                    last_sequences,
+                    next_due_times,
+                    interval=interval,
+                )
+                if not frames:
+                    time.sleep(0.01)
                     continue
 
+                result = model.predict(
+                    source=frames,
+                    stream=False,
+                    imgsz=args.imgsz,
+                    conf=args.conf,
+                    iou=args.iou,
+                    device=args.device,
+                    classes=args.classes,
+                    verbose=False,
+                )[0]
+                now = time.monotonic()
                 payload = _build_payload(result, args.source_id)
                 message = json.dumps(payload, separators=(",", ":")).encode("utf-8")
                 udp_socket.sendto(message, destination)
-                last_sent = now
 
                 if args.log_every > 0 and now - last_log >= args.log_every:
                     print(
@@ -152,11 +134,7 @@ def main() -> int:
                     )
                     last_log = now
     finally:
-        if cleanup_path:
-            try:
-                os.unlink(cleanup_path)
-            except OSError:
-                pass
+        reader.stop()
 
     return 0
 

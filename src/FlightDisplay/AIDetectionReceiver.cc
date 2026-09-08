@@ -9,19 +9,53 @@
 
 #include "AIDetectionReceiver.h"
 
+#include <QtCore/QDateTime>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QRegularExpression>
 #include <QtNetwork/QNetworkDatagram>
 #include <QtNetwork/QUdpSocket>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
+
+namespace {
+constexpr qint64 kMaxDatagramBytes = 32 * 1024;
+constexpr qsizetype kMaxDetectionsPerPacket = 64;
+constexpr qsizetype kMaxSources = 4;
+constexpr qsizetype kMaxSourceIdLength = 64;
+constexpr qsizetype kMaxLabelLength = 64;
+constexpr double kMaxFrameDimension = 16384.0;
+constexpr double kMaxTimestampSkewSeconds = 5.0;
+constexpr int kStaleTimeoutMs = 1500;
+constexpr int kStaleCheckIntervalMs = 250;
+
+bool finiteJsonNumber(const QJsonValue &value, double &number)
+{
+    if (!value.isDouble()) {
+        return false;
+    }
+    number = value.toDouble();
+    return std::isfinite(number);
+}
+
+bool validSourceId(const QString &sourceId)
+{
+    static const QRegularExpression sourcePattern(QStringLiteral("^[A-Za-z0-9_.-]+$"));
+    return sourceId.size() <= kMaxSourceIdLength
+        && (sourceId.isEmpty() || sourcePattern.match(sourceId).hasMatch());
+}
+}
 
 AIDetectionReceiver::AIDetectionReceiver(QObject *parent)
     : QObject(parent)
 {
-    _statusText = QStringLiteral("AI detection disabled");
+    _statusText = tr("AI 检测已停用");
+    _elapsedTimer.start();
+    _staleTimer.setInterval(kStaleCheckIntervalMs);
+    connect(&_staleTimer, &QTimer::timeout, this, &AIDetectionReceiver::_expireStaleDetections);
 }
 
 AIDetectionReceiver::~AIDetectionReceiver()
@@ -68,16 +102,23 @@ QVariantList AIDetectionReceiver::detectionsForSource(const QString &sourceId) c
     return filtered;
 }
 
+void AIDetectionReceiver::clearDetections()
+{
+    _detectionsBySource.clear();
+    _lastUpdateMsBySource.clear();
+    _setDetections({});
+}
+
 void AIDetectionReceiver::_updateSocket()
 {
     const bool wasBound = bound();
 
     _closeSocket();
+    _staleTimer.stop();
+    clearDetections();
 
     if (!_enabled) {
-        _setStatusText(QStringLiteral("AI detection disabled"));
-        _setDetections({});
-        _detectionsBySource.clear();
+        _setStatusText(tr("AI 检测已停用"));
         if (wasBound != bound()) {
             emit boundChanged();
         }
@@ -87,9 +128,12 @@ void AIDetectionReceiver::_updateSocket()
     _socket = new QUdpSocket(this);
     connect(_socket, &QUdpSocket::readyRead, this, &AIDetectionReceiver::_readPendingDatagrams);
 
-    const bool ok = _socket->bind(QHostAddress::AnyIPv4, _port, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
-    _setStatusText(ok ? QStringLiteral("Listening for AI detections on UDP %1").arg(_port)
-                      : QStringLiteral("AI detection UDP bind failed on %1: %2").arg(_port).arg(_socket->errorString()));
+    const bool ok = _socket->bind(QHostAddress::LocalHost, _port, QUdpSocket::DontShareAddress);
+    _setStatusText(ok ? tr("正在监听本机 AI 检测 UDP 端口 %1").arg(_port)
+                      : tr("AI 检测 UDP 端口 %1 绑定失败：%2").arg(_port).arg(_socket->errorString()));
+    if (ok) {
+        _staleTimer.start();
+    }
 
     if (wasBound != bound()) {
         emit boundChanged();
@@ -111,19 +155,81 @@ void AIDetectionReceiver::_closeSocket()
 void AIDetectionReceiver::_readPendingDatagrams()
 {
     while (_socket && _socket->hasPendingDatagrams()) {
-        const QByteArray datagram = _socket->receiveDatagram().data();
+        const QNetworkDatagram networkDatagram = _socket->receiveDatagram();
+        if (!networkDatagram.senderAddress().isLoopback()) {
+            _setStatusText(tr("已拒绝非本机 AI 检测数据包"));
+            continue;
+        }
+
+        const QByteArray datagram = networkDatagram.data();
+        if (datagram.size() > kMaxDatagramBytes) {
+            _setStatusText(tr("已拒绝过大的 AI 检测数据包"));
+            continue;
+        }
+
         QJsonParseError error;
         const QJsonDocument document = QJsonDocument::fromJson(datagram, &error);
         if (error.error != QJsonParseError::NoError || !document.isObject()) {
-            _setStatusText(QStringLiteral("Invalid AI detection JSON"));
+            _setStatusText(tr("AI 检测 JSON 无效"));
             continue;
         }
 
         const QJsonObject root = document.object();
-        const QJsonArray rawDetections = root.value(QStringLiteral("detections")).toArray();
-        const double frameWidth = root.value(QStringLiteral("frame_width")).toDouble();
-        const double frameHeight = root.value(QStringLiteral("frame_height")).toDouble();
-        const QString sourceId = root.value(QStringLiteral("source_id")).toString();
+        const QJsonValue detectionsValue = root.value(QStringLiteral("detections"));
+        if (!detectionsValue.isArray()) {
+            _setStatusText(tr("AI 检测结果列表无效"));
+            continue;
+        }
+
+        const QJsonArray rawDetections = detectionsValue.toArray();
+        if (rawDetections.size() > kMaxDetectionsPerPacket) {
+            _setStatusText(tr("已拒绝目标框数量过多的 AI 检测数据包"));
+            continue;
+        }
+
+        const QJsonValue sourceIdValue = root.value(QStringLiteral("source_id"));
+        if (!sourceIdValue.isUndefined() && !sourceIdValue.isString()) {
+            _setStatusText(tr("AI 检测来源 ID 无效"));
+            continue;
+        }
+        const QString sourceId = sourceIdValue.toString().trimmed();
+        if (!validSourceId(sourceId)) {
+            _setStatusText(tr("AI 检测来源 ID 无效"));
+            continue;
+        }
+        if (!_detectionsBySource.contains(sourceId) && _detectionsBySource.size() >= kMaxSources) {
+            _setStatusText(tr("已拒绝 AI 检测数据包：来源数量达到上限"));
+            continue;
+        }
+
+        const QJsonValue timestampValue = root.value(QStringLiteral("timestamp"));
+        if (!timestampValue.isUndefined()) {
+            double timestamp = 0.0;
+            if (!finiteJsonNumber(timestampValue, timestamp)) {
+                _setStatusText(tr("AI 检测时间戳无效"));
+                continue;
+            }
+            const double nowSeconds = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+            if (std::abs(nowSeconds - timestamp) > kMaxTimestampSkewSeconds) {
+                _setStatusText(tr("已拒绝过期的 AI 检测数据包"));
+                continue;
+            }
+        }
+
+        double frameWidth = 0.0;
+        double frameHeight = 0.0;
+        const QJsonValue frameWidthValue = root.value(QStringLiteral("frame_width"));
+        const QJsonValue frameHeightValue = root.value(QStringLiteral("frame_height"));
+        if (!frameWidthValue.isUndefined()
+            && (!finiteJsonNumber(frameWidthValue, frameWidth) || frameWidth <= 0.0 || frameWidth > kMaxFrameDimension)) {
+            _setStatusText(tr("AI 检测画面宽度无效"));
+            continue;
+        }
+        if (!frameHeightValue.isUndefined()
+            && (!finiteJsonNumber(frameHeightValue, frameHeight) || frameHeight <= 0.0 || frameHeight > kMaxFrameDimension)) {
+            _setStatusText(tr("AI 检测画面高度无效"));
+            continue;
+        }
 
         QVariantList detections;
         detections.reserve(rawDetections.size());
@@ -133,23 +239,36 @@ void AIDetectionReceiver::_readPendingDatagrams()
                 continue;
             }
 
-            const QVariantMap detection = _parseDetection(value.toObject().toVariantMap(), frameWidth, frameHeight);
+            const QVariantMap detection = _parseDetection(value.toObject(), frameWidth, frameHeight);
             if (!detection.isEmpty()) {
                 QVariantMap sourceDetection = detection;
-                if (!sourceId.isEmpty() && sourceDetection.value(QStringLiteral("source_id")).toString().isEmpty()) {
-                    sourceDetection.insert(QStringLiteral("source_id"), sourceId);
-                }
+                sourceDetection.insert(QStringLiteral("source_id"), sourceId);
                 detections.append(sourceDetection);
             }
         }
 
-        if (sourceId.isEmpty()) {
-            _detectionsBySource.clear();
-            _setDetections(detections);
+        _setDetectionsForSource(sourceId, detections);
+        _setStatusText(tr("已收到 %1 个 AI 检测目标").arg(detections.size()));
+    }
+}
+
+void AIDetectionReceiver::_expireStaleDetections()
+{
+    const qint64 now = _elapsedTimer.elapsed();
+    bool removed = false;
+    for (auto it = _lastUpdateMsBySource.begin(); it != _lastUpdateMsBySource.end();) {
+        if (now - it.value() > kStaleTimeoutMs) {
+            _detectionsBySource.remove(it.key());
+            it = _lastUpdateMsBySource.erase(it);
+            removed = true;
         } else {
-            _setDetectionsForSource(sourceId, detections);
+            ++it;
         }
-        _setStatusText(QStringLiteral("Received %1 AI detections").arg(detections.size()));
+    }
+
+    if (removed) {
+        _rebuildDetections();
+        _setStatusText(tr("AI 检测结果已过期"));
     }
 }
 
@@ -165,6 +284,9 @@ void AIDetectionReceiver::_setStatusText(const QString &statusText)
 
 void AIDetectionReceiver::_setDetections(const QVariantList &detections)
 {
+    if (_detections == detections) {
+        return;
+    }
     _detections = detections;
     emit detectionsChanged();
 }
@@ -172,7 +294,12 @@ void AIDetectionReceiver::_setDetections(const QVariantList &detections)
 void AIDetectionReceiver::_setDetectionsForSource(const QString &sourceId, const QVariantList &detections)
 {
     _detectionsBySource.insert(sourceId, detections);
+    _lastUpdateMsBySource.insert(sourceId, _elapsedTimer.elapsed());
+    _rebuildDetections();
+}
 
+void AIDetectionReceiver::_rebuildDetections()
+{
     QVariantList merged;
     for (const QVariantList &sourceDetections : std::as_const(_detectionsBySource)) {
         for (const QVariant &detection : sourceDetections) {
@@ -182,26 +309,37 @@ void AIDetectionReceiver::_setDetectionsForSource(const QString &sourceId, const
     _setDetections(merged);
 }
 
-QVariantMap AIDetectionReceiver::_parseDetection(const QVariantMap &detection, double frameWidth, double frameHeight) const
+QVariantMap AIDetectionReceiver::_parseDetection(const QJsonObject &detection, double frameWidth, double frameHeight) const
 {
-    QVariantMap parsed;
+    double x = -1.0;
+    double y = -1.0;
+    double w = -1.0;
+    double h = -1.0;
+    const bool hasNormalizedBox = finiteJsonNumber(detection.value(QStringLiteral("x")), x)
+        && finiteJsonNumber(detection.value(QStringLiteral("y")), y)
+        && finiteJsonNumber(detection.value(QStringLiteral("w")), w)
+        && finiteJsonNumber(detection.value(QStringLiteral("h")), h);
 
-    const QVariant xValue = detection.value(QStringLiteral("x"));
-    const QVariant yValue = detection.value(QStringLiteral("y"));
-    const QVariant wValue = detection.value(QStringLiteral("w"));
-    const QVariant hValue = detection.value(QStringLiteral("h"));
+    if (!hasNormalizedBox) {
+        const QJsonValue bboxValue = detection.value(QStringLiteral("bbox"));
+        if (!bboxValue.isArray() || frameWidth <= 0.0 || frameHeight <= 0.0) {
+            return {};
+        }
+        const QJsonArray bbox = bboxValue.toArray();
+        if (bbox.size() != 4) {
+            return {};
+        }
 
-    double x = xValue.isValid() ? xValue.toDouble() : -1.0;
-    double y = yValue.isValid() ? yValue.toDouble() : -1.0;
-    double w = wValue.isValid() ? wValue.toDouble() : -1.0;
-    double h = hValue.isValid() ? hValue.toDouble() : -1.0;
-
-    const QVariantList bbox = detection.value(QStringLiteral("bbox")).toList();
-    if ((x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0) && bbox.size() == 4 && frameWidth > 0.0 && frameHeight > 0.0) {
-        const double left = bbox.at(0).toDouble();
-        const double top = bbox.at(1).toDouble();
-        const double right = bbox.at(2).toDouble();
-        const double bottom = bbox.at(3).toDouble();
+        double left = 0.0;
+        double top = 0.0;
+        double right = 0.0;
+        double bottom = 0.0;
+        if (!finiteJsonNumber(bbox.at(0), left)
+            || !finiteJsonNumber(bbox.at(1), top)
+            || !finiteJsonNumber(bbox.at(2), right)
+            || !finiteJsonNumber(bbox.at(3), bottom)) {
+            return {};
+        }
 
         x = left / frameWidth;
         y = top / frameHeight;
@@ -209,22 +347,46 @@ QVariantMap AIDetectionReceiver::_parseDetection(const QVariantMap &detection, d
         h = (bottom - top) / frameHeight;
     }
 
-    if (x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0) {
-        return parsed;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(w) || !std::isfinite(h)
+        || x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0) {
+        return {};
     }
 
-    parsed.insert(QStringLiteral("x"), _clampUnit(x));
-    parsed.insert(QStringLiteral("y"), _clampUnit(y));
-    parsed.insert(QStringLiteral("w"), _clampUnit(w));
-    parsed.insert(QStringLiteral("h"), _clampUnit(h));
-    parsed.insert(QStringLiteral("label"), detection.value(QStringLiteral("label"), QStringLiteral("target")).toString());
-    parsed.insert(QStringLiteral("confidence"), _clampUnit(detection.value(QStringLiteral("confidence"), 0.0).toDouble()));
-    parsed.insert(QStringLiteral("source_id"), detection.value(QStringLiteral("source_id")).toString());
+    x = _clampUnit(x);
+    y = _clampUnit(y);
+    w = std::min(_clampUnit(w), 1.0 - x);
+    h = std::min(_clampUnit(h), 1.0 - y);
+    if (w <= 0.0 || h <= 0.0) {
+        return {};
+    }
+
+    const QJsonValue confidenceValue = detection.value(QStringLiteral("confidence"));
+    double confidence = 0.0;
+    if (!confidenceValue.isUndefined() && !finiteJsonNumber(confidenceValue, confidence)) {
+        return {};
+    }
+
+    const QJsonValue labelValue = detection.value(QStringLiteral("label"));
+    if (!labelValue.isUndefined() && !labelValue.isString()) {
+        return {};
+    }
+    const QString label = labelValue.toString(QStringLiteral("target")).left(kMaxLabelLength);
+
+    QVariantMap parsed;
+    parsed.insert(QStringLiteral("x"), x);
+    parsed.insert(QStringLiteral("y"), y);
+    parsed.insert(QStringLiteral("w"), w);
+    parsed.insert(QStringLiteral("h"), h);
+    parsed.insert(QStringLiteral("label"), label);
+    parsed.insert(QStringLiteral("confidence"), _clampUnit(confidence));
 
     return parsed;
 }
 
 double AIDetectionReceiver::_clampUnit(double value)
 {
+    if (!std::isfinite(value)) {
+        return 0.0;
+    }
     return std::max(0.0, std::min(1.0, value));
 }

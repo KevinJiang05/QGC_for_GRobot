@@ -16,6 +16,22 @@ D:\Develop\envs\yolo\Scripts\python.exe -m pip install -r tools\ai_detection\req
 
 ## Run YOLO
 
+For normal multi-camera use, configure the camera sources in QGC and start AI
+detection from the application. The automatic bridge uses one process and one
+YOLO model for all enabled sources, keeps only each source's latest decoded
+frame, and applies `maxFps` before inference. A local instance lock rejects an
+accidental second automatic bridge.
+
+To inspect the configured sources without opening video streams or loading a
+model:
+
+```powershell
+D:\Develop\envs\yolo\Scripts\python.exe tools\ai_detection\run_yolo_to_qgc_auto.py --model D:\Develop\envs\yolo\models\yolov8n.pt --dry-run
+```
+
+The single-source script below is intended for development and diagnostics. Do
+not run it beside the automatic bridge for the same source.
+
 Start QGC first, configure the same video source in QGC, then run:
 
 ```powershell
@@ -33,6 +49,12 @@ Other useful examples:
 ```powershell
 D:\Develop\envs\yolo\Scripts\python.exe tools\ai_detection\yolo_to_qgc_udp.py --source 0 --model D:\Develop\envs\yolo\models\yolov8n.pt
 D:\Develop\envs\yolo\Scripts\python.exe tools\ai_detection\yolo_to_qgc_udp.py --source .\sample.mp4 --model .\runs\detect\train\weights\best.pt --conf 0.35
+```
+
+Run the bridge unit tests with:
+
+```powershell
+D:\Develop\envs\yolo\Scripts\python.exe -B -m unittest discover -s tools\ai_detection\tests -p "test_*.py"
 ```
 
 ## Test Without YOLO

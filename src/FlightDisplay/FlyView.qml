@@ -60,6 +60,7 @@ Item {
     property rect   _centerViewport:        Qt.rect(0, 0, width, height)
     property real   _rightPanelWidth:       ScreenTools.defaultFontPixelWidth * 30
     property var    _mapControl:            mapControl
+    property bool   _customContentBlocksMap: customOverlay.mapHidden
 
     property real   _fullItemZorder:    0
     property real   _pipItemZorder:     QGroundControl.zOrderWidgets
@@ -99,7 +100,9 @@ Item {
             pipMode:                !_mainWindowIsMap
             toolInsets:             customOverlay.totalToolInsets
             mapName:                "FlightDisplayView"
-            enabled:                !viewer3DWindow.isOpen
+            visible:                !_customContentBlocksMap
+            enabled:                !viewer3DWindow.isOpen && !_customContentBlocksMap
+            opacity:                _customContentBlocksMap ? 0 : 1
         }
 
         FlyViewVideo {
@@ -150,7 +153,6 @@ Item {
             anchors.fill:       widgetLayer
             z:                  _fullItemZorder + 2
             parentToolInsets:   widgetLayer.totalToolInsets
-            mapControl:         _mapControl
             visible:            !QGroundControl.videoManager.fullScreen
         }
 

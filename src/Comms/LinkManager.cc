@@ -400,6 +400,7 @@ void LinkManager::_addGRobotDefaultTCPLinkIfNeeded()
         if (config->type() != LinkConfiguration::TypeTcp) {
             if (hasDefaultName) {
                 qCWarning(LinkManagerLog) << "GRobot default link name is already used by a non-TCP configuration";
+                return;
             }
             continue;
         }
@@ -415,22 +416,8 @@ void LinkManager::_addGRobotDefaultTCPLinkIfNeeded()
             continue;
         }
 
-        bool configurationChanged = false;
-        if (hasDefaultName && !hasDefaultEndpoint) {
-            tcpConfig->setHost(QLatin1String(defaultHost));
-            tcpConfig->setPort(defaultPort);
-            configurationChanged = true;
-        }
-        if (!tcpConfig->isAutoConnect()) {
-            tcpConfig->setAutoConnect(true);
-            configurationChanged = true;
-        }
-
-        if (configurationChanged) {
-            saveLinkConfigurationList();
-        }
-
-        qCInfo(LinkManagerLog) << "GRobot TCP link ready:" << tcpConfig->name() << tcpConfig->host() << tcpConfig->port()
+        qCInfo(LinkManagerLog) << "Using existing GRobot TCP link without changing user settings:"
+                               << tcpConfig->name() << tcpConfig->host() << tcpConfig->port()
                                << "autoConnect=" << tcpConfig->isAutoConnect();
         return;
     }

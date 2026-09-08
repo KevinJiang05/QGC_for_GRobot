@@ -78,7 +78,7 @@ Rectangle {
         repeat: true
         onTriggered: {
             while (root.reconnectAllIndex < 4 && !root.enabledForIndex(root.reconnectAllIndex)) {
-                root.deepSharkEvent(root.titleForIndex(root.reconnectAllIndex) + " reconnect skipped: channel disabled")
+                root.deepSharkEvent(qsTr("%1：通道已停用，跳过重连").arg(root.titleForIndex(root.reconnectAllIndex)))
                 root.reconnectAllIndex++
             }
             if (root.reconnectAllIndex >= 4) {
@@ -129,12 +129,12 @@ Rectangle {
 
     function startVideo(index) {
         if (!enabledForIndex(index)) {
-            deepSharkEvent(titleForIndex(index) + " channel disabled")
+            deepSharkEvent(qsTr("%1：通道已停用").arg(titleForIndex(index)))
             refreshVideoRows()
             return
         }
         if (urlForIndex(index).length === 0) {
-            deepSharkEvent(titleForIndex(index) + " start skipped: empty url")
+            deepSharkEvent(qsTr("%1：RTSP URL 为空，无法启动").arg(titleForIndex(index)))
             refreshVideoRows()
             return
         }
@@ -149,12 +149,12 @@ Rectangle {
 
     function reconnectVideo(index) {
         if (!enabledForIndex(index)) {
-            deepSharkEvent(titleForIndex(index) + " reconnect skipped: channel disabled")
+            deepSharkEvent(qsTr("%1：通道已停用，跳过重连").arg(titleForIndex(index)))
             refreshVideoRows()
             return
         }
         if (urlForIndex(index).length === 0) {
-            deepSharkEvent(titleForIndex(index) + " reconnect skipped: empty url")
+            deepSharkEvent(qsTr("%1：RTSP URL 为空，无法重连").arg(titleForIndex(index)))
             refreshVideoRows()
             return
         }
@@ -163,7 +163,7 @@ Rectangle {
     }
 
     function reconnectAllVideos() {
-        deepSharkEvent("Reconnect All triggered")
+        deepSharkEvent(qsTr("已请求全部视频重连"))
         reconnectAllTimer.stop()
         reconnectAllIndex = 0
         reconnectAllTimer.start()
@@ -171,12 +171,12 @@ Rectangle {
 
     function selectTile(index) {
         if (selectedIndex !== index) {
-            deepSharkEvent("Selected " + titleForIndex(index))
+            deepSharkEvent(qsTr("已选择 %1").arg(titleForIndex(index)))
         }
         selectedIndex = index
         if (layoutMode === "mainAux" || layoutMode === "panorama") {
             if (mainIndex !== index) {
-                deepSharkEvent("Main view switched to " + titleForIndex(index))
+                deepSharkEvent(qsTr("主画面已切换为 %1").arg(titleForIndex(index)))
             }
             mainIndex = index
         }
@@ -186,7 +186,7 @@ Rectangle {
         attitudeMode = false
         auvMissionMode = false
         if (layoutMode !== "grid") {
-            deepSharkEvent("Layout switched to grid")
+            deepSharkEvent(qsTr("布局已切换为四宫格"))
         }
         previousLayoutMode = layoutMode === "fullscreen" ? previousLayoutMode : layoutMode
         layoutMode = "grid"
@@ -197,10 +197,10 @@ Rectangle {
         attitudeMode = false
         auvMissionMode = false
         if (layoutMode !== "mainAux") {
-            deepSharkEvent("Layout switched to mainAux")
+            deepSharkEvent(qsTr("布局已切换为主辅画面"))
         }
         if (mainIndex !== index) {
-            deepSharkEvent("Main view switched to " + titleForIndex(index))
+            deepSharkEvent(qsTr("主画面已切换为 %1").arg(titleForIndex(index)))
         }
         selectedIndex = index
         mainIndex = index
@@ -213,10 +213,10 @@ Rectangle {
         attitudeMode = false
         auvMissionMode = false
         if (layoutMode !== "panorama") {
-            deepSharkEvent("Layout switched to panorama")
+            deepSharkEvent(qsTr("布局已切换为全景"))
         }
         if (mainIndex !== index) {
-            deepSharkEvent("Main view switched to " + titleForIndex(index))
+            deepSharkEvent(qsTr("主画面已切换为 %1").arg(titleForIndex(index)))
         }
         selectedIndex = index
         mainIndex = index
@@ -229,7 +229,7 @@ Rectangle {
         attitudeMode = false
         auvMissionMode = false
         if (layoutMode !== "fullscreen" || fullscreenIndex !== index) {
-            deepSharkEvent("Fullscreen entered: " + titleForIndex(index))
+            deepSharkEvent(qsTr("%1 已进入全屏").arg(titleForIndex(index)))
         }
         selectedIndex = index
         fullscreenIndex = index
@@ -238,7 +238,7 @@ Rectangle {
     }
 
     function exitFullscreen() {
-        deepSharkEvent("Fullscreen exited")
+        deepSharkEvent(qsTr("已退出全屏"))
         layoutMode = previousLayoutMode === "grid" || previousLayoutMode === "mainAux" || previousLayoutMode === "panorama"
                      ? previousLayoutMode : "grid"
         fullscreenIndex = -1
@@ -268,19 +268,19 @@ Rectangle {
     function toggleAttitudeMode() {
         attitudeMode = true
         auvMissionMode = false
-        deepSharkEvent("3D attitude opened")
+        deepSharkEvent(qsTr("已打开 3D 姿态工作区"))
     }
 
     function toggleAuvMissionMode() {
         auvMissionMode = true
         attitudeMode = false
-        deepSharkEvent("AUV mission workspace opened")
+        deepSharkEvent(qsTr("已打开 AUV 任务工作区"))
     }
 
     function showVideoWorkspace() {
         attitudeMode = false
         auvMissionMode = false
-        deepSharkEvent("Video workspace opened")
+        deepSharkEvent(qsTr("已打开视频工作区"))
     }
 
     function tileZ(index) {
@@ -391,7 +391,7 @@ Rectangle {
         } else if (selectedIndex === secondIndex) {
             selectedIndex = firstIndex
         }
-        deepSharkEvent("Swapped " + titleForIndex(firstIndex) + " and " + titleForIndex(secondIndex))
+        deepSharkEvent(qsTr("已交换 %1 与 %2").arg(titleForIndex(firstIndex)).arg(titleForIndex(secondIndex)))
     }
 
     function beginTileDrag(index, centerX, centerY) {
@@ -491,10 +491,12 @@ Rectangle {
         for (var i = 0; i < 4; i++) {
             if (!newEnabled[i]) {
                 if (oldEnabled[i]) {
-                    deepSharkEvent(titleForIndex(i) + " channel disabled")
+                    deepSharkEvent(qsTr("%1：通道已停用").arg(titleForIndex(i)))
                 }
             } else if (!oldEnabled[i] || oldUrls[i] !== newUrls[i]) {
-                deepSharkEvent(!oldEnabled[i] ? titleForIndex(i) + " channel enabled" : "URL changed: video" + (i + 1))
+                deepSharkEvent(!oldEnabled[i]
+                               ? qsTr("%1：通道已启用").arg(titleForIndex(i))
+                               : qsTr("视频 %1：URL 已更新").arg(i + 1))
                 reconnectVideo(i)
             }
         }
@@ -523,12 +525,12 @@ Rectangle {
                       : attitudeMode
                       ? qsTr("DeepShark 3D 姿态")
                       : layoutMode === "fullscreen"
-                      ? qsTr("DeepShark Video Panel - Fullscreen")
+                      ? qsTr("DeepShark 视频面板 - 全屏")
                       : layoutMode === "mainAux"
-                        ? qsTr("DeepShark Video Panel - Main Aux")
+                        ? qsTr("DeepShark 视频面板 - 主辅")
                         : layoutMode === "panorama"
-                          ? qsTr("DeepShark Video Panel - Panorama")
-                          : qsTr("DeepShark Video Panel")
+                          ? qsTr("DeepShark 视频面板 - 全景")
+                          : qsTr("DeepShark 视频面板")
                 color: "#f2f5f8"
                 font.bold: true
                 elide: Text.ElideRight
@@ -553,13 +555,6 @@ Rectangle {
                     height: parent.height
                     spacing: ScreenTools.defaultFontPixelWidth * 0.7
 
-                    QGCLabel {
-                        visible: !root._compactToolbar
-                        text: qsTr("By KevinJiang")
-                        color: "#94a3b8"
-                        font.pointSize: ScreenTools.defaultFontPointSize * 0.85
-                        Layout.alignment: Qt.AlignVCenter
-                    }
                     QGCButton {
                         text: qsTr("视频")
                         backgroundColor: !root.attitudeMode && !root.auvMissionMode ? "#0e7490" : "#334155"
@@ -658,10 +653,15 @@ Rectangle {
             Layout.minimumHeight: 1
             clip: true
 
-            Attitude3DPanel {
+            Loader {
+                id: attitudePanelLoader
                 anchors.fill: parent
-                visible: root.attitudeMode
+                active: root.visible && root.attitudeMode
+                visible: active
                 z: 8
+                sourceComponent: Component {
+                    Attitude3DPanel {}
+                }
             }
 
             Loader {
@@ -811,7 +811,7 @@ Rectangle {
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: qsTr("通道"); color: "#cbd5e1"; font.bold: true }
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; text: qsTr("名称"); color: "#cbd5e1"; font.bold: true }
-                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7; text: qsTr("Enabled"); color: "#cbd5e1"; font.bold: true }
+                    QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7; text: qsTr("启用"); color: "#cbd5e1"; font.bold: true }
                     QGCLabel { Layout.fillWidth: true; text: qsTr("RTSP URL"); color: "#cbd5e1"; font.bold: true }
 
                     QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 5; text: "1"; color: "#cbd5e1" }

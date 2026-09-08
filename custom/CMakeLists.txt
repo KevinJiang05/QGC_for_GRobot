@@ -23,6 +23,8 @@ set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThrusterMappingExportController.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThrusterMappingExportController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ThrusterDirectControlController.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ThrusterDirectControlController.h
     CACHE INTERNAL "" FORCE
 )
 

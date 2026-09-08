@@ -19,6 +19,7 @@
 #endif
 
 class VideoReceiver;
+class DeepSharkVideoControllerTest;
 
 class DeepSharkVideoController : public QObject
 {
@@ -69,6 +70,7 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
+    Q_INVOKABLE void restart(int delayMs = 250);
 
 signals:
     void videoItemChanged();
@@ -79,6 +81,7 @@ signals:
     void streamingChanged();
     void decodingChanged();
     void statusTextChanged();
+    void failure(const QString &message);
     void startAttemptsChanged();
     void videoSizeChanged();
     void frameRateTextChanged();
@@ -86,9 +89,14 @@ signals:
     void latencyChanged();
 
 private:
+    friend class DeepSharkVideoControllerTest;
+
     void _ensureReceiver();
     void _rebuildSink();
+    void _prepareRestart(int delayMs);
+    void _scheduleStart(int delayMs);
     void _setStatusText(const QString &statusText);
+    void _reportFailure(const QString &message);
     void _setStreaming(bool streaming);
     void _setDecoding(bool decoding);
     void _setVideoSize(const QSize &videoSize);
@@ -112,10 +120,16 @@ private:
     bool _lowLatency = true;
     bool _streaming = false;
     bool _decoding = false;
+    bool _startPending = false;
+    bool _stopRequested = false;
+    bool _restartRequested = false;
+    bool _restartNeedsSinkRebuild = false;
+    int _restartDelayMs = 250;
     int _startAttempts = 0;
     QSize _videoSize;
     double _frameRate = 0.0;
     int _estimatedLatencyMs = -1;
+    QTimer _startTimer;
     QTimer _frameRateTimer;
 
 #ifdef QGC_GST_STREAMING

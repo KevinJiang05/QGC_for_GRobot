@@ -98,6 +98,7 @@ private:
     static void _onNewPad(GstElement *element, GstPad *pad, gpointer data);
     static void _wrapWithGhostPad(GstElement *element, GstPad *pad, gpointer data);
     static void _linkPad(GstElement *element, GstPad *pad, gpointer data);
+    static bool _isVideoPad(GstPad *pad);
     static gboolean _padProbe(GstElement *element, GstPad *pad, gpointer user_data);
     static gboolean _filterParserCaps(GstElement *bin, GstPad *pad, GstElement *element, GstQuery *query, gpointer data);
     static GstPadProbeReturn _teeProbe(GstPad *pad, GstPadProbeInfo *info, gpointer user_data);

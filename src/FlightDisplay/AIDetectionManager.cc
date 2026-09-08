@@ -9,6 +9,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
+#include <QtCore/QPointer>
 #include <QtCore/QProcess>
 #include <QtCore/QSettings>
 #include <QtCore/QTimer>
@@ -176,17 +177,19 @@ void AIDetectionManager::checkEnvironment()
     });
     _checkProcess->setProcessChannelMode(QProcess::MergedChannels);
     connect(_checkProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus) { _checkFinished(exitCode); });
+    connect(_checkProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (_checkProcess) {
+            _setCheckReport(tr("Failed to start Python: %1").arg(_checkProcess->errorString()));
+        }
+    });
 
     _setCheckReport(tr("Checking AI environment..."));
     _checkProcess->start();
-    if (!_checkProcess->waitForStarted(3000)) {
-        _setCheckReport(tr("Failed to start Python: %1").arg(_checkProcess->errorString()));
-        return;
-    }
 
-    QTimer::singleShot(kCheckTimeoutMs, this, [this]() {
-        if (_checkProcess && _checkProcess->state() != QProcess::NotRunning) {
-            _checkProcess->kill();
+    const QPointer<QProcess> checkProcess(_checkProcess);
+    QTimer::singleShot(kCheckTimeoutMs, this, [this, checkProcess]() {
+        if (checkProcess && checkProcess == _checkProcess && checkProcess->state() != QProcess::NotRunning) {
+            checkProcess->kill();
             _setCheckReport(tr("AI environment check timed out"));
         }
     });
@@ -215,38 +218,25 @@ void AIDetectionManager::startDetection()
     connect(_detectProcess, &QProcess::readyReadStandardOutput, this, &AIDetectionManager::_readDetectOutput);
     connect(_detectProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus) { _detectFinished(exitCode); });
     connect(_detectProcess, &QProcess::errorOccurred, this, &AIDetectionManager::_detectError);
+    connect(_detectProcess, &QProcess::started, this, &AIDetectionManager::_detectStarted);
 
+    _stopRequested = false;
     _setStatusText(tr("Starting AI detection..."));
     _detectProcess->start();
-    if (!_detectProcess->waitForStarted(5000)) {
-        _setStatusText(tr("Failed to start AI detection: %1").arg(_detectProcess->errorString()));
-        return;
-    }
-
-    emit runningChanged();
-    _setStatusText(tr("AI detection is running"));
 }
 
 void AIDetectionManager::stopDetection()
 {
-    if (!running()) {
-        _setStatusText(tr("AI detection is stopped"));
-        return;
-    }
-
-    _detectProcess->terminate();
-    if (!_detectProcess->waitForFinished(5000)) {
-        _detectProcess->kill();
-        _detectProcess->waitForFinished(2000);
-    }
-    _setStatusText(tr("AI detection is stopped"));
-    emit runningChanged();
+    _requestDetectionStop(false);
 }
 
 void AIDetectionManager::restartDetection()
 {
-    stopDetection();
-    startDetection();
+    if (running()) {
+        _requestDetectionStop(true);
+    } else {
+        startDetection();
+    }
 }
 
 void AIDetectionManager::saveSettings()
@@ -277,18 +267,50 @@ void AIDetectionManager::_checkFinished(int exitCode)
 
 void AIDetectionManager::_detectFinished(int exitCode)
 {
-    const QString output = QString::fromLocal8Bit(_detectProcess->readAllStandardOutput()).trimmed();
-    _setStatusText(output.isEmpty()
-        ? tr("AI detection exited with code %1").arg(exitCode)
-        : tr("AI detection exited with code %1: %2").arg(exitCode).arg(output.right(300)));
+    QProcess *process = _detectProcess;
+    const QString output = process ? QString::fromLocal8Bit(process->readAllStandardOutput()).trimmed() : QString();
+    const bool restart = _restartPending;
+    const bool stoppedByRequest = _stopRequested;
+    _restartPending = false;
+    _stopRequested = false;
+    _detectProcess = nullptr;
+    if (process) {
+        process->deleteLater();
+    }
+
+    if (stoppedByRequest && !restart) {
+        _setStatusText(tr("AI detection is stopped"));
+    } else if (!restart) {
+        _setStatusText(output.isEmpty()
+            ? tr("AI detection exited with code %1").arg(exitCode)
+            : tr("AI detection exited with code %1: %2").arg(exitCode).arg(output.right(300)));
+    }
     emit runningChanged();
+
+    if (restart && !_shuttingDown) {
+        QTimer::singleShot(0, this, &AIDetectionManager::startDetection);
+    }
 }
 
-void AIDetectionManager::_detectError()
+void AIDetectionManager::_detectError(QProcess::ProcessError error)
 {
     if (_detectProcess) {
         _setStatusText(tr("AI detection process error: %1").arg(_detectProcess->errorString()));
     }
+    if (error == QProcess::FailedToStart && _detectProcess) {
+        QProcess *process = _detectProcess;
+        _detectProcess = nullptr;
+        _stopRequested = false;
+        _restartPending = false;
+        process->deleteLater();
+        emit runningChanged();
+    }
+}
+
+void AIDetectionManager::_detectStarted()
+{
+    emit runningChanged();
+    _setStatusText(tr("AI detection is running"));
 }
 
 void AIDetectionManager::_readDetectOutput()
@@ -365,6 +387,30 @@ QStringList AIDetectionManager::_detectionArguments() const
         args << QStringLiteral("--device") << _device;
     }
     return args;
+}
+
+void AIDetectionManager::_requestDetectionStop(bool restartAfterStop)
+{
+    _restartPending = restartAfterStop;
+    if (!running()) {
+        _stopRequested = false;
+        if (restartAfterStop) {
+            startDetection();
+        } else {
+            _setStatusText(tr("AI detection is stopped"));
+        }
+        return;
+    }
+
+    _stopRequested = true;
+    _setStatusText(restartAfterStop ? tr("Restarting AI detection...") : tr("Stopping AI detection..."));
+    const QPointer<QProcess> process(_detectProcess);
+    process->terminate();
+    QTimer::singleShot(3000, this, [this, process]() {
+        if (process && process == _detectProcess && process->state() != QProcess::NotRunning) {
+            process->kill();
+        }
+    });
 }
 
 void AIDetectionManager::_setStatusText(const QString &statusText)

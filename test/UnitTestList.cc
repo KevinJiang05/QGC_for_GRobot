@@ -33,6 +33,12 @@
 // Comms
 #include "QGCSerialPortInfoTest.h"
 
+// DeepShark
+#include "AIDetectionReceiverTest.h"
+#include "DeepSharkAuvControllerTest.h"
+#include "DeepSharkVideoControllerTest.h"
+#include "ThrusterDirectControlControllerTest.h"
+
 // FactSystem
 #include "FactSystemTestGeneric.h"
 #include "FactSystemTestPX4.h"
@@ -137,6 +143,12 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // Comms
     UT_REGISTER_TEST(QGCSerialPortInfoTest)
+
+    // DeepShark
+    UT_REGISTER_TEST(AIDetectionReceiverTest)
+    UT_REGISTER_TEST(DeepSharkAuvControllerTest)
+    UT_REGISTER_TEST(DeepSharkVideoControllerTest)
+    UT_REGISTER_TEST(ThrusterDirectControlControllerTest)
 
     // FactSystem
     UT_REGISTER_TEST(FactSystemTestGeneric)

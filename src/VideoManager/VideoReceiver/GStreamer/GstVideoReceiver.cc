@@ -897,7 +897,11 @@ GstElement *GstVideoReceiver::_makeFileSink(const QString &videoFile, FILE_FORMA
 
 void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 {
-    // FIXME: check for caps - if this is not video stream (and preferably - one of these which we have to support) then simply skip it
+    if (!_isVideoPad(pad)) {
+        qCDebug(GstVideoReceiverLog) << "Ignoring non-video source pad" << _uri;
+        return;
+    }
+
     if (!gst_element_link(_source, _tee)) {
         qCCritical(GstVideoReceiverLog) << "Unable to link source";
         return;
@@ -930,6 +934,16 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
 
 void GstVideoReceiver::_onNewDecoderPad(GstPad *pad)
 {
+    if (!_isVideoPad(pad)) {
+        qCDebug(GstVideoReceiverLog) << "Ignoring non-video decoder pad" << _uri;
+        return;
+    }
+
+    if (_videoSink && gst_element_get_parent(_videoSink)) {
+        qCDebug(GstVideoReceiverLog) << "Ignoring duplicate decoder pad" << _uri;
+        return;
+    }
+
     qCDebug(GstVideoReceiverLog) << "_onNewDecoderPad" << _uri;
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-new-decoder-pad");
@@ -1007,17 +1021,28 @@ bool GstVideoReceiver::_addDecoder(GstElement *src)
 
 bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 {
+    if (!pad || !_videoSink || !_pipeline) {
+        return false;
+    }
+
     GstCaps *caps = gst_pad_query_caps(pad, nullptr);
 
     (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
     (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
 
-    if (!gst_element_link(_decoder, _videoSink)) {
+    GstPad *sinkPad = gst_element_get_static_pad(_videoSink, "sink");
+    const GstPadLinkReturn linkResult = sinkPad ? gst_pad_link(pad, sinkPad) : GST_PAD_LINK_NOFORMAT;
+    const bool linked = linkResult == GST_PAD_LINK_OK;
+    gst_clear_object(&sinkPad);
+
+    if (!linked) {
         (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
-        qCCritical(GstVideoReceiverLog) << "Unable to link video sink";
+        qCCritical(GstVideoReceiverLog) << "Unable to link video sink" << _uri << "result=" << linkResult;
         gst_clear_caps(&caps);
         return false;
     }
+
+    qCDebug(GstVideoReceiverLog) << "Video sink linked" << _uri;
 
     g_object_set(_videoSink,
                  "widget", _widget,
@@ -1269,6 +1294,10 @@ void GstVideoReceiver::_wrapWithGhostPad(GstElement *element, GstPad *pad, gpoin
 {
     Q_UNUSED(data)
 
+    if (!_isVideoPad(pad)) {
+        return;
+    }
+
     gchar *name = gst_pad_get_name(pad);
     if (!name) {
         qCCritical(GstVideoReceiverLog) << "gst_pad_get_name() failed";
@@ -1293,6 +1322,10 @@ void GstVideoReceiver::_wrapWithGhostPad(GstElement *element, GstPad *pad, gpoin
 
 void GstVideoReceiver::_linkPad(GstElement *element, GstPad *pad, gpointer data)
 {
+    if (!_isVideoPad(pad)) {
+        return;
+    }
+
     gchar *name = gst_pad_get_name(pad);
     if (!name) {
         qCCritical(GstVideoReceiverLog) << "gst_pad_get_name() failed";
@@ -1304,6 +1337,40 @@ void GstVideoReceiver::_linkPad(GstElement *element, GstPad *pad, gpointer data)
     }
 
     g_clear_pointer(&name, g_free);
+}
+
+bool GstVideoReceiver::_isVideoPad(GstPad *pad)
+{
+    if (!pad) {
+        return false;
+    }
+
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    if (!caps) {
+        caps = gst_pad_query_caps(pad, nullptr);
+    }
+
+    bool isVideo = false;
+    if (caps && !gst_caps_is_empty(caps)) {
+        for (guint i = 0; i < gst_caps_get_size(caps); ++i) {
+            const GstStructure *structure = gst_caps_get_structure(caps, i);
+            const gchar *name = structure ? gst_structure_get_name(structure) : nullptr;
+            if (name && g_str_has_prefix(name, "video/")) {
+                isVideo = true;
+                break;
+            }
+            if (name && g_strcmp0(name, "application/x-rtp") == 0) {
+                const gchar *media = gst_structure_get_string(structure, "media");
+                if (media && g_ascii_strcasecmp(media, "video") == 0) {
+                    isVideo = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    gst_clear_caps(&caps);
+    return isVideo;
 }
 
 gboolean GstVideoReceiver::_padProbe(GstElement *element, GstPad *pad, gpointer user_data)

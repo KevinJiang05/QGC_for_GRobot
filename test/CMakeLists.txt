@@ -29,10 +29,22 @@ add_custom_target(check
 )
 
 function(add_qgc_test test_name)
+    set(test_arguments --unittest:${test_name})
+    if(WIN32)
+        list(APPEND test_arguments --no-windows-assert-ui)
+    endif()
     add_test(
         NAME ${test_name}
-        COMMAND $<TARGET_FILE:${PROJECT_NAME}> --unittest:${test_name}
+        COMMAND $<TARGET_FILE:${PROJECT_NAME}> ${test_arguments}
     )
+    set_tests_properties(${test_name} PROPERTIES
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+    if(WIN32 AND PC_GSTREAMER_PREFIX)
+        set_tests_properties(${test_name} PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${PC_GSTREAMER_PREFIX}/bin"
+        )
+    endif()
     add_dependencies(check ${PROJECT_NAME})
 endfunction()
 
@@ -55,6 +67,12 @@ add_qgc_test(QGCCameraManagerTest)
 
 add_subdirectory(Comms)
 add_qgc_test(QGCSerialPortInfoTest)
+
+add_subdirectory(DeepShark)
+add_qgc_test(AIDetectionReceiverTest)
+add_qgc_test(DeepSharkAuvControllerTest)
+add_qgc_test(DeepSharkVideoControllerTest)
+add_qgc_test(ThrusterDirectControlControllerTest)
 
 add_subdirectory(FactSystem)
 add_qgc_test(FactSystemTestGeneric)

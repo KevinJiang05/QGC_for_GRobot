@@ -137,51 +137,43 @@ function Invoke-StagedBootTest {
 
     $stagedBin = Split-Path -Parent $ApplicationPath
     $stagedRoot = Split-Path -Parent $stagedBin
-    $stdoutPath = Join-Path $runDirectory 'simple-boot.stdout.log'
-    $stderrPath = Join-Path $runDirectory 'simple-boot.stderr.log'
-    $environmentNames = @(
-        'PATH',
-        'QT_PLUGIN_PATH',
-        'QT_QPA_PLATFORM_PLUGIN_PATH',
-        'GST_PLUGIN_PATH_1_0',
-        'GST_PLUGIN_SYSTEM_PATH_1_0',
-        'GST_PLUGIN_SCANNER_1_0',
-        'GST_REGISTRY_1_0'
-    )
-    $environmentBackup = @{}
-
-    foreach ($name in $environmentNames) {
-        $environmentBackup[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-    }
+    $process = $null
 
     try {
         $systemRoot = [Environment]::GetEnvironmentVariable('SystemRoot', 'Process')
         $cleanPath = @($stagedBin, (Join-Path $systemRoot 'System32'), $systemRoot) -join ';'
-        [Environment]::SetEnvironmentVariable('PATH', $cleanPath, 'Process')
-        [Environment]::SetEnvironmentVariable('QT_PLUGIN_PATH', (Join-Path $stagedRoot 'plugins'), 'Process')
-        [Environment]::SetEnvironmentVariable('QT_QPA_PLATFORM_PLUGIN_PATH', (Join-Path $stagedRoot 'plugins\platforms'), 'Process')
-        [Environment]::SetEnvironmentVariable('GST_PLUGIN_PATH_1_0', (Join-Path $stagedRoot 'lib\gstreamer-1.0'), 'Process')
-        [Environment]::SetEnvironmentVariable('GST_PLUGIN_SYSTEM_PATH_1_0', (Join-Path $stagedRoot 'lib\gstreamer-1.0'), 'Process')
-        [Environment]::SetEnvironmentVariable('GST_PLUGIN_SCANNER_1_0', (Join-Path $stagedRoot 'libexec\gstreamer-1.0\gst-plugin-scanner.exe'), 'Process')
-        [Environment]::SetEnvironmentVariable('GST_REGISTRY_1_0', (Join-Path $runDirectory 'gst-registry.bin'), 'Process')
 
-        $process = Start-Process -FilePath $ApplicationPath `
-            -ArgumentList '--simple-boot-test' `
-            -WorkingDirectory $stagedBin `
-            -WindowStyle Hidden `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath `
-            -PassThru
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $ApplicationPath
+        $startInfo.Arguments = '--simple-boot-test'
+        $startInfo.WorkingDirectory = $stagedBin
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.EnvironmentVariables['PATH'] = $cleanPath
+        $startInfo.EnvironmentVariables['QT_PLUGIN_PATH'] = Join-Path $stagedRoot 'plugins'
+        $startInfo.EnvironmentVariables['QT_QPA_PLATFORM_PLUGIN_PATH'] = Join-Path $stagedRoot 'plugins\platforms'
+        $startInfo.EnvironmentVariables['GST_PLUGIN_PATH_1_0'] = Join-Path $stagedRoot 'lib\gstreamer-1.0'
+        $startInfo.EnvironmentVariables['GST_PLUGIN_SYSTEM_PATH_1_0'] = Join-Path $stagedRoot 'lib\gstreamer-1.0'
+        $startInfo.EnvironmentVariables['GST_PLUGIN_SCANNER_1_0'] = Join-Path $stagedRoot 'libexec\gstreamer-1.0\gst-plugin-scanner.exe'
+        $startInfo.EnvironmentVariables['GST_REGISTRY_1_0'] = Join-Path $runDirectory 'gst-registry.bin'
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            throw 'Staged application simple boot test could not be started.'
+        }
         if (-not $process.WaitForExit(30000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.Kill()
             $process.WaitForExit()
-            $stderr = if (Test-Path -LiteralPath $stderrPath) { (Get-Content -LiteralPath $stderrPath -Raw).Trim() } else { '' }
+            $stderr = $process.StandardError.ReadToEnd().Trim()
             throw "Staged application simple boot test timed out after 30 seconds. $stderr"
         }
         $process.WaitForExit()
 
-        $stdout = if (Test-Path -LiteralPath $stdoutPath) { (Get-Content -LiteralPath $stdoutPath -Raw).Trim() } else { '' }
-        $stderr = if (Test-Path -LiteralPath $stderrPath) { (Get-Content -LiteralPath $stderrPath -Raw).Trim() } else { '' }
+        $stdout = $process.StandardOutput.ReadToEnd().Trim()
+        $stderr = $process.StandardError.ReadToEnd().Trim()
         if (-not [string]::IsNullOrWhiteSpace($stdout)) {
             Write-Host $stdout
         }
@@ -193,9 +185,12 @@ function Invoke-StagedBootTest {
         }
         Write-Host 'Staged application simple boot test passed.'
     }
+    catch {
+        throw ('Staged application simple boot test failed at line {0}: {1}' -f $_.InvocationInfo.ScriptLineNumber, $_.Exception.Message)
+    }
     finally {
-        foreach ($name in $environmentNames) {
-            [Environment]::SetEnvironmentVariable($name, $environmentBackup[$name], 'Process')
+        if ($null -ne $process) {
+            $process.Dispose()
         }
     }
 }
@@ -392,10 +387,23 @@ try {
             Write-Host "Runtime OK: $relativePath"
         }
 
-        Invoke-StagedBootTest -ApplicationPath $applicationPath
-
         $installer = Get-Item -LiteralPath $installerPath
         $application = Get-Item -LiteralPath $applicationPath
+        $hashStream = [System.IO.File]::OpenRead($installerPath)
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $hash = ([System.BitConverter]::ToString($sha256.ComputeHash($hashStream))).Replace('-', '')
+        }
+        finally {
+            $sha256.Dispose()
+            $hashStream.Dispose()
+        }
+        $securityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
+        Import-Module -Name $securityModule -ErrorAction Stop
+        $signature = (Get-AuthenticodeSignature -LiteralPath $installerPath).Status.ToString()
+
+        Invoke-StagedBootTest -ApplicationPath $applicationPath
+
         if ($installer.VersionInfo.ProductVersion -ne $Version) {
             throw "Installer product version mismatch: $($installer.VersionInfo.ProductVersion)"
         }
@@ -411,8 +419,6 @@ try {
             throw 'In-place upgrade and user-data preservation contract is missing.'
         }
 
-        $hash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash
-        $signature = (Get-AuthenticodeSignature -LiteralPath $installerPath).Status.ToString()
         $script:Artifact = [ordered]@{
             installerPath = $installer.FullName
             installerVersion = $installer.VersionInfo.ProductVersion
@@ -433,7 +439,7 @@ try {
 }
 catch {
     $script:RunStatus = 'failed'
-    $script:FailureMessage = $_.Exception.Message
+    $script:FailureMessage = '{0} (line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
 }
 finally {
     Write-RunState

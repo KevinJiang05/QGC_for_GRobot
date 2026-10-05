@@ -115,3 +115,7 @@ staging/
 # USR-M0 local runtime configuration
 /software/DataSelf.txt
 /software/M0Cfg.ini
+
+# GRobot club recruitment documents (not part of QGC)
+/artifacts/*招新*
+/tools/build_recruitment_*.py

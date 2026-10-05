@@ -1,14 +1,23 @@
 #include "AIDetectionReceiverTest.h"
 
-#include "FlightDisplay/AIDetectionReceiver.h"
+#include "AIDetectionManager.h"
+#include "AIDetectionReceiver.h"
+#include "QGCCorePlugin.h"
 
 #include <QtCore/QDateTime>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QSettings>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
+#include <QtQml/QQmlComponent>
+#include <QtQml/QQmlEngine>
+#include <QtQml/QQmlError>
+#include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
+
+#include <memory>
 
 namespace {
 quint16 availableLocalPort()
@@ -129,4 +138,54 @@ void AIDetectionReceiverTest::_disableClearsDetections()
     receiver.setEnabled(false);
     QVERIFY(receiver.detections().isEmpty());
     QVERIFY(!receiver.bound());
+}
+
+void AIDetectionReceiverTest::_overlaySwitchMigratesLegacyVideoSetting()
+{
+    const QString overlayKey = QStringLiteral("AIDetection/OverlayEnabled");
+    const QString legacyKey = QStringLiteral("Video/yoloOverlay");
+    QSettings settings;
+    settings.remove(overlayKey);
+    settings.setValue(legacyKey, false);
+
+    {
+        AIDetectionManager manager;
+        QVERIFY(!manager.overlayEnabled());
+        manager.setOverlayEnabled(true);
+    }
+
+    // Once the new key exists, the legacy value no longer applies.
+    AIDetectionManager reloaded;
+    QVERIFY(reloaded.overlayEnabled());
+
+    settings.remove(overlayKey);
+    settings.remove(legacyKey);
+}
+
+void AIDetectionReceiverTest::_qmlComponentsLoad()
+{
+    QGCCorePlugin::instance()->init();
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
+    QSignalSpy warnings(&engine, &QQmlEngine::warnings);
+
+    const auto createComponent = [&engine](const QString &url) {
+        QQmlComponent component(&engine, QUrl(url), QQmlComponent::PreferSynchronous);
+        QVERIFY2(component.isReady(), qPrintable(url + QStringLiteral(": ") + component.errorString()));
+        std::unique_ptr<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(url + QStringLiteral(": ") + component.errorString()));
+    };
+
+    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/AIDetectionSettings.qml"));
+    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/AIDetectionVideoOverlay.qml"));
+    QCOMPARE(warnings.count(), 0);
+
+    // Loaded standalone, the upstream page warns about qgcPal (normally provided by the main window).
+    // Only check that its hook into the custom AI settings resolves.
+    createComponent(QStringLiteral("qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml"));
+    for (const QList<QVariant> &arguments : std::as_const(warnings)) {
+        for (const QQmlError &error : arguments.constFirst().value<QList<QQmlError>>()) {
+            QVERIFY2(!error.toString().contains(QStringLiteral("AIDetection")), qPrintable(error.toString()));
+        }
+    }
 }

@@ -16,6 +16,7 @@ class AIDetectionManager : public QObject
     Q_OBJECT
 
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+    Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayEnabledChanged)
     Q_PROPERTY(QString pythonPath READ pythonPath WRITE setPythonPath NOTIFY pythonPathChanged)
     Q_PROPERTY(QString modelPath READ modelPath WRITE setModelPath NOTIFY modelPathChanged)
     Q_PROPERTY(QString device READ device WRITE setDevice NOTIFY deviceChanged)
@@ -32,6 +33,8 @@ public:
     ~AIDetectionManager();
 
     bool running() const;
+    bool overlayEnabled() const { return _overlayEnabled; }
+    void setOverlayEnabled(bool overlayEnabled);
     QString pythonPath() const { return _pythonPathValue; }
     void setPythonPath(const QString &pythonPath);
     QString modelPath() const { return _modelPathValue; }
@@ -58,6 +61,7 @@ public:
 
 signals:
     void runningChanged();
+    void overlayEnabledChanged();
     void pythonPathChanged();
     void modelPathChanged();
     void deviceChanged();
@@ -95,6 +99,7 @@ private:
     bool _shuttingDown = false;
     bool _restartPending = false;
     bool _stopRequested = false;
+    bool _overlayEnabled = true;
     QString _pythonPathValue;
     QString _modelPathValue;
     QString _device;

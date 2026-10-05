@@ -27,6 +27,8 @@ import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
 
+import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
+
 // 3D Viewer modules
 import Viewer3D
 
@@ -128,8 +130,7 @@ Item {
 
         AIDetectionVideoOverlay {
             anchors.fill:       _pipView
-            visible:            _pipView.visible && videoControl.pipState.state === videoControl.pipState.pipState &&
-                                    QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+            visible:            _pipView.visible && videoControl.pipState.state === videoControl.pipState.pipState
             showStatus:         false
             z:                  _pipView.z + 1
         }

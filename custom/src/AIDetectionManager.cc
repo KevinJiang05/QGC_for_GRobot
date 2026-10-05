@@ -27,6 +27,10 @@ constexpr const char *kConfidenceKey = "Confidence";
 constexpr const char *kImageSizeKey = "ImageSize";
 constexpr const char *kMaxFpsKey = "MaxFps";
 constexpr const char *kUdpPortKey = "UdpPort";
+constexpr const char *kOverlayEnabledKey = "OverlayEnabled";
+// Before the AI integration moved into the custom plugin, the overlay switch
+// was a Fact in QGC's "Video" settings group.
+constexpr const char *kLegacyOverlayEnabledKey = "Video/yoloOverlay";
 
 QString cleanPath(const QString &path)
 {
@@ -50,7 +54,14 @@ AIDetectionManager::AIDetectionManager(QObject *parent)
     _imageSize = settings.value(QString::fromLatin1(kImageSizeKey), _imageSize).toInt();
     _maxFps = settings.value(QString::fromLatin1(kMaxFpsKey), _maxFps).toDouble();
     _udpPort = settings.value(QString::fromLatin1(kUdpPortKey), _udpPort).toInt();
+    const bool hasOverlaySetting = settings.contains(QString::fromLatin1(kOverlayEnabledKey));
+    if (hasOverlaySetting) {
+        _overlayEnabled = settings.value(QString::fromLatin1(kOverlayEnabledKey)).toBool();
+    }
     settings.endGroup();
+    if (!hasOverlaySetting && settings.contains(QString::fromLatin1(kLegacyOverlayEnabledKey))) {
+        _overlayEnabled = settings.value(QString::fromLatin1(kLegacyOverlayEnabledKey)).toBool();
+    }
     _statusText = tr("AI detection is stopped");
     _checkReport = tr("AI environment has not been checked");
 }
@@ -65,6 +76,16 @@ AIDetectionManager::~AIDetectionManager()
 bool AIDetectionManager::running() const
 {
     return _detectProcess && _detectProcess->state() != QProcess::NotRunning;
+}
+
+void AIDetectionManager::setOverlayEnabled(bool overlayEnabled)
+{
+    if (_overlayEnabled == overlayEnabled) {
+        return;
+    }
+    _overlayEnabled = overlayEnabled;
+    _writeSetting(QString::fromLatin1(kOverlayEnabledKey), _overlayEnabled);
+    emit overlayEnabledChanged();
 }
 
 void AIDetectionManager::setPythonPath(const QString &pythonPath)
@@ -250,6 +271,7 @@ void AIDetectionManager::saveSettings()
     settings.setValue(QString::fromLatin1(kImageSizeKey), _imageSize);
     settings.setValue(QString::fromLatin1(kMaxFpsKey), _maxFps);
     settings.setValue(QString::fromLatin1(kUdpPortKey), _udpPort);
+    settings.setValue(QString::fromLatin1(kOverlayEnabledKey), _overlayEnabled);
     settings.endGroup();
     settings.sync();
     _setStatusText(tr("AI settings saved"));

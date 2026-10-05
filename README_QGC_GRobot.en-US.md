@@ -35,16 +35,16 @@ custom/
     DeepSharkPlugin.h/.cc
     DeepSharkVideoController.h/.cc
     DeepSharkVideoSettings.h/.cc
+    AIDetectionManager.h/.cc
+    AIDetectionReceiver.h/.cc
     FlyViewCustomLayer.qml
     DeepShark/
       FourVideoPanel.qml
       VideoTile.qml
       DeepSharkStatusPanel.qml
       ThrusterMappingTool.qml
-
-src/FlightDisplay/
-  AIDetectionReceiver.h/.cc
-  AIDetectionVideoOverlay.qml
+      AIDetectionVideoOverlay.qml
+      AIDetectionSettings.qml
 
 tools/ai_detection/
   yolo_to_qgc_udp.py

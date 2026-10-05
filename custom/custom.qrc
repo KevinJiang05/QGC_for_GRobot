@@ -8,6 +8,8 @@
         <file alias="QGroundControl/FlightDisplay/DeepShark/AuvMissionPanel.qml">src/DeepShark/AuvMissionPanel.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/ConnectionAlertBanner.qml">src/DeepShark/ConnectionAlertBanner.qml</file>
         <file alias="QGroundControl/FlightDisplay/DeepShark/ConnectionAlertSettings.qml">src/DeepShark/ConnectionAlertSettings.qml</file>
+        <file alias="QGroundControl/FlightDisplay/DeepShark/AIDetectionVideoOverlay.qml">src/DeepShark/AIDetectionVideoOverlay.qml</file>
+        <file alias="QGroundControl/FlightDisplay/DeepShark/AIDetectionSettings.qml">src/DeepShark/AIDetectionSettings.qml</file>
         <file alias="QGroundControl/Controls/DeepSharkThrusterMappingTool.qml">src/DeepShark/ThrusterMappingTool.qml</file>
     </qresource>
     <qresource prefix="/Custom/audio">

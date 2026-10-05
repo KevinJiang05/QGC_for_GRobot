@@ -40,8 +40,6 @@
 #include "CmdLineOptParser.h"
 #include "ESP8266ComponentController.h"
 #include "FollowMe.h"
-#include "FlightDisplay/AIDetectionManager.h"
-#include "FlightDisplay/AIDetectionReceiver.h"
 #include "GeoTagController.h"
 #include "GimbalController.h"
 #include "GPSRtk.h"
@@ -306,28 +304,6 @@ void QGCApplication::init()
     qmlRegisterType<FirmwareUpgradeController>("QGroundControl.Controllers", 1, 0, "FirmwareUpgradeController");
 #endif
     qmlRegisterType<JoystickConfigController>("QGroundControl.Controllers", 1, 0, "JoystickConfigController");
-    auto *aiDetectionReceiver = new AIDetectionReceiver(this);
-    auto *aiDetectionManager = new AIDetectionManager(this);
-    aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
-    connect(aiDetectionManager, &AIDetectionManager::udpPortChanged, aiDetectionReceiver, [aiDetectionManager, aiDetectionReceiver]() {
-        if (!aiDetectionManager->running()) {
-            aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
-        }
-    });
-    connect(aiDetectionManager, &AIDetectionManager::runningChanged, aiDetectionReceiver, [aiDetectionManager, aiDetectionReceiver]() {
-        if (aiDetectionManager->running()) {
-            aiDetectionReceiver->setPort(static_cast<quint16>(aiDetectionManager->udpPort()));
-        } else {
-            aiDetectionReceiver->clearDetections();
-        }
-    });
-    connect(this, &QCoreApplication::aboutToQuit, aiDetectionReceiver, [aiDetectionReceiver]() {
-        aiDetectionReceiver->setEnabled(false);
-    });
-    connect(this, &QCoreApplication::aboutToQuit, aiDetectionManager, &AIDetectionManager::stopDetection);
-    aiDetectionReceiver->setEnabled(true);
-    qmlRegisterSingletonInstance("QGroundControl.FlightDisplay", 1, 0, "AIDetectionReceiver", aiDetectionReceiver);
-    qmlRegisterSingletonInstance("QGroundControl.Controllers", 1, 0, "AIDetectionManager", aiDetectionManager);
 
     (void) qmlRegisterSingletonType<ShapeFileHelper>("QGroundControl.ShapeFileHelper", 1, 0, "ShapeFileHelper", [](QQmlEngine *, QJSEngine *) { return new ShapeFileHelper(); });
 

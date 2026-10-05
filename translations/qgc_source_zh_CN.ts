@@ -4,62 +4,62 @@
   <context>
     <name>AIDetectionManager</name>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="53"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="53"/>
       <source>AI detection is stopped</source>
       <translation>AI 检测已停止</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="54"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="54"/>
       <source>AI environment has not been checked</source>
       <translation>AI 环境尚未检查</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="160"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="160"/>
       <source>AI environment check is already running</source>
       <translation>AI 环境检查正在运行</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="180"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="180"/>
       <source>Checking AI environment...</source>
       <translation>正在检查 AI 环境...</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="183"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="183"/>
       <source>Failed to start Python: %1</source>
       <translation>无法启动 Python：%1</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="190"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="190"/>
       <source>AI environment check timed out</source>
       <translation>AI 环境检查超时</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="198"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="198"/>
       <source>AI detection is already running</source>
       <translation>AI 检测已在运行</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="219"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="219"/>
       <source>Starting AI detection...</source>
       <translation>正在启动 AI 检测...</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="222"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="222"/>
       <source>Failed to start AI detection: %1</source>
       <translation>无法启动 AI 检测：%1</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="227"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="227"/>
       <source>AI detection is running</source>
       <translation>AI 检测正在运行</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="265"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="265"/>
       <source>AI settings saved</source>
       <translation>AI 配置已保存</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="272"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="272"/>
       <source>%1
 Model: %2
 Tools: %3</source>
@@ -68,41 +68,154 @@ Tools: %3</source>
 工具：%3</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="274"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="274"/>
       <source>AI environment check failed:
 %1</source>
       <translation>AI 环境检查失败：
 %1</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="282"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="282"/>
       <source>AI detection exited with code %1</source>
       <translation>AI 检测已退出，代码 %1</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="283"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="283"/>
       <source>AI detection exited with code %1: %2</source>
       <translation>AI 检测已退出，代码 %1：%2</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="290"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="290"/>
       <source>AI detection process error: %1</source>
       <translation>AI 检测进程错误：%1</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="341"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="341"/>
       <source>Python path is not configured or does not exist</source>
       <translation>Python 路径未配置或不存在</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="344"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="344"/>
       <source>Model path is not configured or does not exist</source>
       <translation>模型路径未配置或不存在</translation>
     </message>
     <message>
-      <location filename="../src/FlightDisplay/AIDetectionManager.cc" line="347"/>
+      <location filename="../custom/src/AIDetectionManager.cc" line="347"/>
       <source>AI launcher script was not found: %1</source>
       <translation>未找到 AI 启动脚本：%1</translation>
+    </message>
+  </context>
+  <context>
+    <name>AIDetectionSettings</name>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="129"/>
+      <source>AI Detection</source>
+      <translation>AI 检测</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="130"/>
+      <source>Optional local YOLO environment. QGC starts the configured Python bridge and receives detections over UDP.</source>
+      <translation>可选的本地 YOLO 环境。QGC 会启动已配置的 Python 桥接程序，并通过 UDP 接收检测结果。</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="134"/>
+      <source>YOLO Detection Overlay</source>
+      <translation>YOLO 检测叠加层</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="145"/>
+      <source>Python</source>
+      <translation>Python</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="152"/>
+      <source>Example: C:/Python311/python.exe</source>
+      <translation>示例：C:/Python311/python.exe</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="160"/>
+      <source>Choose Python executable</source>
+      <translation>选择 Python 可执行文件</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="170"/>
+      <source>Select the Python executable from the local AI environment. It must include ultralytics and torch.</source>
+      <translation>请选择本地 AI 环境中的 Python 可执行文件，该环境必须已安装 ultralytics 和 torch。</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="181"/>
+      <source>Model</source>
+      <translation>模型</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="187"/>
+      <source>Example: D:/Models/best.pt</source>
+      <translation>示例：D:/Models/best.pt</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="195"/>
+      <source>Choose YOLO model file</source>
+      <translation>选择 YOLO 模型文件</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="205"/>
+      <source>Select the local YOLO model file, for example a .pt file trained for this project.</source>
+      <translation>请选择本地 YOLO 模型文件，例如为本项目训练的 .pt 文件。</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="216"/>
+      <source>Device</source>
+      <translation>设备</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="233"/>
+      <source>Confidence</source>
+      <translation>置信度</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="245"/>
+      <source>Image size</source>
+      <translation>图像尺寸</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="263"/>
+      <source>Max FPS</source>
+      <translation>最大 FPS</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="275"/>
+      <source>UDP port</source>
+      <translation>UDP 端口</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="294"/>
+      <source>Check Environment</source>
+      <translation>检查环境</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="302"/>
+      <source>Stop AI</source>
+      <translation>停止 AI</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="302"/>
+      <source>Start AI</source>
+      <translation>启动 AI</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="310"/>
+      <source>Restart</source>
+      <translation>重启</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="319"/>
+      <source>Save Settings</source>
+      <translation>保存配置</translation>
+    </message>
+    <message>
+      <location filename="../custom/src/DeepShark/AIDetectionSettings.qml" line="335"/>
+      <source>AI tools: </source>
+      <translation>AI 工具： </translation>
     </message>
   </context>
   <context>
@@ -18469,116 +18582,6 @@ ROTATION_NONE indicates component points in direction of flight.</translation>
       <location filename="../src/UI/AppSettings/VideoSettings.qml" line="138"/>
       <source>Max Storage Usage</source>
       <translation>最大存储用量</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="129"/>
-      <source>AI Detection</source>
-      <translation>AI 检测</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="130"/>
-      <source>Optional local YOLO environment. QGC starts the configured Python bridge and receives detections over UDP.</source>
-      <translation>可选的本地 YOLO 环境。QGC 会启动已配置的 Python 桥接程序，并通过 UDP 接收检测结果。</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="134"/>
-      <source>YOLO Detection Overlay</source>
-      <translation>YOLO 检测叠加层</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="145"/>
-      <source>Python</source>
-      <translation>Python</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="152"/>
-      <source>Example: C:/Python311/python.exe</source>
-      <translation>示例：C:/Python311/python.exe</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="160"/>
-      <source>Choose Python executable</source>
-      <translation>选择 Python 可执行文件</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="170"/>
-      <source>Select the Python executable from the local AI environment. It must include ultralytics and torch.</source>
-      <translation>请选择本地 AI 环境中的 Python 可执行文件，该环境必须已安装 ultralytics 和 torch。</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="181"/>
-      <source>Model</source>
-      <translation>模型</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="187"/>
-      <source>Example: D:/Models/best.pt</source>
-      <translation>示例：D:/Models/best.pt</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="195"/>
-      <source>Choose YOLO model file</source>
-      <translation>选择 YOLO 模型文件</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="205"/>
-      <source>Select the local YOLO model file, for example a .pt file trained for this project.</source>
-      <translation>请选择本地 YOLO 模型文件，例如为本项目训练的 .pt 文件。</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="216"/>
-      <source>Device</source>
-      <translation>设备</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="233"/>
-      <source>Confidence</source>
-      <translation>置信度</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="245"/>
-      <source>Image size</source>
-      <translation>图像尺寸</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="263"/>
-      <source>Max FPS</source>
-      <translation>最大 FPS</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="275"/>
-      <source>UDP port</source>
-      <translation>UDP 端口</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="294"/>
-      <source>Check Environment</source>
-      <translation>检查环境</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="302"/>
-      <source>Stop AI</source>
-      <translation>停止 AI</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="302"/>
-      <source>Start AI</source>
-      <translation>启动 AI</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="310"/>
-      <source>Restart</source>
-      <translation>重启</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="319"/>
-      <source>Save Settings</source>
-      <translation>保存配置</translation>
-    </message>
-    <message>
-      <location filename="../src/UI/AppSettings/VideoSettings.qml" line="335"/>
-      <source>AI tools: </source>
-      <translation>AI 工具： </translation>
     </message>
   </context>
   <context>

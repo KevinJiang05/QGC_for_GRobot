@@ -9,8 +9,11 @@
 #include "QGCCorePlugin.h"
 #include "QGCOptions.h"
 
+#include <QtCore/QPointer>
 #include <QtQml/QQmlAbstractUrlInterceptor>
 
+class AIDetectionManager;
+class AIDetectionReceiver;
 class QQmlApplicationEngine;
 
 class DeepSharkOverrideInterceptor;
@@ -40,9 +43,13 @@ public:
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
 
 private:
+    void _initAIDetection();
+
     DeepSharkOptions _options;
     QQmlApplicationEngine *_qmlEngine = nullptr;
     DeepSharkOverrideInterceptor *_selector = nullptr;
+    QPointer<AIDetectionManager> _aiDetectionManager;
+    QPointer<AIDetectionReceiver> _aiDetectionReceiver;
 };
 
 class DeepSharkOverrideInterceptor : public QQmlAbstractUrlInterceptor

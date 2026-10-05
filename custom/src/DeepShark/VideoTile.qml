@@ -426,8 +426,7 @@ Rectangle {
 
     Loader {
         anchors.fill: parent
-        active: root.videoEnabled
-                && QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        active: root.videoEnabled && AIDetectionManager.overlayEnabled
         visible: active
         z: 20
         sourceComponent: AIDetectionVideoOverlay {

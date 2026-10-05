@@ -10,4 +10,6 @@ private slots:
     void _acceptsBoundedPacketAndExpiresIt();
     void _rejectsOversizedAndStalePackets();
     void _disableClearsDetections();
+    void _overlaySwitchMigratesLegacyVideoSetting();
+    void _qmlComponentsLoad();
 };

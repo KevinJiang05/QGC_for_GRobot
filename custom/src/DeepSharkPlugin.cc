@@ -6,11 +6,14 @@
 
 #include "DeepSharkPlugin.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/qapplicationstatic.h>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/qqml.h>
 
+#include "AIDetectionManager.h"
+#include "AIDetectionReceiver.h"
 #include "DeepSharkAuvController.h"
 #include "ThrusterMappingExportController.h"
 #include "ThrusterDirectControlController.h"
@@ -52,6 +55,40 @@ void DeepSharkPlugin::init()
     qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
     qmlRegisterType<ThrusterMappingExportController>("DeepShark", 1, 0, "ThrusterMappingExportController");
     qmlRegisterType<ThrusterDirectControlController>("DeepShark", 1, 0, "ThrusterDirectControlController");
+    _initAIDetection();
+}
+
+void DeepSharkPlugin::_initAIDetection()
+{
+    // Unit tests call init() once per QML test case, so the AI owners are created only once.
+    if (!_aiDetectionManager) {
+        QCoreApplication *app = QCoreApplication::instance();
+        auto *receiver = new AIDetectionReceiver(app);
+        auto *manager = new AIDetectionManager(app);
+        receiver->setPort(static_cast<quint16>(manager->udpPort()));
+        connect(manager, &AIDetectionManager::udpPortChanged, receiver, [manager, receiver]() {
+            if (!manager->running()) {
+                receiver->setPort(static_cast<quint16>(manager->udpPort()));
+            }
+        });
+        connect(manager, &AIDetectionManager::runningChanged, receiver, [manager, receiver]() {
+            if (manager->running()) {
+                receiver->setPort(static_cast<quint16>(manager->udpPort()));
+            } else {
+                receiver->clearDetections();
+            }
+        });
+        connect(app, &QCoreApplication::aboutToQuit, receiver, [receiver]() {
+            receiver->setEnabled(false);
+        });
+        connect(app, &QCoreApplication::aboutToQuit, manager, &AIDetectionManager::stopDetection);
+        receiver->setEnabled(true);
+        _aiDetectionReceiver = receiver;
+        _aiDetectionManager = manager;
+    }
+
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "AIDetectionReceiver", _aiDetectionReceiver.data());
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "AIDetectionManager", _aiDetectionManager.data());
 }
 
 void DeepSharkPlugin::cleanup()

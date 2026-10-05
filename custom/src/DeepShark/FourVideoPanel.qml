@@ -10,7 +10,6 @@ import QtQuick.Layouts
 import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.FactControls
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
@@ -66,7 +65,6 @@ Rectangle {
     readonly property int camera1VideoHeight: videoTile1.videoHeight
     readonly property string camera1Status: videoTile1.currentStatus
     property int reconnectAllIndex: 0
-    property var _videoSettings: QGroundControl.settingsManager.videoSettings
     property real _panelGap: Math.max(1, ScreenTools.defaultFontPixelWidth)
     property real _toolbarHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.2, 32)
     property bool _compactToolbar: width < ScreenTools.defaultFontPixelWidth * 112
@@ -776,11 +774,14 @@ Rectangle {
                     color: "#2b3542"
                 }
 
-                FactCheckBoxSlider {
+                QGCCheckBoxSlider {
                     Layout.fillWidth: true
                     text: qsTr("YOLO 检测叠加层")
-                    fact: root._videoSettings.yoloOverlay
-                    visible: fact.visible
+                    onClicked: AIDetectionManager.overlayEnabled = checked
+
+                    Binding on checked {
+                        value: AIDetectionManager.overlayEnabled
+                    }
                 }
 
                 RowLayout {

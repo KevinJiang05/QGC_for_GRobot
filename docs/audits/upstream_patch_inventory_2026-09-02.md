@@ -3,7 +3,8 @@
 > 快照日期：2026-09-02  
 > 上游基线：`v5.0.8`（`b05e82c3e41157396c9d90e91500161f066987cd`）  
 > 当前分支：`deepshark/v5.0.8`  
-> 用途：升级 QGroundControl 前快速判断冲突面、保留理由和最小回归范围。
+> 用途：升级 QGroundControl 前快速判断冲突面、保留理由和最小回归范围。  
+> 最近更新：2026-10-05，U04 AI 核心集成已迁入 `custom/`（见第 2 节末尾和 U04）。
 
 ## 1. 使用规则
 
@@ -22,9 +23,15 @@
 - 当前工作树还有 9 个有意新增但尚未跟踪的 `test/DeepShark/` 测试文件，它们不计入上述 Git tracked diff；
 - 因此此前审计中的“51 个上游修改文件”已经过时，应以本快照的 53 个既有文件修改为准。
 
+2026-10-05 复核（U04 迁移时）：
+
+- 迁移前 HEAD 相对 `v5.0.8` 有 71 个既有文件被修改，多于本快照的 53 个；09-02 之后新增的修改尚未逐项归入下表模块（未核实归属）；
+- U04 迁移后为 66 个：`src/FlightDisplay/CMakeLists.txt`、`src/QGCApplication.cc`、`src/Settings/Video.SettingsGroup.json`、`src/Settings/VideoSettings.cc/.h` 已恢复为上游原样；
+- `src/` 下改动从 55 个文件 +2176 行降至 45 个文件 +719 行，`src/` 中不再有 DeepShark 新增文件。
+
 优先收口顺序：
 
-1. **U04 AI 核心集成**：能利用现有 `DeepSharkPlugin` 生命周期和 custom QML override，未来最值得迁回 `custom/`；
+1. ~~**U04 AI 核心集成**~~：2026-10-05 已迁入 `custom/`，仅剩 3 个 QML 挂载点；
 2. **U07 默认 TCP 策略**：产品默认值不应长期驻留通用 `LinkManager`；
 3. **U09 参数页入口**：推进器工具入口可用 custom QML override，通用按钮刷新修复则应独立成可上游补丁；
 4. 其余通用兼容或底层行为补丁保持小而可测，不为追求零 diff 进行高风险重构。
@@ -36,7 +43,7 @@
 | U01 | **DeepShark CI**：限定 `deepshark/**` 和 custom/AI/test 触发面，构建 Debug/Release，并运行 Python 与 Qt 定向测试 | GitHub workflow 属于仓库基础设施，不能放进运行时 `custom/` | workflow YAML 可解析；远端 Debug/Release 首跑；DeepShark CTest 与 Python 测试执行 | 长期保留仓库级 workflow；路径随模块迁移同步更新，不向 QGC 上游提交产品分支规则 |
 | U02 | **跨平台命名、版本和安装包**：产物改为 `QGC_KevinJiang`，支持版本覆盖、图标、桌面快捷方式、卸载信息和升级安装 | CPack、NSIS、AppImage 入口位于上游构建基础设施；现有 custom override 尚不能覆盖全部打包行为 | `tools/release/build-windows-release.ps1` 完整 `succeeded`；安装、覆盖升级、卸载、哈希；Linux/macOS CI 冒烟 | 产品品牌逻辑不向上游提交；优先把可参数化项收进 `CustomOverrides.cmake`，只保留通用打包 hook |
 | U03 | **品牌说明、仓库忽略和中文翻译**：二次开发声明、产物/模型忽略、中文资源和关闭自动 Crowdin 拉取 | README、Help 页面、翻译和 ignore 是仓库级资源；Help 品牌块目前直接改上游页面 | About/Help 实际显示；翻译生成；`git status` 不纳入本地产物；手动 Crowdin workflow 可运行 | Help 品牌块可迁 custom override；翻译保留差异但避免混入未使用字符串；不向上游提交产品品牌文案 |
-| U04 | **AI 运行时、UDP 接收、设置和视频叠加**：QGC 管理单 AI 服务、接收检测结果，并在 FlyView/视频设置中展示和配置 | 初版直接在 `QGCApplication` 注册 singleton、在 `src/FlightDisplay` 新增类型，并修改核心 FlyView/VideoSettings；现在已有 `DeepSharkPlugin::init/cleanup` 和 QML override，可承接大部分所有权 | AI Python 5 项测试；`AIDetectionReceiverTest`；Windows Debug 构建；QML 同步加载；真实 1/2/4 路叠加、启停和退出长稳 | **最高优先 shrink candidate**：C++ owner、singleton 注册、设置 UI、overlay 逐步迁至 `custom/`；若仍缺生命周期/设置扩展点，只保留最小通用 hook 并考虑上游化 |
+| U04 | **AI 叠加与设置的挂载点**：`AIDetectionManager/Receiver`、单例注册（`DeepSharkPlugin::init`，`DeepShark 1.0` 模块）、叠加组件、AI 设置组件和叠加开关（`AIDetection/OverlayEnabled`，首次读取兼容旧 `Video/yoloOverlay`）均已位于 `custom/`；上游只剩 3 个 QML 挂载点：原生视频叠加（`FlyViewVideo.qml`）、PiP 叠加（`FlyView.qml`）、视频设置页中的 `AIDetectionSettings {}` 一行 | 原生 QGC 视频画面与视频设置页属于上游页面，custom 目前没有向其中插入子项的扩展点 | AI Python 测试；`AIDetectionReceiverTest`；DeepShark QML 同步加载；Windows Debug 构建；设置页显示 AI 区块；旧叠加开关值迁移；真实 1/2/4 路叠加、启停和退出长稳 | 原生视频叠加只显示 `source_id` 为空的检测（仅单源开发脚本/样例发送器会发），若确认现场不用可删除这两处挂载点；设置页挂载点随 ConnectionAlertSettings 一起保留 |
 | U05 | **FlyView、遥测条和相机控件布局**：地图遮挡由 FlyView 单向持有、原生确认层置顶、遥测转置、相机按钮横向布局及空数据保护 | 一部分是 DeepShark 布局需求，一部分是通用控件健壮性；当前改在核心 QML 以影响原生布局 | FlyView qrc 同步加载；地图/视频主视图切换；确认滑块可见；不同 DPI/窗口宽度；遥测配置编辑；相机拍照/录像 | 产品布局优先迁 custom override；`InstrumentValue*` 空数据保护可整理为独立上游修复；删除无行为意义的纯空白差异 |
 | U06 | **视频源策略和 MPEG-TS 低延迟**：不让 ArduSub/自动流覆盖“禁用视频”选择，低延迟模式将 `tsdemux latency` 设为 0 | 行为位于 Vehicle、VideoManager 和 GStreamer receiver 核心链路，custom 当前没有等价稳定 hook | 视频 source 设置迁移；禁用状态保持；MPEG-TS/RTSP 播放、断线和恢复；端到端延迟对比；非低延迟模式回归 | “尊重禁用”与低延迟设置具备通用价值，可拆成小补丁向上游提交；若新版本已修复则删除本地补丁 |
 | U07 | **GRobot 默认 TCP 与 NoProxy**：首次创建 `192.168.1.200:4019` 自动连接，保留既有用户端点；TCP 明确绕过系统代理 | 默认连接创建发生在 `LinkManager` 加载阶段；NoProxy 属于底层 socket 行为 | 无配置首次启动；已有同名/同端点/用户自定义配置；重启持久化；代理环境连接；真实飞控断连恢复 | 默认端点应迁至 custom plugin/首次运行配置 owner；NoProxy 是否普适需单独评估，必要时做成配置而非全局强制 |
@@ -74,21 +81,11 @@
 - `translations/qgc_json_zh_CN.ts`
 - `translations/qgc_source_zh_CN.ts`
 
-### U04 AI 核心集成（13，其中 5 个为基线后新增文件）
+### U04 AI 挂载点（3；2026-10-05 前为 13，其中 5 个新增文件已移入 `custom/src/`，5 个文件已恢复上游原样）
 
-- `src/FlightDisplay/AIDetectionManager.cc`（新增）
-- `src/FlightDisplay/AIDetectionManager.h`（新增）
-- `src/FlightDisplay/AIDetectionReceiver.cc`（新增）
-- `src/FlightDisplay/AIDetectionReceiver.h`（新增）
-- `src/FlightDisplay/AIDetectionVideoOverlay.qml`（新增）
-- `src/FlightDisplay/CMakeLists.txt`
-- `src/FlightDisplay/FlyView.qml`
-- `src/FlightDisplay/FlyViewVideo.qml`
-- `src/QGCApplication.cc`
-- `src/Settings/Video.SettingsGroup.json`
-- `src/Settings/VideoSettings.cc`
-- `src/Settings/VideoSettings.h`
-- `src/UI/AppSettings/VideoSettings.qml`
+- `src/FlightDisplay/FlyView.qml`（PiP 叠加；文件中另有 U05 布局改动）
+- `src/FlightDisplay/FlyViewVideo.qml`（原生视频叠加）
+- `src/UI/AppSettings/VideoSettings.qml`（`AIDetectionSettings {}`；文件中另有 ConnectionAlertSettings 和解码优先级可见性改动）
 
 ### U05 FlyView、遥测与相机布局（8）
 
@@ -149,7 +146,7 @@
 - `test/DeepShark/ThrusterDirectControlControllerTest.cc`（当前未跟踪）
 - `test/DeepShark/ThrusterDirectControlControllerTest.h`（当前未跟踪）
 
-53 个基线既有修改文件的覆盖校验：U01 1 + U02 10 + U03 5 + U04 8 + U05 8 + U06 3 + U07 3 + U08 9 + U09 3 + U10 1 + U11 2 = 53。U04 的 5 个新增 `src` 文件和 U11 的 9 个当前未跟踪测试文件另计。
+53 个基线既有修改文件的覆盖校验：U01 1 + U02 10 + U03 5 + U04 8 + U05 8 + U06 3 + U07 3 + U08 9 + U09 3 + U10 1 + U11 2 = 53。U04 的 5 个新增 `src` 文件和 U11 的 9 个当前未跟踪测试文件另计。以上为 09-02 快照口径；2026-10-05 起 U04 为 3 个既有文件、无新增 `src` 文件。
 
 ## 5. 升级时的最小操作顺序
 

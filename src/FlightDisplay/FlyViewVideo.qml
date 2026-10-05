@@ -12,8 +12,9 @@ import QtQuick
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.Controllers
-import QGroundControl.FlightDisplay
 import QGroundControl.ScreenTools
+
+import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
 
 Item {
     id: _root
@@ -67,8 +68,7 @@ Item {
         width:              videoStreaming.getWidth()
         height:             videoStreaming.getHeight()
         anchors.centerIn:   videoStreaming
-        visible:            QGroundControl.videoManager.isStreamSource &&
-                                QGroundControl.settingsManager.videoSettings.yoloOverlay.rawValue
+        visible:            QGroundControl.videoManager.isStreamSource
         z:                  50
 
         AIDetectionVideoOverlay {

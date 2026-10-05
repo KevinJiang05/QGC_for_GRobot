@@ -48,7 +48,7 @@
 
 ## 现有 PR 审阅
 
-盘点开始时 GitHub 有 8 个开放 PR，均由 Dependabot 创建。默认分支由 `deepshark/v5.0.8` 重命名为 `main` 后，GitHub 已自动更新这些 PR 的目标分支。升级推送后，按用户授权关闭 #1–#5 并删除对应的 5 个 Dependabot 分支；#6–#8 保留开放。旧检查结果不能证明它们与新版工程兼容。
+盘点开始时 GitHub 有 8 个开放 PR，均由 Dependabot 创建。默认分支由 `deepshark/v5.0.8` 重命名为 `main` 后，GitHub 已自动更新这些 PR 的目标分支。升级推送后，按用户授权关闭 #1–#5 并删除对应的 5 个 Dependabot 分支；随后按用户要求关闭 #6–#8，暂缓文档网站依赖更新。旧检查结果不能证明它们与新版工程兼容。
 
 | PR | 修改 | 新版实际状态 | 处理与后续 |
 | --- | --- | --- | --- |
@@ -57,11 +57,13 @@
 | [#3](https://github.com/KevinJiang05/QGC_for_GRobot/pull/3) | `setup-node` v4 → v6 | 修改的旧 `docs_deploy.yml` 已移除；新版相关引用是 v7 | 已关闭，分支已删除 |
 | [#4](https://github.com/KevinJiang05/QGC_for_GRobot/pull/4) | `create-pull-request` v7 → v8 | 修改的旧 `lupdate.yaml` 已移除；新版相关引用是 v8 | 已关闭，分支已删除 |
 | [#5](https://github.com/KevinJiang05/QGC_for_GRobot/pull/5) | Apple 签名 Action v5 → v7 | 新版引用已经是 v7 | 已关闭，分支已删除 |
-| [#6](https://github.com/KevinJiang05/QGC_for_GRobot/pull/6) | Rollup 4.34.4 → 4.62.4 | 新版锁文件是 4.59.0；旧 PR 仍需刷新基线 | 保留复核，不直接合并旧锁文件 |
-| [#7](https://github.com/KevinJiang05/QGC_for_GRobot/pull/7) | nanoid 3.3.8 → 3.3.18 | 新版锁文件是 3.3.16，仍低于已核实修复版本 3.3.18 | 有实际修复价值，刷新基线后验证 |
-| [#8](https://github.com/KevinJiang05/QGC_for_GRobot/pull/8) | PostCSS 8.5.1 → 8.5.26 | 新版锁文件是 8.5.23；此 PR 同时更新 nanoid 至 3.3.18 | 刷新基线后验证，可覆盖 #7 的 nanoid 更新 |
+| [#6](https://github.com/KevinJiang05/QGC_for_GRobot/pull/6) | Rollup 4.34.4 → 4.62.4 | 新版锁文件是 4.59.0；旧 PR 仍需刷新基线 | 已关闭，文档网站更新暂缓 |
+| [#7](https://github.com/KevinJiang05/QGC_for_GRobot/pull/7) | nanoid 3.3.8 → 3.3.18 | 新版锁文件是 3.3.16，仍低于已核实修复版本 3.3.18 | 已关闭，已知依赖问题保留，启用网站前复查 |
+| [#8](https://github.com/KevinJiang05/QGC_for_GRobot/pull/8) | PostCSS 8.5.1 → 8.5.26 | 新版锁文件是 8.5.23；此 PR 同时更新 nanoid 至 3.3.18 | 已关闭，文档网站更新暂缓 |
 
-本轮没有合并依赖 PR；#6–#8 的锁文件改动均被 GitHub 报告为冲突（`mergeable=false`、`mergeable_state=dirty`），需要基于新版 `main` 刷新后再验证。当前远端仅保留 `main` 和这 3 个依赖分支；已关闭 PR 的历史仍可查阅。
+本轮没有合并依赖 PR；#6–#8 的旧锁文件改动曾被 GitHub 报告为冲突（`mergeable=false`、`mergeable_state=dirty`），未来需要更新时应基于新版 `main` 重新处理和验证。本次仅关闭这 3 个 PR，没有删除它们的分支，也没有修改依赖锁文件或当前 Debug 程序；已关闭 PR 的历史仍可查阅。
+
+关闭后复核发现 Dependabot 已新建 [#9](https://github.com/KevinJiang05/QGC_for_GRobot/pull/9)，更新 Crowdin 翻译 Action 和 PR 标题建议 Action。它不属于本次指定的 #6–#8 关闭范围，保持开放；自动更新配置及 GitHub 自动安全更新开关未修改。
 
 `npm audit --package-lock-only --json` 对当前 v5.1.5 锁文件实际返回退出码 1：5 个受影响包条目（2 high、3 moderate），包含依赖传播计数，不能理解为 5 个独立漏洞。nanoid 有兼容修复；VitePress 1.6.4/Vite/esbuild 依赖链仍有审计项，工具未提供直接的兼容自动修复。它们属于文档工具链，应单独安排验证，不据此改动飞控或 Debug 运行代码。原始结果保存在被忽略的 `.tmp/codex/repository-maintenance/npm-audit-v515.json`。
 

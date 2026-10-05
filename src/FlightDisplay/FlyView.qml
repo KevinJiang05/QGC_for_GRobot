@@ -27,8 +27,6 @@ import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
 
-import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
-
 // 3D Viewer modules
 import Viewer3D
 
@@ -126,13 +124,6 @@ Item {
 
             property real leftEdgeBottomInset: visible ? width + anchors.margins : 0
             property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
-        }
-
-        AIDetectionVideoOverlay {
-            anchors.fill:       _pipView
-            visible:            _pipView.visible && videoControl.pipState.state === videoControl.pipState.pipState
-            showStatus:         false
-            z:                  _pipView.z + 1
         }
 
         // Keep the optional action buttons below the custom video panel,

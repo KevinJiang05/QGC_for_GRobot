@@ -14,8 +14,6 @@ import QGroundControl.Controls
 import QGroundControl.Controllers
 import QGroundControl.ScreenTools
 
-import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
-
 Item {
     id: _root
 
@@ -61,20 +59,6 @@ Item {
         anchors.fill:   parent
         useSmallFont:   _root.pipState.state !== _root.pipState.fullState
         visible:        QGroundControl.videoManager.isStreamSource
-    }
-
-    Item {
-        id:                 aiDetectionOverlay
-        width:              videoStreaming.getWidth()
-        height:             videoStreaming.getHeight()
-        anchors.centerIn:   videoStreaming
-        visible:            QGroundControl.videoManager.isStreamSource
-        z:                  50
-
-        AIDetectionVideoOverlay {
-            anchors.fill:   parent
-            showStatus:     true
-        }
     }
     //-- UVC Video (USB Camera or Video Device)
     Loader {

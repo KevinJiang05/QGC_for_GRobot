@@ -13,11 +13,9 @@ import DeepShark 1.0
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
-// Hosts only position this item; its content hides itself while the overlay switch is off.
 Item {
     id: root
 
-    property bool showStatus: true
     property string sourceId: ""
     property real videoWidth: 0
     property real videoHeight: 0
@@ -52,7 +50,6 @@ Item {
         width: Math.max(0, root._contentWidth)
         height: Math.max(0, root._contentHeight)
         clip: true
-        visible: AIDetectionManager.overlayEnabled
 
         Repeater {
             model: root.detectionModel
@@ -89,24 +86,6 @@ Item {
                     visible:            detectionLabelBackground.visible
                 }
             }
-        }
-    }
-
-    Rectangle {
-        anchors.left:       parent.left
-        anchors.top:        parent.top
-        anchors.margins:    ScreenTools.defaultFontPixelWidth
-        width:              aiDetectionStatusLabel.contentWidth + ScreenTools.defaultFontPixelWidth
-        height:             aiDetectionStatusLabel.contentHeight + ScreenTools.defaultFontPixelHeight / 3
-        color:              AIDetectionReceiver.bound ? Qt.rgba(0.0, 0.35, 0.18, 0.72) : Qt.rgba(0.45, 0.1, 0.0, 0.72)
-        visible:            root.showStatus && AIDetectionManager.overlayEnabled
-
-        QGCLabel {
-            id:                 aiDetectionStatusLabel
-            anchors.centerIn:   parent
-            text:               AIDetectionReceiver.statusText
-            color:              "white"
-            font.pointSize:     ScreenTools.smallFontPointSize
         }
     }
 }

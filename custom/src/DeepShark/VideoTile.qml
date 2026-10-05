@@ -434,7 +434,6 @@ Rectangle {
             sourceId: root.receiverName
             videoWidth: videoController.videoWidth
             videoHeight: videoController.videoHeight
-            showStatus: false
         }
     }
 

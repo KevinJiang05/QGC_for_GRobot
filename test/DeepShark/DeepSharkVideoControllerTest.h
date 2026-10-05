@@ -7,8 +7,13 @@ class DeepSharkVideoControllerTest : public UnitTest
     Q_OBJECT
 
 private slots:
+    void _rtspTransportPreservesCameraUrls();
+    void _videoPanelSavesTransportSelection();
     void _pendingAutoStartIsCancelled();
     void _clearingUriCancelsPendingAutoStart();
+    void _clearingActiveReceiverUriStopsPipeline();
+    void _duplicateDecoderPadsReleaseParentReference();
+    void _videoSinkSizeUsesDecodedCaps();
     void _failureSignalIsIndependentFromDisplayText();
     void _restartRebuildsVideoSink();
     void _failedRestartCanScheduleAgain();

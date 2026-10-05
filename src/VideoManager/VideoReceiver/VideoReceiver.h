@@ -13,6 +13,8 @@
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
 
+#include <atomic>
+
 class QGCVideoStreamInfo;
 class QQuickItem;
 
@@ -107,12 +109,11 @@ protected:
     QString _name;
     QString _uri;
     bool _started = false;
-    bool _decoding = false;
+    std::atomic<bool> _decoding{false};
     bool _recording = false;
-    bool _streaming = false;
+    std::atomic<bool> _streaming{false};
     bool _lowLatency = false;
-    bool _resetVideoSink = false;
-    bool _endOfStream = false;
+    std::atomic<bool> _endOfStream{false};
     bool _removingDecoder = false;
     bool _removingRecorder = false;
     // buffer:
@@ -120,10 +121,10 @@ protected:
     //      0 - default buffer length
     //      N - buffer length, ms
     int _buffer = 0;
-    qint64 _lastSourceFrameTime = 0;
-    qint64 _lastVideoFrameTime = 0;
+    // Written by GStreamer streaming threads and read by the receiver worker.
+    std::atomic<qint64> _lastSourceFrameTime{0};
+    std::atomic<qint64> _lastVideoFrameTime{0};
     QTimer _watchdogTimer;
-    uint32_t _signalDepth = 0;
     uint32_t _timeout = 0;
     QString _recordingOutput;
 

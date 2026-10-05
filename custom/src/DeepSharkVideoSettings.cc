@@ -10,6 +10,7 @@
 
 namespace {
 constexpr const char *kSettingsGroup = "DeepShark/Video";
+constexpr const char *kRtspTransport = "RtspTransport";
 constexpr const char *kCamera1Name = "Camera1Name";
 constexpr const char *kCamera1Url = "Camera1Url";
 constexpr const char *kCamera1Enabled = "Camera1Enabled";
@@ -39,6 +40,39 @@ DeepSharkVideoSettings::DeepSharkVideoSettings(QObject *parent)
     , _camera4Url(_readValue(kCamera4Url, QString()))
     , _camera4Enabled(_readBool(kCamera4Enabled, true))
 {
+    const int transport = _readValue(kRtspTransport, QStringLiteral("0")).toInt();
+    if (transport >= Automatic && transport <= Udp) {
+        _rtspTransport = transport;
+    }
+}
+
+void DeepSharkVideoSettings::setRtspTransport(int transport)
+{
+    if (transport < Automatic || transport > Udp || _rtspTransport == transport) {
+        return;
+    }
+    _rtspTransport = transport;
+    _writeValue(kRtspTransport, QString::number(transport));
+    emit rtspTransportChanged();
+}
+
+QString DeepSharkVideoSettings::streamUrl(const QString &url, int transport) const
+{
+    if (transport != Tcp && transport != Udp) {
+        return url;
+    }
+    const auto separator = url.indexOf(QLatin1Char(':'));
+    const QString scheme = url.left(separator).toLower();
+    QString replacement;
+    if (scheme == QStringLiteral("rtsp") || scheme == QStringLiteral("rtspt") || scheme == QStringLiteral("rtspu")) {
+        replacement = transport == Tcp ? QStringLiteral("rtspt") : QStringLiteral("rtspu");
+    } else if (scheme == QStringLiteral("rtsps") || scheme == QStringLiteral("rtspst") || scheme == QStringLiteral("rtspsu")) {
+        replacement = transport == Tcp ? QStringLiteral("rtspst") : QStringLiteral("rtspsu");
+    } else {
+        return url;
+    }
+    // Preserve the camera's path/query verbatim, including escaped characters.
+    return replacement + url.mid(separator);
 }
 
 void DeepSharkVideoSettings::setCamera1Name(const QString &name)

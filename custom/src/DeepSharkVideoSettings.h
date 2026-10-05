@@ -12,6 +12,7 @@
 class DeepSharkVideoSettings : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(int rtspTransport READ rtspTransport WRITE setRtspTransport NOTIFY rtspTransportChanged)
     Q_PROPERTY(QString camera1Name READ camera1Name WRITE setCamera1Name NOTIFY camera1NameChanged)
     Q_PROPERTY(QString camera1Url READ camera1Url WRITE setCamera1Url NOTIFY camera1UrlChanged)
     Q_PROPERTY(bool camera1Enabled READ camera1Enabled WRITE setCamera1Enabled NOTIFY camera1EnabledChanged)
@@ -26,7 +27,13 @@ class DeepSharkVideoSettings : public QObject
     Q_PROPERTY(bool camera4Enabled READ camera4Enabled WRITE setCamera4Enabled NOTIFY camera4EnabledChanged)
 
 public:
+    enum RtspTransport { Automatic = 0, Tcp, Udp };
+    Q_ENUM(RtspTransport)
     explicit DeepSharkVideoSettings(QObject *parent = nullptr);
+
+    int rtspTransport() const { return _rtspTransport; }
+    void setRtspTransport(int transport);
+    Q_INVOKABLE QString streamUrl(const QString &url, int transport) const;
 
     QString camera1Name() const { return _camera1Name; }
     QString camera1Url() const { return _camera1Url; }
@@ -58,6 +65,7 @@ public:
     Q_INVOKABLE void setCameraEnabled(int index, bool enabled);
 
 signals:
+    void rtspTransportChanged();
     void camera1NameChanged();
     void camera1UrlChanged();
     void camera1EnabledChanged();
@@ -72,6 +80,7 @@ signals:
     void camera4EnabledChanged();
 
 private:
+    int _rtspTransport = Automatic;
     QString _readValue(const QString &key, const QString &defaultValue) const;
     void _writeValue(const QString &key, const QString &value);
     bool _readBool(const QString &key, bool defaultValue) const;

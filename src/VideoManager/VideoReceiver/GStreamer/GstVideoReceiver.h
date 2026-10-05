@@ -74,6 +74,8 @@ private slots:
     void _handleEOS();
 
 private:
+    friend class DeepSharkVideoControllerTest;
+
     GstElement *_makeSource(const QString &input);
     GstElement *_makeDecoder(GstCaps *caps = nullptr, GstElement *videoSink = nullptr);
     GstElement *_makeFileSink(const QString &videoFile, FILE_FORMAT format);

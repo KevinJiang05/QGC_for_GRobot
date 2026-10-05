@@ -109,7 +109,7 @@ Rectangle {
         id: videoController
         videoItem: root.videoEnabled ? videoOutput : null
         receiverName: root.receiverName
-        uri: root.videoSource
+        uri: DeepSharkVideoSettings.streamUrl(root.videoSource, DeepSharkVideoSettings.rtspTransport)
         autoStart: root.controllerAutoStart
         alertExpected: root.videoEnabled && !root.manualStopped && !root.shuttingDown
         alertTitle: root.title

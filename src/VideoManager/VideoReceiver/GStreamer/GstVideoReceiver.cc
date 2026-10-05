@@ -72,7 +72,7 @@ void GstVideoReceiver::start(uint32_t timeout)
 
     qCDebug(GstVideoReceiverLog) << "Starting" << _uri << ", lowLatency" << lowLatency() << ", timeout" << _timeout;
 
-    _endOfStream = false;
+    _endOfStream.store(false, std::memory_order_relaxed);
 
     bool running = false;
     bool pipelineUp = false;
@@ -93,7 +93,7 @@ void GstVideoReceiver::start(uint32_t timeout)
             break;
         }
 
-        _lastSourceFrameTime = 0;
+        _lastSourceFrameTime.store(0, std::memory_order_relaxed);
 
         _teeProbeId = gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, _teeProbe, this, nullptr);
         gst_clear_object(&pad);
@@ -231,11 +231,6 @@ void GstVideoReceiver::stop()
         return;
     }
 
-    if (_uri.isEmpty()) {
-        qCWarning(GstVideoReceiverLog) << "Stop called on empty URI";
-        return;
-    }
-
     qCDebug(GstVideoReceiverLog) << "Stopping" << _uri;
 
     if (_teeProbeId != 0) {
@@ -304,12 +299,11 @@ void GstVideoReceiver::stop()
         _tee = nullptr;
         _source = nullptr;
 
-        _lastSourceFrameTime = 0;
+        _lastSourceFrameTime.store(0, std::memory_order_relaxed);
 
-        if (_streaming) {
-            _streaming = false;
+        if (_streaming.exchange(false, std::memory_order_relaxed)) {
             qCDebug(GstVideoReceiverLog) << "Streaming stopped" << _uri;
-            _dispatchSignal([this]() { emit streamingChanged(_streaming); });
+            _dispatchSignal([this]() { emit streamingChanged(false); });
         } else {
             qCDebug(GstVideoReceiverLog) << "Streaming did not start" << _uri;
         }
@@ -358,8 +352,7 @@ void GstVideoReceiver::startDecoding(void *sink)
         return;
     }
 
-    _lastVideoFrameTime = 0;
-    _resetVideoSink = true;
+    _lastVideoFrameTime.store(0, std::memory_order_relaxed);
 
     _videoSinkProbeId = gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER, _videoSinkProbe, this, nullptr);
     gst_clear_object(&pad);
@@ -540,23 +533,28 @@ void GstVideoReceiver::_watchdog()
         }
 
         const qint64 now = QDateTime::currentSecsSinceEpoch();
-        if (_lastSourceFrameTime == 0) {
-            _lastSourceFrameTime = now;
+        qint64 lastSourceFrameTime = _lastSourceFrameTime.load(std::memory_order_relaxed);
+        if (lastSourceFrameTime == 0
+                && _lastSourceFrameTime.compare_exchange_strong(lastSourceFrameTime, now, std::memory_order_relaxed)) {
+            lastSourceFrameTime = now;
         }
 
-        qint64 elapsed = now - _lastSourceFrameTime;
+        qint64 elapsed = now - lastSourceFrameTime;
         if (elapsed > _timeout) {
             qCDebug(GstVideoReceiverLog) << "Stream timeout, no frames for" << elapsed << _uri;
             _dispatchSignal([this]() { emit timeout(); });
             stop();
+            return;
         }
 
         if (_decoding && !_removingDecoder) {
-            if (_lastVideoFrameTime == 0) {
-                _lastVideoFrameTime = now;
+            qint64 lastVideoFrameTime = _lastVideoFrameTime.load(std::memory_order_relaxed);
+            if (lastVideoFrameTime == 0
+                    && _lastVideoFrameTime.compare_exchange_strong(lastVideoFrameTime, now, std::memory_order_relaxed)) {
+                lastVideoFrameTime = now;
             }
 
-            elapsed = now - _lastVideoFrameTime;
+            elapsed = now - lastVideoFrameTime;
             if (elapsed > (_timeout * 2)) {
                 qCDebug(GstVideoReceiverLog) << "Video decoder timeout, no frames for" << elapsed << _uri;
                 _dispatchSignal([this]() { emit timeout(); });
@@ -572,7 +570,7 @@ void GstVideoReceiver::_handleEOS()
         return;
     }
 
-    if (_endOfStream) {
+    if (_endOfStream.load(std::memory_order_relaxed)) {
         stop();
     } else if (_decoding && _removingDecoder) {
         _shutdownDecodingBranch();
@@ -907,10 +905,9 @@ void GstVideoReceiver::_onNewSourcePad(GstPad *pad)
         return;
     }
 
-    if (!_streaming) {
-        _streaming = true;
+    if (!_streaming.exchange(true, std::memory_order_relaxed)) {
         qCDebug(GstVideoReceiverLog) << "Streaming started" << _uri;
-        _dispatchSignal([this]() { emit streamingChanged(_streaming); });
+        _dispatchSignal([this]() { emit streamingChanged(true); });
     }
 
     (void) gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, _eosProbe, this, nullptr);
@@ -939,9 +936,13 @@ void GstVideoReceiver::_onNewDecoderPad(GstPad *pad)
         return;
     }
 
-    if (_videoSink && gst_element_get_parent(_videoSink)) {
-        qCDebug(GstVideoReceiverLog) << "Ignoring duplicate decoder pad" << _uri;
-        return;
+    if (_videoSink) {
+        GstObject *parent = gst_element_get_parent(_videoSink);
+        if (parent) {
+            gst_clear_object(&parent);
+            qCDebug(GstVideoReceiverLog) << "Ignoring duplicate decoder pad" << _uri;
+            return;
+        }
     }
 
     qCDebug(GstVideoReceiverLog) << "_onNewDecoderPad" << _uri;
@@ -1025,8 +1026,6 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
         return false;
     }
 
-    GstCaps *caps = gst_pad_query_caps(pad, nullptr);
-
     (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
     (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
 
@@ -1038,7 +1037,6 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
     if (!linked) {
         (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
         qCCritical(GstVideoReceiverLog) << "Unable to link video sink" << _uri << "result=" << linkResult;
-        gst_clear_caps(&caps);
         return false;
     }
 
@@ -1053,43 +1051,45 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-videosink");
 
-    if (_decoderValve) {
-        // Extracting video size from source is more guaranteed
-        GstPad *valveSrcPad = gst_element_get_static_pad(_decoderValve, "src");
-        const GstCaps *valveSrcPadCaps = gst_pad_query_caps(valveSrcPad, nullptr);
-        const GstStructure *structure = gst_caps_get_structure(valveSrcPadCaps, 0);
-        if (structure) {
-            gint width, height;
-            (void) gst_structure_get_int(structure, "width", &width);
-            (void) gst_structure_get_int(structure, "height", &height);
-            _dispatchSignal([this, width, height]() { emit videoSizeChanged(QSize(width, height)); });
-        }
-    } else {
-        _dispatchSignal([this]() { emit videoSizeChanged(QSize()); });
+    // Prefer negotiated decoder output caps. Upstream encoded caps may omit
+    // dimensions; any fallback must also provide valid integer dimensions.
+    GstCaps *caps = gst_pad_get_current_caps(pad);
+    if (!caps) {
+        caps = gst_pad_query_caps(pad, nullptr);
     }
-
+    QSize videoSize;
+    if (caps && !gst_caps_is_empty(caps) && !gst_caps_is_any(caps)) {
+        const GstStructure *structure = gst_caps_get_structure(caps, 0);
+        gint width = 0;
+        gint height = 0;
+        if (gst_structure_get_int(structure, "width", &width)
+                && gst_structure_get_int(structure, "height", &height)
+                && width > 0 && height > 0) {
+            videoSize = QSize(width, height);
+        }
+    }
     gst_clear_caps(&caps);
+    _dispatchSignal([this, videoSize]() { emit videoSizeChanged(videoSize); });
     return true;
 }
 
 void GstVideoReceiver::_noteTeeFrame()
 {
-    _lastSourceFrameTime = QDateTime::currentSecsSinceEpoch();
+    _lastSourceFrameTime.store(QDateTime::currentSecsSinceEpoch(), std::memory_order_relaxed);
 }
 
 void GstVideoReceiver::_noteVideoSinkFrame()
 {
-    _lastVideoFrameTime = QDateTime::currentSecsSinceEpoch();
-    if (!_decoding) {
-        _decoding = true;
+    _lastVideoFrameTime.store(QDateTime::currentSecsSinceEpoch(), std::memory_order_relaxed);
+    if (!_decoding.exchange(true, std::memory_order_relaxed)) {
         qCDebug(GstVideoReceiverLog) << "Decoding started";
-        _dispatchSignal([this]() { emit decodingChanged(_decoding); });
+        _dispatchSignal([this]() { emit decodingChanged(true); });
     }
 }
 
 void GstVideoReceiver::_noteEndOfStream()
 {
-    _endOfStream = true;
+    _endOfStream.store(true, std::memory_order_relaxed);
 }
 
 bool GstVideoReceiver::_unlinkBranch(GstElement *from)
@@ -1153,7 +1153,7 @@ void GstVideoReceiver::_shutdownDecodingBranch()
         _videoSinkProbeId = 0;
     }
 
-    _lastVideoFrameTime = 0;
+    _lastVideoFrameTime.store(0, std::memory_order_relaxed);
 
     GstObject *parent = gst_element_get_parent(_videoSink);
     if (parent) {
@@ -1166,10 +1166,9 @@ void GstVideoReceiver::_shutdownDecodingBranch()
 
     _removingDecoder = false;
 
-    if (_decoding) {
-        _decoding = false;
+    if (_decoding.exchange(false, std::memory_order_relaxed)) {
         qCDebug(GstVideoReceiverLog) << "Decoding stopped";
-        _dispatchSignal([this]() { emit decodingChanged(_decoding); });
+        _dispatchSignal([this]() { emit decodingChanged(false); });
     }
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-decoding-stopped");
@@ -1199,16 +1198,7 @@ bool GstVideoReceiver::_needDispatch()
 
 void GstVideoReceiver::_dispatchSignal(Task emitter)
 {
-    _signalDepth += 1;
-
-    // QElapsedTimer timer;
-    // timer.start();
-
     emitter();
-
-    // qCDebug(GstVideoReceiverLog) << "Task took" << timer.elapsed() << "ms";
-
-    _signalDepth -= 1;
 }
 
 gboolean GstVideoReceiver::_onBusMessage(GstBus * /* bus */, GstMessage *msg, gpointer data)
@@ -1415,34 +1405,6 @@ GstPadProbeReturn GstVideoReceiver::_videoSinkProbe(GstPad *pad, GstPadProbeInfo
 
     if (user_data) {
         GstVideoReceiver *pThis = static_cast<GstVideoReceiver*>(user_data);
-
-        if (pThis->_resetVideoSink) {
-            pThis->_resetVideoSink = false;
-
-#if 0 // FIXME: this makes MPEG2-TS playing smooth but breaks RTSP
-           gst_pad_send_event(pad, gst_event_new_flush_start());
-           gst_pad_send_event(pad, gst_event_new_flush_stop(TRUE));
-
-           GstBuffer* buf;
-
-           if ((buf = gst_pad_probe_info_get_buffer(info)) != nullptr) {
-               GstSegment* seg;
-
-               if ((seg = gst_segment_new()) != nullptr) {
-                   gst_segment_init(seg, GST_FORMAT_TIME);
-
-                   seg->start = buf->pts;
-
-                   gst_pad_send_event(pad, gst_event_new_segment(seg));
-
-                   gst_segment_free(seg);
-                   seg = nullptr;
-               }
-
-               gst_pad_set_offset(pad, -static_cast<gint64>(buf->pts));
-           }
-#endif
-        }
 
         pThis->_noteVideoSinkFrame();
     }

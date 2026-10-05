@@ -437,6 +437,7 @@ Rectangle {
     }
 
     function openSettings() {
+        rtspTransportCombo.currentIndex = DeepSharkVideoSettings.rtspTransport
         camera1EnabledCheck.checked = DeepSharkVideoSettings.camera1Enabled
         camera1NameField.text = DeepSharkVideoSettings.camera1Name
         camera1UrlField.text = DeepSharkVideoSettings.camera1Url
@@ -466,6 +467,7 @@ Rectangle {
         DeepSharkVideoSettings.setCameraEnabled(3, camera3EnabledCheck.checked)
         DeepSharkVideoSettings.setCamera(4, camera4NameField.text, camera4UrlField.text)
         DeepSharkVideoSettings.setCameraEnabled(4, camera4EnabledCheck.checked)
+        DeepSharkVideoSettings.rtspTransport = rtspTransportCombo.currentIndex
 
         for (var i = 0; i < 4; i++) {
             if (!newEnabled[i]) {
@@ -779,6 +781,26 @@ Rectangle {
                     text: qsTr("YOLO 检测叠加层")
                     fact: root._videoSettings.yoloOverlay
                     visible: fact.visible
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScreenTools.defaultFontPixelWidth
+
+                    QGCLabel { text: qsTr("视频传输方式"); color: "#cbd5e1" }
+                    QGCComboBox {
+                        id: rtspTransportCombo
+                        objectName: "rtspTransportCombo"
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 24
+                        model: [qsTr("自动（按地址）"), qsTr("TCP（可靠传输）"), qsTr("UDP（低延迟）")]
+                    }
+                }
+
+                QGCLabel {
+                    Layout.fillWidth: true
+                    text: qsTr("适用于全部 RTSP 通道。选择 TCP 或 UDP 后无需修改地址；保存后自动重连正在播放的视频。")
+                    color: "#cbd5e1"
+                    wrapMode: Text.WordWrap
                 }
 
                 GridLayout {

@@ -1,50 +1,32 @@
 @echo off
 setlocal
 
-set "GST_ROOT=D:\Develop\Toolchains\GStreamer\1.0\msvc_x86_64"
-set "QT_ROOT=D:\Develop\Toolchains\Qt\6.8.3\msvc2022_64"
-set "QGC_ROOT=D:\Develop\QGC_for_GRobot"
-set "VS_ROOT=D:\Develop\Toolchains\VS2022BuildTools"
-set "VS_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\x64\Microsoft.VC143.CRT"
-set "VS_DEBUG_CRT=%VS_ROOT%\VC\Redist\MSVC\14.44.35112\debug_nonredist\x64\Microsoft.VC143.DebugCRT"
-set "WIN_UCRT_DEBUG=C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\ucrt"
-set "QGC_EXE="
-
-if exist "%QGC_ROOT%\build-debug-ai\Debug\QGC_KevinJiang.exe" (
-    set "QGC_EXE=%QGC_ROOT%\build-debug-ai\Debug\QGC_KevinJiang.exe"
-) else if exist "%QGC_ROOT%\build-release\Release\QGC_KevinJiang.exe" (
-    set "QGC_EXE=%QGC_ROOT%\build-release\Release\QGC_KevinJiang.exe"
-) else if exist "%QGC_ROOT%\build-release\package-root\bin\QGC_KevinJiang.exe" (
-    set "QGC_EXE=%QGC_ROOT%\build-release\package-root\bin\QGC_KevinJiang.exe"
-) else if exist "%QGC_ROOT%\build-release\staging\bin\QGC_KevinJiang.exe" (
-    set "QGC_EXE=%QGC_ROOT%\build-release\staging\bin\QGC_KevinJiang.exe"
-)
-
-set "PATH=%QT_ROOT%\bin;%GST_ROOT%\bin;%VS_CRT%;%VS_DEBUG_CRT%;%WIN_UCRT_DEBUG%;%PATH%"
-set "GST_PLUGIN_PATH=%GST_ROOT%\lib\gstreamer-1.0"
-set "GST_PLUGIN_PATH_1_0=%GST_ROOT%\lib\gstreamer-1.0"
-set "GST_PLUGIN_SYSTEM_PATH=%GST_ROOT%\lib\gstreamer-1.0"
-set "GST_PLUGIN_SYSTEM_PATH_1_0=%GST_ROOT%\lib\gstreamer-1.0"
-set "GST_PLUGIN_SCANNER=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
-set "GST_PLUGIN_SCANNER_1_0=%GST_ROOT%\libexec\gstreamer-1.0\gst-plugin-scanner.exe"
-set "GIO_EXTRA_MODULES=%GST_ROOT%\lib\gio\modules"
+set "QGC_ROOT=%~dp0"
+set "QGC_LAUNCHER=%QGC_ROOT%tools\debug\start-windows-debug.ps1"
+set "QGC_EXE=%QGC_ROOT%build-v5.1.5-debug\Debug\QGC_KevinJiang_v5_1_5_Debug.exe"
 set "QT_LOGGING_RULES="
-set "QGC_LOGGING_ARGS="
-if /I "%~1"=="--diagnostics" set "QGC_LOGGING_ARGS=--logging:VideoAllLog,qgc.deepshark.videocontroller --log-output"
+set "QGC_LAUNCH_ARGS=%*"
+if /I "%~1"=="--diagnostics" set "QGC_LAUNCH_ARGS=-Diagnostics"
 
 cd /d "%QGC_ROOT%"
 
-if not defined QGC_EXE (
-    echo QGC_KevinJiang.exe was not found.
-    echo Checked normal build-debug-ai and build-release outputs.
+if not exist "%QGC_LAUNCHER%" (
+    echo Debug launcher was not found: "%QGC_LAUNCHER%"
+    pause
+    exit /b 1
+)
+
+if not exist "%QGC_EXE%" (
+    echo QGroundControl v5.1.5 Debug was not found: "%QGC_EXE%"
+    echo Build the candidate using docs\debug\windows-v5.1.5-debug.md.
     pause
     exit /b 1
 )
 
 echo Starting "%QGC_EXE%"
-start "QGC_KevinJiang Logs" /min /D "%QGC_ROOT%" cmd.exe /d /s /c ""%QGC_EXE%" %QGC_LOGGING_ARGS% 1>>"%TEMP%\QGC_KevinJiang.stdout.log" 2>>"%TEMP%\QGC_KevinJiang.stderr.log""
+start "QGC_KevinJiang v5.1.5 Debug Logs" /min /D "%QGC_ROOT%" cmd.exe /d /s /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%QGC_LAUNCHER%" %QGC_LAUNCH_ARGS% 1>>"%TEMP%\QGC_KevinJiang_v5_1_5_Debug.stdout.log" 2>>"%TEMP%\QGC_KevinJiang_v5_1_5_Debug.stderr.log""
 if errorlevel 1 (
-    echo Failed to start QGC_KevinJiang.exe.
+    echo Failed to start QGroundControl v5.1.5 Debug.
     pause
     exit /b 1
 )

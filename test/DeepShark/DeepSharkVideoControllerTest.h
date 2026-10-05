@@ -6,6 +6,9 @@ class DeepSharkVideoControllerTest : public UnitTest
 {
     Q_OBJECT
 
+protected slots:
+    void init() override;
+
 private slots:
     void _rtspTransportPreservesCameraUrls();
     void _videoPanelSavesTransportSelection();
@@ -22,4 +25,5 @@ private slots:
     void _videoRowsUpdateWithoutReplacingDelegates();
     void _disabledVideoResourcesCanBeRecreated();
     void _coreOptionsSurviveGarbageCollection();
+    void _qmlEngineTeardownIsRepeatable();
 };

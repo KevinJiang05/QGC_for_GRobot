@@ -6,16 +6,15 @@
 
 #include "DeepSharkVideoController.h"
 
-#include "QGCCorePlugin.h"
-#include "QGCLoggingCategory.h"
-#include "VideoReceiver.h"
-
 #include <QtCore/QTimer>
-
 #include <QtQuick/QQuickItem>
-
 #include <algorithm>
 #include <cmath>
+
+#include "QGCCorePlugin.h"
+#include "QGCLoggingCategory.h"
+#include "VideoBackend.h"
+#include "VideoReceiver.h"
 
 #ifdef QGC_GST_STREAMING
 #include <gst/gstbuffer.h>
@@ -324,6 +323,8 @@ void DeepSharkVideoController::_ensureReceiver()
     }
 
     _receiver->setName(_receiverName);
+    // ConnectionMonitor/VideoTile own reconnect scheduling for custom streams.
+    _receiver->setAutoReconnect(false);
     _receiver->setLowLatency(_lowLatency);
     _receiver->setUri(_uri);
 
@@ -457,6 +458,7 @@ void DeepSharkVideoController::_rebuildSink()
     if (_videoItem) {
         _sink = QGCCorePlugin::instance()->createVideoSink(_videoItem, _receiver);
         _receiver->setSink(_sink);
+        VideoBackend::attachSink(_receiver, _sink, _videoItem);
         _installSinkFrameProbe();
     }
 }

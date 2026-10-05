@@ -1,5 +1,7 @@
 # QGC_GRobot / DeepShark 地面站
 
+> 本文保留 QGC v5.0.8 / Kevin v1.3.1 阶段的历史介绍。当前版本与工程状态以 [README.md](README.md) 为准；新版实测请使用 [v5.1.5 Debug 说明](docs/debug/windows-v5.1.5-debug.md)。
+
 本仓库是在 **QGroundControl v5.0.8 Stable** 基础上，为水下机器人比赛和后续 AUV/ROV 实验开发的定制地面站。当前内部 Windows 发行版本为 **QGC_KevinJiang v1.3.1**。项目保留 QGC 原生 ArduPilot、MAVLink、参数、模式、遥测和控制链路，通过 QGC custom build 机制叠加 DeepShark 专用视频面板、YOLO 目标检测叠加层和设备配置工具。
 
 核心原则是小步改造：优先复用 QGC 原有视频、GStreamer、MAVLink 和设置体系，不重构无关架构，不替换原生飞控插件。

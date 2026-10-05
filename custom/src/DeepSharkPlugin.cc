@@ -121,6 +121,14 @@ DeepSharkOverrideInterceptor::DeepSharkOverrideInterceptor()
 {
 }
 
+void DeepSharkPlugin::destroyQmlApplicationEngine(QQmlApplicationEngine* qmlEngine)
+{
+    if (_qmlEngine == qmlEngine) {
+        cleanup();
+    }
+    QGCCorePlugin::destroyQmlApplicationEngine(qmlEngine);
+}
+
 QUrl DeepSharkOverrideInterceptor::intercept(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type)
 {
     switch (type) {

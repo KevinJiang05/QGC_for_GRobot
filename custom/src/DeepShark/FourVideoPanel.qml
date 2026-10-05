@@ -10,11 +10,10 @@ import QtQuick.Layouts
 import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
 
 Rectangle {
     id: root
+    objectName: "deepSharkFourVideoPanel"
 
     property bool videoMainMode: true
     property string layoutMode: "grid"

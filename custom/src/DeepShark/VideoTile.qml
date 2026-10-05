@@ -5,13 +5,12 @@
  ****************************************************************************/
 
 import QtQuick
+import QtMultimedia
 
 import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.FlightDisplay
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
+import QGroundControl.FlyView
 
 Rectangle {
     id: root
@@ -99,7 +98,7 @@ Rectangle {
         return qsTr("正常")
     }
 
-    QGCVideoBackground {
+    VideoOutput {
         id: videoOutput
         anchors.fill: parent
         visible: root.videoEnabled && videoController.decoding

@@ -1,3 +1,4 @@
+import QGroundControl
 /****************************************************************************
  *
  * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
@@ -11,7 +12,6 @@ import QtQuick
 
 import DeepShark 1.0
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 Item {
     id: root

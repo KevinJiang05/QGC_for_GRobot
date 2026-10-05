@@ -1,21 +1,22 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
-#include "UnitTest.h"
+#include "BaseClasses/VehicleTestManualConnect.h"
 
-class InitialConnectTest : public UnitTest
+class InitialConnectTest : public VehicleTestManualConnect
 {
     Q_OBJECT
 
 private slots:
-    void _performTestCases(void);
-    void _boardVendorProductId(void);
+    void _performTestCases_data();
+    void _performTestCases();
+    void _boardVendorProductId();
+    void _progressTracking();
+    void _highLatencySkipsPlanRequests();
+    void _genericAutopilotVersionFailureSkipsUnsupportedPlanTypes();
+    void _multipleReconnects();
+    void _rallyFailurePathDoesNotLeakCompletionHandler();
+    void _subsystemFailureFallsThrough_data();
+    void _subsystemFailureFallsThrough();
+    void _stateRunMatrix_data();
+    void _stateRunMatrix();
 };

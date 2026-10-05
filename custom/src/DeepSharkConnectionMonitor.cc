@@ -1,16 +1,19 @@
 #include "DeepSharkConnectionMonitor.h"
-#include "DeepSharkVideoController.h"
-#include "MultiVehicleManager.h"
-#include "Vehicle.h"
-#include "AudioOutput.h"
-#include "QGCApplication.h"
-#include "QGCLoggingCategory.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QSettings>
 #include <QtCore/qapplicationstatic.h>
 #include <QtMultimedia/QSoundEffect>
 #include <algorithm>
+
+#include "AppSettings.h"
+#include "DeepSharkVideoController.h"
+#include "MultiVehicleManager.h"
+#include "QGCApplication.h"
+#include "QGCLoggingCategory.h"
+#include "SettingsManager.h"
+#include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 Q_APPLICATION_STATIC(DeepSharkConnectionMonitor, connectionMonitor);
 QGC_LOGGING_CATEGORY(DeepSharkConnectionMonitorLog, "qgc.deepshark.connectionalert")
@@ -363,14 +366,18 @@ void DeepSharkConnectionMonitor::acknowledge()
 QString DeepSharkConnectionMonitor::audioStatus() const
 {
     if (!_soundEnabled) { return tr("预警声音已关闭"); }
-    if (_live && AudioOutput::instance()->isMuted()) { return tr("应用总声音已静音"); }
+    if (_live && SettingsManager::instance()->appSettings()->audioMuted()->rawValue().toBool()) {
+        return tr("应用总声音已静音");
+    }
     if (_sound && _sound->status() == QSoundEffect::Error) { return tr("提示音不可用，请检查声音设备"); }
     return tr("请使用声音测试确认实际输出");
 }
 
 void DeepSharkConnectionMonitor::_playSound()
 {
-    if (!_soundEnabled || AudioOutput::instance()->isMuted()) { return; }
+    if (!_soundEnabled || SettingsManager::instance()->appSettings()->audioMuted()->rawValue().toBool()) {
+        return;
+    }
     _soundPending = true;
     if (!_sound) {
         _sound = new QSoundEffect(this);
@@ -379,7 +386,9 @@ void DeepSharkConnectionMonitor::_playSound()
             emit stateChanged();
             if (_sound->status() == QSoundEffect::Ready && _soundPending) {
                 _soundPending = false;
-                if (_soundEnabled && !AudioOutput::instance()->isMuted()) { _sound->play(); }
+                if (_soundEnabled && !SettingsManager::instance()->appSettings()->audioMuted()->rawValue().toBool()) {
+                    _sound->play();
+                }
             }
         });
         _sound->setSource(QUrl(_soundType == 1

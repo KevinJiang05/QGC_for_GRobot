@@ -1,14 +1,17 @@
 #include "DeepSharkConnectionMonitorTest.h"
-#include "DeepSharkConnectionMonitor.h"
-#include "DeepSharkVideoController.h"
-#include "QGCCorePlugin.h"
-#include "Vehicle.h"
+
 #include <QtCore/QSettings>
 #include <QtCore/QTemporaryDir>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
 #include <QtTest/QSignalSpy>
 #include <memory>
+
+#include "ColoredSvgImageProvider.h"
+#include "DeepSharkConnectionMonitor.h"
+#include "DeepSharkVideoController.h"
+#include "QGCCorePlugin.h"
+#include "Vehicle.h"
 
 void DeepSharkConnectionMonitorTest::_prepare(DeepSharkConnectionMonitor &m)
 {
@@ -221,12 +224,14 @@ void DeepSharkConnectionMonitorTest::_qmlControlsLoad()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     DeepSharkConnectionMonitor m(nullptr, false);
     QSignalSpy warnings(&engine, &QQmlEngine::warnings);
     const QVariantMap properties{{QStringLiteral("monitor"), QVariant::fromValue(&m)},
                                  {QStringLiteral("width"), 700}};
     for (const QString &file : {QStringLiteral("ConnectionAlertSettings.qml"), QStringLiteral("ConnectionAlertBanner.qml")}) {
-        QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/") + file));
+        QQmlComponent component(&engine,
+                                QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/") + file));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         std::unique_ptr<QObject> object(component.createWithInitialProperties(properties));
         QVERIFY2(object, qPrintable(component.errorString()));
@@ -284,3 +289,5 @@ void DeepSharkConnectionMonitorTest::_existingAlarmSurvivesRearm()
     QVERIFY(m.alarmActive());
     QCOMPARE(sounds.count(), 1); // Rearming must never silence an existing incident.
 }
+
+UT_REGISTER_TEST(DeepSharkConnectionMonitorTest, TestLabel::Unit)

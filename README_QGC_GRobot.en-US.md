@@ -1,5 +1,7 @@
 # QGC_GRobot / DeepShark Ground Station
 
+> This page preserves the QGC v5.0.8 / Kevin v1.3.1 introduction. See [README.md](README.md) for the current project status and the [v5.1.5 Debug guide](docs/debug/windows-v5.1.5-debug.md) for the current test candidate.
+
 This repository is a **QGroundControl v5.0.8 Stable** custom ground station for underwater robotics competition work and later AUV/ROV experiments. The current internal Windows release is **QGC_KevinJiang v1.3.1**. The project keeps the native QGC ArduPilot, MAVLink, parameter, mode, telemetry, and control stack intact, then layers a DeepShark video panel, a YOLO object-detection overlay, and device-configuration tools through the QGC custom build mechanism.
 
 The guiding rule is minimal, scoped change: reuse QGC's existing video, GStreamer, MAVLink, and settings infrastructure wherever possible, and avoid unrelated architecture rewrites.

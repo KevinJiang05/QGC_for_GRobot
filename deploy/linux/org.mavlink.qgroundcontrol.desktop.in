@@ -7,3 +7,5 @@ Icon=@CMAKE_PROJECT_NAME@
 Exec=@CMAKE_PROJECT_NAME@
 Terminal=false
 Categories=Utility;
+Keywords=mavlink;drone;uav;ardupilot;pixhawk;px4;gcs;
+StartupWMClass=@CMAKE_PROJECT_NAME@

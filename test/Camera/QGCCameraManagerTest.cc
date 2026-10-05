@@ -1,51 +1,111 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "QGCCameraManagerTest.h"
+
+#include <QtCore/QLoggingCategory>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QScopeGuard>
+#include <memory>
+
+#include "CameraMetaData.h"
+#include "MAVLinkLib.h"
 #include "QGCCameraManager.h"
 #include "Vehicle.h"
 
-#include <QtTest/QTest>
-#include <QtTest/QSignalSpy>
-#include <memory>
-
 void QGCCameraManagerTest::_testCameraList()
 {
-    const QList<CameraMetaData*> cameraList = QGCCameraManager::_parseCameraMetaData(QStringLiteral(":/json/CameraMetaData.json"));
-
+    const QList<CameraMetaData*> cameraList = CameraMetaData::parseCameraMetaData();
     QVERIFY(!cameraList.isEmpty());
-
     qDeleteAll(cameraList);
+}
+
+/// Reproduces issue #13251 (crash 1): use-after-free of QGCCameraManager::CameraStruct.
+///
+/// The camera info request commands are queued in the vehicle's MavCommandQueue with
+/// resultHandlerData pointing at the CameraStruct. _checkForLostCameras() deletes the
+/// CameraStruct when the camera goes silent, without cancelling the pending command.
+/// When the command later times out, the failure handler dereferences the freed struct.
+///
+/// In production this is reached when a camera reappears after a silent period (which
+/// re-requests camera info with infoReceived still true) and then goes silent again for
+/// kSilentTimeoutMs while the request is pending. The test shortcuts the two 5 second
+/// silent periods by performing the same cleanup _checkForLostCameras() does (take from
+/// _cameraInfoRequest + delete) while the request is pending.
+///
+/// The use-after-free is only reliably detected when running under AddressSanitizer
+/// (CI ASan job). Without ASan the test exercises the path but may pass silently.
+void QGCCameraManagerTest::_testLostCameraCleanupWithPendingRequest()
+{
+    ignoreLogMessage("Vehicle.MavCommandQueue", QtWarningMsg,
+                     QRegularExpression("Giving up sending command after max retries:"));
+
+    // Enable camera manager debug logging: the failure handlers log CameraStruct
+    // fields, widening the use-after-free reads for ASan to catch. Scoped so the
+    // process-global filter rules are restored even on early test failure.
+    const QByteArray oldLoggingRules = qgetenv("QT_LOGGING_RULES");
+    QLoggingCategory::setFilterRules(QStringLiteral("Camera.QGCCameraManager.debug=true"));
+    const auto restoreLoggingRules = qScopeGuard([oldLoggingRules]() {
+        QLoggingCategory::setFilterRules(QString::fromUtf8(oldLoggingRules));
+    });
+
+    // Ensure MockLink never responds to the camera info request so it stays pending
+    // and eventually times out.
+    mockLink()->setRequestMessageNoResponse(MAVLINK_MSG_ID_CAMERA_INFORMATION);
+
+    // Inject a camera component heartbeat. The camera manager creates a CameraStruct
+    // and immediately requests CAMERA_INFORMATION with the struct as handler data.
+    mavlink_message_t msg{};
+    (void) mavlink_msg_heartbeat_pack_chan(vehicle()->id(),
+                                           MAV_COMP_ID_CAMERA,
+                                           mockLink()->mavlinkChannel(),
+                                           &msg,
+                                           MAV_TYPE_CAMERA,
+                                           MAV_AUTOPILOT_INVALID,
+                                           0,   // base_mode
+                                           0,   // custom_mode
+                                           MAV_STATE_ACTIVE);
+    mockLink()->respondWithMavlinkMessage(msg);
+
+    QGCCameraManager* cameraManager = vehicle()->cameraManager();
+    QVERIFY(cameraManager);
+
+    QTRY_VERIFY_WITH_TIMEOUT(cameraManager->findCameraStruct(MAV_COMP_ID_CAMERA) != nullptr, TestTimeout::longMs());
+    QTRY_VERIFY_WITH_TIMEOUT(vehicle()->isMavCommandPending(MAV_COMP_ID_CAMERA, MAV_CMD_REQUEST_MESSAGE),
+                             TestTimeout::longMs());
+
+    // Mimic the lost-camera cleanup in _checkForLostCameras() while the camera info
+    // request is still pending in the MavCommandQueue.
+    QGCCameraManager::CameraStruct* pInfo = cameraManager->_cameraInfoRequest.take(QString::number(MAV_COMP_ID_CAMERA));
+    QVERIFY(pInfo);
+    delete pInfo;
+
+    // Let the pending request retry and give up. Before the fix the give-up failure
+    // handler dereferenced the freed CameraStruct (issue #13251 crash 1) — detected
+    // by the CI ASan job. With the fix, the handler resolves the compId via the
+    // manager-owned request context, finds the camera gone, and bails out.
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle()->isMavCommandPending(MAV_COMP_ID_CAMERA, MAV_CMD_REQUEST_MESSAGE),
+                             TestTimeout::longMs());
 }
 
 void QGCCameraManagerTest::_lateCameraReplyAfterManagerDestroyed()
 {
-    _connectMockLink(MAV_AUTOPILOT_INVALID);
-    QVERIFY(_vehicle);
-    for (int retry = 0; retry < 2; ++retry) {
-        auto manager = std::make_unique<QGCCameraManager>(_vehicle);
-        const int component = MAV_COMP_ID_CAMERA + retry;
-        auto info = new QGCCameraManager::CameraStruct(manager.get(), component, _vehicle);
-        info->retryCount = retry; // Exercise both request-message and legacy command callbacks.
-        QSignalSpy destroyed(info, &QObject::destroyed);
-        manager->_requestCameraInfo(info);
-        manager.reset();
-        QCOMPARE(destroyed.count(), 1);
+    mockLink()->setRequestMessageNoResponse(MAVLINK_MSG_ID_CAMERA_INFORMATION);
+    auto manager = std::make_unique<QGCCameraManager>(vehicle());
+    auto* info = new QGCCameraManager::CameraStruct(manager.get(), MAV_COMP_ID_CAMERA, vehicle());
+    manager->_cameraInfoRequest.insert(QString::number(MAV_COMP_ID_CAMERA), info);
+    manager->_requestCameraInfo(info);
+    QTRY_VERIFY_WITH_TIMEOUT(vehicle()->isMavCommandPending(MAV_COMP_ID_CAMERA, MAV_CMD_REQUEST_MESSAGE),
+                             TestTimeout::mediumMs());
+    const QPointer<QGCCameraManager::CameraInfoRequestContext> context = manager->cameraInfoContext(MAV_COMP_ID_CAMERA);
+    QCOMPARE(context->parent(), vehicle());
+    manager.reset();
+    QVERIFY(context);
+    QVERIFY(context->manager.isNull());
 
-        QSignalSpy received(_vehicle, &Vehicle::mavlinkMessageReceived);
-        mavlink_message_t ack{};
-        mavlink_msg_command_ack_pack(_vehicle->id(), component, &ack,
-                                     retry == 0 ? MAV_CMD_REQUEST_MESSAGE : MAV_CMD_REQUEST_CAMERA_INFORMATION,
-                                     MAV_RESULT_DENIED, 0, 0, 0, 0);
-        _mockLink->respondWithMavlinkMessage(ack);
-        QTRY_VERIFY_WITH_TIMEOUT(received.count() > 0, 1000);
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    }
-    _disconnectMockLink();
+    mavlink_message_t ack{};
+    mavlink_msg_command_ack_pack(vehicle()->id(), MAV_COMP_ID_CAMERA, &ack, MAV_CMD_REQUEST_MESSAGE, MAV_RESULT_DENIED,
+                                 0, 0, 0, 0);
+    mockLink()->respondWithMavlinkMessage(ack);
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle()->isMavCommandPending(MAV_COMP_ID_CAMERA, MAV_CMD_REQUEST_MESSAGE),
+                             TestTimeout::mediumMs());
 }
+
+UT_REGISTER_TEST(QGCCameraManagerTest, TestLabel::Integration, TestLabel::Vehicle)

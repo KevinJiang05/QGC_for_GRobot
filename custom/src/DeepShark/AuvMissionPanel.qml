@@ -14,7 +14,6 @@ import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FlightMap
-import QGroundControl.ScreenTools
 
 Rectangle {
     id: root

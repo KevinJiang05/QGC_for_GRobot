@@ -1,0 +1,20 @@
+--- a/CMakeLists.txt	2026-07-23 10:29:04
++++ b/CMakeLists.txt	2026-07-23 10:29:04
+@@ -30,7 +30,7 @@
+ add_custom_command(OUTPUT ${EXAMPLE_HEADER}
+     COMMAND ${Python_EXECUTABLE}
+         -m pip install -r pymavlink/requirements.txt --upgrade -t ${CMAKE_CURRENT_BINARY_DIR}/pip-dependencies/
+-        COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/pip-dependencies/" ${Python_EXECUTABLE}
++        COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/pip-dependencies/" "PYTHONHASHSEED=0" ${Python_EXECUTABLE}
+         -m pymavlink.tools.mavgen
+         --lang=C
+         --wire-protocol=${MAVLINK_VERSION}
+--- a/pymavlink/generator/mavgen_c.py
++++ b/pymavlink/generator/mavgen_c.py
+@@ -24,6 +24,5 @@ def generate_version_h(directory, xml):
+ #ifndef MAVLINK_VERSION_H
+ #define MAVLINK_VERSION_H
+
+-#define MAVLINK_BUILD_DATE "${parse_time}"
+ #define MAVLINK_WIRE_PROTOCOL_VERSION "${wire_protocol_version}"
+ #define MAVLINK_MAX_DIALECT_PAYLOAD_SIZE ${largest_payload}

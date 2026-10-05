@@ -1,24 +1,16 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "StandardModes.h"
 #include "Vehicle.h"
 #include "QGCLoggingCategory.h"
+#include "QGCMAVLink.h"
 
-QGC_LOGGING_CATEGORY(StandardModesLog, "StandardModesLog")
+QGC_LOGGING_CATEGORY(StandardModesLog, "Vehicle.StandardModes")
 
 static void requestMessageResultHandler(void *resultHandlerData, MAV_RESULT result,
-                                        [[maybe_unused]] Vehicle::RequestMessageResultHandlerFailureCode_t failureCode,
+                                        VehicleTypes::RequestMessageResultHandlerFailureCode_t failureCode,
                                         const mavlink_message_t &message)
 {
     StandardModes* standardModes = static_cast<StandardModes*>(resultHandlerData);
-    standardModes->gotMessage(result, message);
+    standardModes->gotMessage(result, failureCode, message);
 }
 
 StandardModes::StandardModes(QObject *parent, Vehicle *vehicle)
@@ -26,7 +18,7 @@ StandardModes::StandardModes(QObject *parent, Vehicle *vehicle)
 {
 }
 
-void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &message)
+void StandardModes::gotMessage(MAV_RESULT result, VehicleTypes::RequestMessageResultHandlerFailureCode_t failureCode, const mavlink_message_t &message)
 {
     _requestActive = false;
     if (_wantReset) {
@@ -58,18 +50,15 @@ void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &messa
                 break;
             case MAV_STANDARD_MODE_SAFE_RECOVERY:
                 name = "Safe Recovery";
-                cannotBeSet = true; // These are exposed in the UI as separate buttons
                 break;
             case MAV_STANDARD_MODE_MISSION:
                 name = "Mission";
                 break;
             case MAV_STANDARD_MODE_LAND:
                 name = "Land";
-                cannotBeSet = true; // These are exposed in the UI as separate buttons
                 break;
             case MAV_STANDARD_MODE_TAKEOFF:
                 name = "Takeoff";
-                cannotBeSet = true; // These are exposed in the UI as separate buttons
                 break;
         }
 
@@ -100,7 +89,9 @@ void StandardModes::gotMessage(MAV_RESULT result, const mavlink_message_t &messa
             requestMode(availableModes.mode_index + 1);
         }
     } else {
-        qCDebug(StandardModesLog) << "Failed to retrieve available modes - REQUEST_MESSAGE:MAV_RESULT" << result;
+        // Environmental/normal outcome (vehicle doesn't support the protocol, comm loss, or a
+        // collapsed duplicate re-query), not a programming error, so log at debug level.
+        qCDebug(StandardModesLog) << "Failed to retrieve available modes - REQUEST_MESSAGE:MAV_RESULT" << QGCMAVLink::mavResultToString(result) << "failureCode:" << failureCode;
         emit requestCompleted();
     }
 }

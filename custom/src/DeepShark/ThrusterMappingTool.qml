@@ -14,8 +14,6 @@ import QtCore
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Controllers
-import QGroundControl.ScreenTools
 import DeepShark
 
 QGCPopupDialog {

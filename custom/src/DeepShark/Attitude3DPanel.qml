@@ -11,7 +11,6 @@ import QtQuick3D
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 Rectangle {
     id: root

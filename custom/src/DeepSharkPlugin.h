@@ -41,12 +41,13 @@ public:
     QGCOptions *options() final;
     QString stableVersionCheckFileUrl() const final { return QString(); }
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
+    void destroyQmlApplicationEngine(QQmlApplicationEngine* qmlEngine) final;
 
 private:
     void _initAIDetection();
 
     DeepSharkOptions _options;
-    QQmlApplicationEngine *_qmlEngine = nullptr;
+    QPointer<QQmlApplicationEngine> _qmlEngine;
     DeepSharkOverrideInterceptor *_selector = nullptr;
     QPointer<AIDetectionManager> _aiDetectionManager;
     QPointer<AIDetectionReceiver> _aiDetectionReceiver;

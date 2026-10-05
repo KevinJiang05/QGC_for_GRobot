@@ -1,9 +1,5 @@
 #include "AIDetectionReceiverTest.h"
 
-#include "AIDetectionManager.h"
-#include "AIDetectionReceiver.h"
-#include "QGCCorePlugin.h"
-
 #include <QtCore/QDateTime>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
@@ -12,12 +8,18 @@
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
 #include <QtQml/QQmlComponent>
+#include <QtQml/QQmlContext>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlError>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
-
 #include <memory>
+
+#include "AIDetectionManager.h"
+#include "AIDetectionReceiver.h"
+#include "ColoredSvgImageProvider.h"
+#include "QGCCorePlugin.h"
+#include "QGCPalette.h"
 
 namespace {
 quint16 availableLocalPort()
@@ -167,6 +169,8 @@ void AIDetectionReceiverTest::_qmlComponentsLoad()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
+    engine.rootContext()->setContextProperty(QStringLiteral("qgcPal"), new QGCPalette(&engine));
     QSignalSpy warnings(&engine, &QQmlEngine::warnings);
 
     const auto createComponent = [&engine](const QString &url) {
@@ -176,12 +180,11 @@ void AIDetectionReceiverTest::_qmlComponentsLoad()
         QVERIFY2(object, qPrintable(url + QStringLiteral(": ") + component.errorString()));
     };
 
-    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/AIDetectionSettings.qml"));
-    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/AIDetectionVideoOverlay.qml"));
+    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/AIDetectionSettings.qml"));
+    createComponent(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/AIDetectionVideoOverlay.qml"));
     QCOMPARE(warnings.count(), 0);
 
-    // Loaded standalone, the upstream page warns about qgcPal (normally provided by the main window).
-    // Only check that its hook into the custom AI settings resolves.
+    // Provide the main-window palette so the standalone upstream settings page has its normal context.
     createComponent(QStringLiteral("qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml"));
     for (const QList<QVariant> &arguments : std::as_const(warnings)) {
         for (const QQmlError &error : arguments.constFirst().value<QList<QQmlError>>()) {
@@ -189,3 +192,5 @@ void AIDetectionReceiverTest::_qmlComponentsLoad()
         }
     }
 }
+
+UT_REGISTER_TEST(AIDetectionReceiverTest, TestLabel::Unit)

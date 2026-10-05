@@ -8,19 +8,18 @@ import QtQuick
 import QtQuick.Controls
 import DeepShark 1.0
 
-import "qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark"
+import "qrc:/Custom/qml/QGroundControl/FlyView/DeepShark"
 
 import QGroundControl
-import QGroundControl.Controllers
 import QGroundControl.Controls
-import QGroundControl.FlightDisplay
-import QGroundControl.Palette
-import QGroundControl.ScreenTools
+import QGroundControl.FlyView
 
 Item {
     id: _root
+    objectName: "deepSharkCustomLayer"
 
     property var parentToolInsets
+    property var mapControl
     property var totalToolInsets: _toolInsets
     property bool videoMainMode: true
     property bool panelMinimized: false

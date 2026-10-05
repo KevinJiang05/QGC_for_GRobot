@@ -170,3 +170,5 @@ void DeepSharkAuvControllerTest::_rejectsInvalidSchema()
     QVERIFY(!controller.importPlan(badCoordinatePath));
     QVERIFY(controller.missionError().contains(QStringLiteral("coordinate 必须是数组")));
 }
+
+UT_REGISTER_TEST(DeepSharkAuvControllerTest, TestLabel::Unit)

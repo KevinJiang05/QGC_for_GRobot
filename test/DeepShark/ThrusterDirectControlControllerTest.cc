@@ -133,3 +133,5 @@ void ThrusterDirectControlControllerTest::_qmlAdapterLoads()
     }
     QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(errors.join(QLatin1Char('\n'))));
 }
+
+UT_REGISTER_TEST(ThrusterDirectControlControllerTest, TestLabel::Unit)

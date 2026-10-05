@@ -1,23 +1,38 @@
 #include "DeepSharkVideoControllerTest.h"
 
+#include <QtCore/qscopeguard.h>
+#include <QtNetwork/QUdpSocket>
+#include <QtQml/QJSValue>
+#include <QtQml/QQmlApplicationEngine>
+#include <QtQml/QQmlComponent>
+#include <QtQml/QQmlEngine>
+#include <QtTest/QSignalSpy>
+#include <QtTest/QTest>
+#include <memory>
+
+#include "ColoredSvgImageProvider.h"
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
 #include "QGCCorePlugin.h"
 #include "QGCOptions.h"
 #include "VideoReceiver.h"
 
-#include <QtTest/QSignalSpy>
-#include <QtTest/QTest>
-#include <QtQml/QQmlComponent>
-#include <QtQml/QQmlEngine>
-#include <QtQml/QJSValue>
-#include <memory>
-#include <QtCore/qscopeguard.h>
-
 #ifdef QGC_GST_STREAMING
-#include "GstVideoReceiver.h"
 #include <gst/gst.h>
+
+#include "GStreamer.h"
+#include "GstVideoReceiver.h"
 #endif
+
+void DeepSharkVideoControllerTest::init()
+{
+    UnitTest::init();
+#ifdef QGC_GST_STREAMING
+    const auto environment = GStreamer::prepareEnvironment();
+    QVERIFY2(environment.ok, qPrintable(environment.error));
+    QVERIFY2(GStreamer::initialize({}, environment), "GStreamer runtime and QGC sink plugins must initialize");
+#endif
+}
 
 void DeepSharkVideoControllerTest::_rtspTransportPreservesCameraUrls()
 {
@@ -38,6 +53,7 @@ void DeepSharkVideoControllerTest::_videoPanelSavesTransportSelection()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     auto *settings = engine.singletonInstance<DeepSharkVideoSettings *>("DeepShark", "DeepSharkVideoSettings");
     QVERIFY(settings);
     const int previousTransport = settings->rtspTransport();
@@ -60,7 +76,8 @@ void DeepSharkVideoControllerTest::_videoPanelSavesTransportSelection()
         settings->setProperty(QStringLiteral("camera%1Url").arg(channel).toUtf8().constData(),
                               QStringLiteral("rtsp://127.0.0.1:554/camera%1").arg(channel));
     }
-    QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/FourVideoPanel.qml")),
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/FourVideoPanel.qml")),
                             QQmlComponent::PreferSynchronous);
     std::unique_ptr<QObject> panel(component.create());
     QVERIFY2(panel, qPrintable(component.errorString()));
@@ -96,11 +113,12 @@ void DeepSharkVideoControllerTest::_videoPanelSavesTransportSelection()
 void DeepSharkVideoControllerTest::_pendingAutoStartIsCancelled()
 {
     DeepSharkVideoController controller;
+    QSignalSpy starts(&controller, &DeepSharkVideoController::startAttemptsChanged);
     controller.setUri(QStringLiteral("rtsp://127.0.0.1/test"));
     controller.setAutoStart(true);
     controller.setAutoStart(false);
 
-    QTest::qWait(350);
+    QVERIFY_NO_SIGNAL_WAIT(starts, 350);
 
     QCOMPARE(controller.startAttempts(), 0);
     QVERIFY(!controller.autoStart());
@@ -109,11 +127,12 @@ void DeepSharkVideoControllerTest::_pendingAutoStartIsCancelled()
 void DeepSharkVideoControllerTest::_clearingUriCancelsPendingAutoStart()
 {
     DeepSharkVideoController controller;
+    QSignalSpy starts(&controller, &DeepSharkVideoController::startAttemptsChanged);
     controller.setUri(QStringLiteral("rtsp://127.0.0.1/test"));
     controller.setAutoStart(true);
     controller.setUri(QString());
 
-    QTest::qWait(350);
+    QVERIFY_NO_SIGNAL_WAIT(starts, 350);
 
     QCOMPARE(controller.startAttempts(), 0);
 }
@@ -126,7 +145,11 @@ void DeepSharkVideoControllerTest::_clearingActiveReceiverUriStopsPipeline()
     GstVideoReceiver receiver;
     QSignalSpy started(&receiver, &VideoReceiver::onStartComplete);
     QSignalSpy stopped(&receiver, &VideoReceiver::onStopComplete);
-    receiver.setUri(QStringLiteral("udp://127.0.0.1:0"));
+    QUdpSocket portReservation;
+    QVERIFY(portReservation.bind(QHostAddress::LocalHost, 0));
+    const QString uri = QStringLiteral("udp://127.0.0.1:%1").arg(portReservation.localPort());
+    portReservation.close();
+    receiver.setUri(uri);
     receiver.start(8);
     QTRY_COMPARE_WITH_TIMEOUT(started.count(), 1, 5000);
     QCOMPARE(started.constFirst().constFirst().value<VideoReceiver::STATUS>(), VideoReceiver::STATUS_OK);
@@ -139,7 +162,7 @@ void DeepSharkVideoControllerTest::_clearingActiveReceiverUriStopsPipeline()
     QVERIFY(!receiver._pipeline);
 
     // The same receiver must be usable after clearing an active URI.
-    receiver.setUri(QStringLiteral("udp://127.0.0.1:0"));
+    receiver.setUri(uri);
     receiver.start(8);
     QTRY_COMPARE_WITH_TIMEOUT(started.count(), 2, 5000);
     QCOMPARE(started.constLast().constFirst().value<VideoReceiver::STATUS>(), VideoReceiver::STATUS_OK);
@@ -194,8 +217,9 @@ void DeepSharkVideoControllerTest::_videoSinkSizeUsesDecodedCaps()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
                             QQmlComponent::PreferSynchronous);
     std::unique_ptr<QObject> tile(component.createWithInitialProperties(
         {{QStringLiteral("videoEnabled"), true}, {QStringLiteral("videoSource"), QString()}}));
@@ -242,7 +266,7 @@ void DeepSharkVideoControllerTest::_videoSinkSizeUsesDecodedCaps()
         QVERIFY(linked);
         QCOMPARE(after, before);
         QCOMPARE(sizeChanged.count(), 1);
-        QCOMPARE(reported, format.contains("width=") ? QSize(320, 240) : QSize());
+        QCOMPARE(reported, format.contains("width=") ? QSize(320, 240) : QSize(0, 0));
     }
 #endif
 }
@@ -269,9 +293,10 @@ void DeepSharkVideoControllerTest::_restartRebuildsVideoSink()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
                             QQmlComponent::PreferSynchronous);
     QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
 
@@ -306,9 +331,10 @@ void DeepSharkVideoControllerTest::_failedRestartCanScheduleAgain()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
                             QQmlComponent::PreferSynchronous);
     QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
 
@@ -330,9 +356,10 @@ void DeepSharkVideoControllerTest::_startedRestartCanScheduleAgain()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
                             QQmlComponent::PreferSynchronous);
     QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
 
@@ -351,16 +378,17 @@ void DeepSharkVideoControllerTest::_flyViewStatusQmlLoads()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
 
     const QList<QUrl> urls{
-        QUrl(QStringLiteral("qrc:/qml/QGroundControl/Controls/FlyViewToolBar.qml")),
+        QUrl(QStringLiteral("qrc:/qml/QGroundControl/Toolbar/FlyViewToolBar.qml")),
         QUrl(QStringLiteral("qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml")),
-        QUrl(QStringLiteral("qrc:/qml/QGroundControl/AppSettings/LinkSettings.qml")),
-        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/Attitude3DPanel.qml")),
-        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/DeepSharkStatusPanel.qml")),
-        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/FourVideoPanel.qml")),
-        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
-        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/FlyViewCustomLayer.qml")),
+        QUrl(QStringLiteral("qrc:/qml/QGroundControl/AppSettings/CommLinksSettings.qml")),
+        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/Attitude3DPanel.qml")),
+        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/DeepSharkStatusPanel.qml")),
+        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/FourVideoPanel.qml")),
+        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
+        QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/FlyViewCustomLayer.qml")),
     };
     for (const QUrl &url : urls) {
         QQmlComponent component(&engine, url, QQmlComponent::PreferSynchronous);
@@ -378,8 +406,9 @@ void DeepSharkVideoControllerTest::_videoRowsUpdateWithoutReplacingDelegates()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/FourVideoPanel.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/FourVideoPanel.qml")),
                             QQmlComponent::PreferSynchronous);
     std::unique_ptr<QObject> panel(component.create());
     QVERIFY2(panel, qPrintable(component.errorString()));
@@ -392,9 +421,9 @@ void DeepSharkVideoControllerTest::_videoRowsUpdateWithoutReplacingDelegates()
     auto *controller = tile->findChild<DeepSharkVideoController *>();
     QVERIFY(controller);
     QSignalSpy rowsChanged(panel.get(), SIGNAL(videoRowsChanged()));
-    QQmlComponent statusComponent(&engine,
-                                  QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/DeepSharkStatusPanel.qml")),
-                                  QQmlComponent::PreferSynchronous);
+    QQmlComponent statusComponent(
+        &engine, QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/DeepSharkStatusPanel.qml")),
+        QQmlComponent::PreferSynchronous);
     std::unique_ptr<QObject> statusPanel(statusComponent.createWithInitialProperties(
         {{QStringLiteral("videoRows"), panel->property("videoRows")}}));
     QVERIFY2(statusPanel, qPrintable(statusComponent.errorString()));
@@ -433,8 +462,9 @@ void DeepSharkVideoControllerTest::_disabledVideoResourcesCanBeRecreated()
     QGCCorePlugin::instance()->init();
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
     QQmlComponent component(&engine,
-                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlightDisplay/DeepShark/VideoTile.qml")),
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
                             QQmlComponent::PreferSynchronous);
     std::unique_ptr<QObject> tile(component.create());
     QVERIFY2(tile, qPrintable(component.errorString()));
@@ -484,7 +514,7 @@ void DeepSharkVideoControllerTest::_coreOptionsSurviveGarbageCollection()
     QObject owner;
     QGCCorePlugin plugin(&owner);
     // The default fly-view options currently have no QObject parent.
-    std::unique_ptr<QGCFlyViewOptions> flyViewOptions(plugin.options()->flyViewOptions());
+    std::unique_ptr<const QGCFlyViewOptions> flyViewOptions(plugin.options()->flyViewOptions());
     QQmlEngine engine;
     engine.globalObject().setProperty(QStringLiteral("plugin"),
                                       engine.newQObject(&plugin));
@@ -502,5 +532,19 @@ void DeepSharkVideoControllerTest::_coreOptionsSurviveGarbageCollection()
         QVERIFY(result.isBool());
         engine.collectGarbage();
         otherEngine.collectGarbage();
+    }
+}
+
+UT_REGISTER_TEST(DeepSharkVideoControllerTest, TestLabel::Unit)
+
+void DeepSharkVideoControllerTest::_qmlEngineTeardownIsRepeatable()
+{
+    auto* plugin = QGCCorePlugin::instance();
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        QPointer<QQmlApplicationEngine> engine = plugin->createQmlApplicationEngine(nullptr);
+        QVERIFY(engine);
+        plugin->destroyQmlApplicationEngine(engine);
+        QVERIFY(engine.isNull());
+        plugin->cleanup();
     }
 }

@@ -1,10 +1,10 @@
+import QGroundControl
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import DeepShark 1.0
 import QGroundControl.Controls
-import QGroundControl.ScreenTools
 
 SettingsGroupLayout {
     id: root

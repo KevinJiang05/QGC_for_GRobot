@@ -18,18 +18,20 @@
 
 | 项目 | 记录 |
 | --- | --- |
-| 升级前检查点 | `db9c9159631a271457a7d6c395deb50e2cf3c304`，升级前已推送 |
+| 升级前检查点 | `db9c9159631a271457a7d6c395deb50e2cf3c304`，升级前已推送；备份 tag `backup/pre-qgc-v5.1.5` 已推送 |
 | 官方旧底座 | `v5.0.8`，`e0816c957602789200ae5ba0af45217f0f2f1db4` |
 | 官方新底座 | `v5.1.5`，`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67` |
-| 工作分支 | `deepshark/v5.0.8`，沿用旧名称，没有创建分支或工作树 |
+| 工作分支 | `main`；由原 `deepshark/v5.0.8` 重命名，本地与 GitHub 默认分支已同步，没有创建分支或工作树 |
 | 合并方式 | 官方标签的完整 Git 合并，全部冲突已解决；未整目录覆盖 `src` |
-| 合并提交 | 尚未提交；官方合并与定制适配仍可在工作区审阅 |
+| 合并提交 | `6b044f606de525d7f978d4e64f5bcd26f112ab46`，官方合并与定制适配已提交并推送 |
 | 构建目录 | `D:\Develop\QGC_for_GRobot\build-v5.1.5-debug` |
 | 程序 | `Debug\QGC_KevinJiang_v5_1_5_Debug.exe` |
 | 程序 SHA256 | `33a74e82312eeb775be364f4149003d71d5998344e5d908a74982411293598db` |
 | 显示版本 | `1.5.0 Debug (QGroundControl v5.1.5)` |
 | 普通启动应用名 | `QGC_KevinJiang_v5_1_5_Debug Daily`，组织名 `KevinJiang` |
 | 配置隔离 | 候选使用独立应用身份；不自动复制或迁移正式版设置、校准 |
+
+以上测试在合并提交前的最终功能源码上执行。随后提交、分支重命名及仓库治理没有更改这些已验证的功能源码；启动入口另经启动验证，程序 SHA256 已复核一致，未因文档更新重新构建或重跑全量测试。
 
 本次未调用 Claude，未构建 Release、制作安装包、执行 `cmake --install` 或替换正式安装。
 
@@ -136,7 +138,7 @@ LLVM-MinGW [官方发布包](https://github.com/mstorsjo/llvm-mingw/releases/tag
 这些报告不能全部归为功能故障，也没有将每一条都确认成上游缺陷。对检查工具本身的限制另行区分：
 
 - 标准 clang-tidy hook 默认要求 `build/compile_commands.json`，本任务实际数据库在 `build-v5.1.5-debug/compile_commands.json`，该 hook 未完成有效分析。
-- QML 和 clazy hook 显示 Passed，但工具按默认分支与当前提交的三点差异收集文件，且不接受 pre-commit 传入的文件名；尚未提交的升级工作区不能据此宣称已完整检查。真实界面、QML 加载与原生窗口验证独立记录。
+- QML 和 clazy hook 显示 Passed，但工具按默认分支与当前提交的三点差异收集文件，且不接受 pre-commit 传入的文件名；执行检查时升级尚未提交，不能据此宣称已完整检查。后续提交不改变原检查的覆盖范围，真实界面、QML 加载与原生窗口验证独立记录。
 - 根 CMake 自动格式器曾把目录名 `test` 改成 `TEST`，该自动修改已撤回；未为了格式结果改变构建语义。
 - 定制 CMake 的 `CUSTOM_SOURCES`、`CUSTOM_INCLUDE_DIRECTORIES` 是公开扩展接口，未为变量命名规则改变接口。
 - 上游配置中的 Vale 使用 `--no-exit`；显示 Passed 不保证没有拼写/文风报告。

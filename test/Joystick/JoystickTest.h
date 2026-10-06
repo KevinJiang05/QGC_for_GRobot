@@ -51,6 +51,8 @@ private slots:
     void _legacySettingsMigrationTest();
     void _legacySettingsDoNotOverrideV2Test();
     void _invalidLegacyCalibrationTest();
+    void _legacyManagerSettingsMigration_data();
+    void _legacyManagerSettingsMigration();
     void _adjustRangeTest();
     void _adjustRangeToRcOverridePwmTest();
 

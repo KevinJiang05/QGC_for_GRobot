@@ -31,7 +31,7 @@ Set-Location D:\Develop\QGC_for_GRobot
 - 普通启动的应用名：`QGC_KevinJiang_v5_1_5_Debug Daily`，组织名 `KevinJiang`。
 - QSettings、应用缓存和默认保存目录使用上述独立应用名；测试模式另外使用带测试名或 PID 的配置。
 - Debug 不自动读取正式版配置。首次实测需要在候选界面重新填入视频、AI 和手柄设置；正式版设置及校准保持原样。
-- 旧手柄兼容代码只在当前应用的设置存储中，将 `Joysticks/<名称>` 转成 `JoystickSettingsV2/<名称>`；已有 V2 配置优先，旧键保留。旧云台轴不自动转换成含义不同的辅助控制轴，需单独核对。
+- 旧手柄兼容代码只在当前应用的设置存储中，将 `Joysticks/<名称>` 转成 `JoystickSettingsV2/<名称>`，并迁移旧手柄选择及逐车辆启用状态；已有新键优先（包含主动禁用的空列表），旧键保留。旧云台轴不自动转换成含义不同的辅助控制轴；基线计算出的云台轴值没有传入实际手柄发送调用，不能把此项称为已经验证的旧控制功能。
 
 ## 依赖与构建
 
@@ -62,6 +62,13 @@ cmake --build build-v5.1.5-debug --config Debug --parallel 4
 
 AI 页面的 Python 路径填 `D:\Develop\envs\yolo\Scripts\python.exe`，桥接脚本填项目内 `tools\ai_detection\run_yolo_to_qgc_auto.py` 的完整路径；模型选择现有本地模型。
 先执行界面中的环境检查，再启动检测。共享 AI 环境与构建工具 `.venv` 用途不同。
+
+独立运行自动 YOLO 入口时，默认优先读取新版 Debug 配置。显式传入
+`--settings-file` 时只使用该配置；选定配置没有视频地址时不回退读取其他应用。
+`StopDeepSharkQGC.cmd --list` 可先查看将停止的旧版、新 Debug 及相关子进程。
+
+升级遗漏的修复范围和证据见
+[迁移修复记录](../audits/upstream_v5.1.5_migration_repairs_2026-10-06.md)。
 
 ## 简明实测清单
 

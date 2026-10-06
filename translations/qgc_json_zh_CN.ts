@@ -71,7 +71,7 @@
       <translatorcomment>Only use english comma ',' to separate strings</translatorcomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/QmlControls/TransformPositionController.FactMetaData.json"/>
       <source>North,South</source>
-      <translation type="unfinished">North,South</translation>
+      <translation>北，南</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[MGRS].shortDesc</extracomment>
@@ -298,7 +298,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_TAKEOFF].param1.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoFixedWing.json"/>
       <source>Pitch</source>
-      <translation type="unfinished">Pitch</translation>
+      <translation>俯仰</translation>
     </message>
   </context>
   <context>
@@ -409,13 +409,13 @@
       <extracomment>.QGC.MetaData.Facts[Latitude].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/RallyPoint.FactMetaData.json"/>
       <source>Latitude</source>
-      <translation type="unfinished">Latitude</translation>
+      <translation>纬度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[Longitude].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/RallyPoint.FactMetaData.json"/>
       <source>Longitude</source>
-      <translation type="unfinished">Longitude</translation>
+      <translation>经度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[RelativeAltitude].shortDesc</extracomment>
@@ -687,7 +687,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_LOITER_TIME].param1.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json"/>
       <source>Loiter Time</source>
-      <translation type="unfinished">Loiter Time</translation>
+      <translation>留待时间</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_LOITER_TIME].param2.enumStrings</extracomment>
@@ -730,7 +730,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_LAND].param2.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json"/>
       <source>Precision Land</source>
-      <translation type="unfinished">Precision Land</translation>
+      <translation>精准降落</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_LAND].param2.enumStrings</extracomment>
@@ -1066,7 +1066,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_CONDITION_YAW].param1.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json"/>
       <source>Heading</source>
-      <translation type="unfinished">Heading</translation>
+      <translation>航向</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_CONDITION_YAW].param3.label, .mavCmdInfo[MAV_CMD_DO_SET_REVERSE].param1.label</extracomment>
@@ -1656,7 +1656,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW].param1.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json"/>
       <source>Pitch</source>
-      <translation type="unfinished">Pitch</translation>
+      <translation>俯仰</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW].param3.label</extracomment>
@@ -1687,7 +1687,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW].param7.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json"/>
       <source>Gimbal</source>
-      <translation type="unfinished">Gimbal</translation>
+      <translation>云台</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW].param7.enumStrings</extracomment>
@@ -2216,7 +2216,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_TAKEOFF].param4.label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/MissionManager/MavCmdInfoMultiRotor.json"/>
       <source>Yaw</source>
-      <translation type="unfinished">Yaw</translation>
+      <translation>偏航</translation>
     </message>
   </context>
   <context>
@@ -2300,37 +2300,37 @@
       <extracomment>.sections[Flight Response].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Roll/Pitch Sensitivity</source>
-      <translation type="unfinished">Roll/Pitch Sensitivity</translation>
+      <translation>横滚/俯仰灵敏度</translation>
     </message>
     <message>
       <extracomment>.sections[Flight Response].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Climb Sensitivity</source>
-      <translation type="unfinished">Climb Sensitivity</translation>
+      <translation>爬升灵敏度</translation>
     </message>
     <message>
       <extracomment>.sections[Flight Response].controls[2].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>RC Roll/Pitch Feel</source>
-      <translation type="unfinished">RC Roll/Pitch Feel</translation>
+      <translation>遥控横滚/俯仰感度</translation>
     </message>
     <message>
       <extracomment>.sections[Flight Response].controls[3].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Spin While Armed</source>
-      <translation type="unfinished">Spin While Armed</translation>
+      <translation>解锁时旋转</translation>
     </message>
     <message>
       <extracomment>.sections[Flight Response].controls[4].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Minimum Thrust</source>
-      <translation type="unfinished">Minimum Thrust</translation>
+      <translation>最小油门</translation>
     </message>
     <message>
       <extracomment>.sections[AutoTune].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>AutoTune</source>
-      <translation type="unfinished">AutoTune</translation>
+      <translation>自动调参</translation>
     </message>
     <message>
       <extracomment>.sections[AutoTune].keywords[0]</extracomment>
@@ -2384,7 +2384,7 @@
       <extracomment>.sections[In Flight Tuning].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>In Flight Tuning</source>
-      <translation type="unfinished">In Flight Tuning</translation>
+      <translation>飞行中调参</translation>
     </message>
     <message>
       <extracomment>.sections[In Flight Tuning].keywords[0]</extracomment>
@@ -2420,13 +2420,13 @@
       <extracomment>.sections[In Flight Tuning].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Min</source>
-      <translation type="unfinished">Min</translation>
+      <translation>最小</translation>
     </message>
     <message>
       <extracomment>.sections[In Flight Tuning].controls[2].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMTuningCopter.VehicleConfig.json"/>
       <source>Max</source>
-      <translation type="unfinished">Max</translation>
+      <translation>最大</translation>
     </message>
   </context>
   <context>
@@ -2435,7 +2435,7 @@
       <extracomment>.sections[Battery].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMPower.VehicleConfig.json"/>
       <source>Battery</source>
-      <translation type="unfinished">Battery</translation>
+      <translation>电池</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].keywords[0]</extracomment>
@@ -2453,7 +2453,7 @@
       <extracomment>.sections[Battery].keywords[2]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMPower.VehicleConfig.json"/>
       <source>current</source>
-      <translation type="unfinished">current</translation>
+      <translation>电流</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].keywords[3]</extracomment>
@@ -2513,13 +2513,13 @@
       <extracomment>.sections[Battery].controls[3].dialogButton.text, .sections[Battery].controls[4].dialogButton.text</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMPower.VehicleConfig.json"/>
       <source>Calculate</source>
-      <translation type="unfinished">Calculate</translation>
+      <translation>计算</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].controls[4].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMPower.VehicleConfig.json"/>
       <source>Amps per volt</source>
-      <translation type="unfinished">Amps per volt</translation>
+      <translation>安培/伏特</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].controls[5].label</extracomment>
@@ -2534,7 +2534,7 @@
       <extracomment>.sections[Storage].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMLogging.VehicleConfig.json"/>
       <source>Storage</source>
-      <translation type="unfinished">Storage</translation>
+      <translation>存储</translation>
     </message>
     <message>
       <extracomment>.sections[Storage].keywords[0]</extracomment>
@@ -2684,13 +2684,13 @@
       <extracomment>.sections[Options].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMLogging.VehicleConfig.json"/>
       <source>Options</source>
-      <translation type="unfinished">Options</translation>
+      <translation>选项</translation>
     </message>
     <message>
       <extracomment>.sections[Options].keywords[0]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMLogging.VehicleConfig.json"/>
       <source>disarmed</source>
-      <translation type="unfinished">disarmed</translation>
+      <translation>未解锁</translation>
     </message>
     <message>
       <extracomment>.sections[Options].keywords[1]</extracomment>
@@ -2774,7 +2774,7 @@
       <extracomment>.sections[Options].controls[3].enumValues[3].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMLogging.VehicleConfig.json"/>
       <source>Disabled</source>
-      <translation type="unfinished">Disabled</translation>
+      <translation>已禁用</translation>
     </message>
   </context>
   <context>
@@ -2783,7 +2783,7 @@
       <extracomment>.sections[Return to Launch].title, .sections[Return to Launch].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Return to Launch</source>
-      <translation type="unfinished">Return to Launch</translation>
+      <translation>返航</translation>
     </message>
     <message>
       <extracomment>.sections[Return to Launch].keywords[0], .sections[Return to Launch].keywords[0]</extracomment>
@@ -2819,19 +2819,19 @@
       <extracomment>.sections[Return to Launch].keywords[5], .sections[Return to Launch].keywords[5]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>altitude</source>
-      <translation type="unfinished">altitude</translation>
+      <translation>高度</translation>
     </message>
     <message>
       <extracomment>.sections[Return to Launch].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Return at specified altitude:</source>
-      <translation type="unfinished">Return at specified altitude:</translation>
+      <translation>指定高度返航</translation>
     </message>
     <message>
       <extracomment>.sections[Return to Launch].controls[0].options[0].label, .sections[Return to Launch].controls[0].options[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Return at current altitude</source>
-      <translation type="unfinished">Return at current altitude</translation>
+      <translation>维持当前高度返航</translation>
     </message>
     <message>
       <extracomment>.sections[Return to Launch].controls[0].options[1].label, .sections[Return to Launch].controls[0].options[1].label</extracomment>
@@ -2897,7 +2897,7 @@
       <extracomment>.sections[GeoFence].title, .sections[GeoFence].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>GeoFence</source>
-      <translation type="unfinished">GeoFence</translation>
+      <translation>地理围栏</translation>
     </message>
     <message>
       <extracomment>.sections[GeoFence].keywords[0], .sections[GeoFence].keywords[0]</extracomment>
@@ -2957,13 +2957,13 @@
       <extracomment>.sections[GeoFence].controls[0].label, .sections[GeoFence].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Enabled</source>
-      <translation type="unfinished">Enabled</translation>
+      <translation>已启用</translation>
     </message>
     <message>
       <extracomment>.sections[GeoFence].controls[1].label, .sections[GeoFence].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Maximum Altitude</source>
-      <translation type="unfinished">Maximum Altitude</translation>
+      <translation>最大高度</translation>
     </message>
     <message>
       <extracomment>.sections[GeoFence].controls[2].label, .sections[GeoFence].controls[2].label</extracomment>
@@ -2975,7 +2975,7 @@
       <extracomment>.sections[GeoFence].controls[3].label, .sections[GeoFence].controls[3].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Minimum Altitude</source>
-      <translation type="unfinished">Minimum Altitude</translation>
+      <translation>最小高度</translation>
     </message>
     <message>
       <extracomment>.sections[GeoFence].controls[4].label, .sections[GeoFence].controls[4].label</extracomment>
@@ -3035,7 +3035,7 @@
       <extracomment>.sections[Arming Checks].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFlightSafety.VehicleConfig.json"/>
       <source>Arming Checks</source>
-      <translation type="unfinished">Arming Checks</translation>
+      <translation>解锁检查</translation>
     </message>
     <message>
       <extracomment>.sections[Arming Checks].keywords[0]</extracomment>
@@ -3218,13 +3218,13 @@
       <extracomment>.sections[Ground Station Failsafe].controls[0].label, .sections[Ground Station Failsafe].controls[0].label, .sections[Ground Station Failsafe].controls[0].label, .sections[Throttle Failsafe].controls[0].label, .sections[Throttle Failsafe].controls[0].label, .sections[EKF Failsafe].controls[0].label, .sections[EKF Failsafe].controls[0].label, .sections[Dead Reckoning Failsafe].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Enabled</source>
-      <translation type="unfinished">Enabled</translation>
+      <translation>已启用</translation>
     </message>
     <message>
       <extracomment>.sections[Ground Station Failsafe].controls[1].label, .sections[Ground Station Failsafe].controls[1].label, .sections[Throttle Failsafe].controls[2].label, .sections[Dead Reckoning Failsafe].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Timeout</source>
-      <translation type="unfinished">Timeout</translation>
+      <translation>超时</translation>
     </message>
     <message>
       <extracomment>.sections[Ground Station Failsafe].controls[2].label, .sections[Throttle Failsafe].controls[2].label, .sections[Throttle Failsafe].controls[3].label, .sections[EKF Failsafe].controls[2].label, .sections[EKF Failsafe].controls[2].label, .sections[Dead Reckoning Failsafe].controls[2].label, .sections[Other Failsafe Options].controls[1].label</extracomment>
@@ -3236,13 +3236,13 @@
       <extracomment>.sections[Ground Station Failsafe].controls[2].options[0].label, .sections[Throttle Failsafe].controls[3].options[1].label, .sections[Dead Reckoning Failsafe].controls[2].options[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>RTL</source>
-      <translation type="unfinished">RTL</translation>
+      <translation>返航</translation>
     </message>
     <message>
       <extracomment>.sections[Ground Station Failsafe].controls[2].options[1].label, .sections[Dead Reckoning Failsafe].controls[2].options[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Land</source>
-      <translation type="unfinished">Land</translation>
+      <translation>降落</translation>
     </message>
     <message>
       <extracomment>.sections[Ground Station Failsafe].controls[2].options[2].label, .sections[Throttle Failsafe].controls[3].options[3].label, .sections[Dead Reckoning Failsafe].controls[2].options[2].label</extracomment>
@@ -3320,7 +3320,7 @@
       <extracomment>.sections[Failsafe Triggers].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Failsafe Triggers</source>
-      <translation type="unfinished">Failsafe Triggers</translation>
+      <translation>故障保护触发器</translation>
     </message>
     <message>
       <extracomment>.sections[Failsafe Triggers].keywords[0], .sections[Throttle Failsafe].keywords[0], .sections[Throttle Failsafe].keywords[0]</extracomment>
@@ -3458,13 +3458,13 @@
       <extracomment>.sections[Throttle Failsafe].controls[2].options[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Always RTL</source>
-      <translation type="unfinished">Always RTL</translation>
+      <translation>始终返航</translation>
     </message>
     <message>
       <extracomment>.sections[Throttle Failsafe].controls[2].options[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Always Land</source>
-      <translation type="unfinished">Always Land</translation>
+      <translation>始终着陆</translation>
     </message>
     <message>
       <extracomment>.sections[Throttle Failsafe].controls[2].options[2].label</extracomment>
@@ -3494,7 +3494,7 @@
       <extracomment>.sections[Throttle Failsafe].controls[3].options[2].label, .sections[EKF Failsafe].controls[2].options[0].label, .sections[Other Failsafe Options].controls[1].options[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Hold</source>
-      <translation type="unfinished">Hold</translation>
+      <translation>保持</translation>
     </message>
     <message>
       <extracomment>.sections[Throttle Failsafe].controls[3].options[4].label</extracomment>
@@ -3578,7 +3578,7 @@
       <extracomment>.sections[EKF Failsafe].controls[2].options[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Report only</source>
-      <translation type="unfinished">Report only</translation>
+      <translation>仅报告</translation>
     </message>
     <message>
       <extracomment>.sections[Dead Reckoning Failsafe].title</extracomment>
@@ -3644,7 +3644,7 @@
       <extracomment>.sections[Other Failsafe Options].controls[1].options[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/APM/VehicleConfig/APMFailsafes.VehicleConfig.json"/>
       <source>Hold and Disarm</source>
-      <translation type="unfinished">Hold and Disarm</translation>
+      <translation>保持并加锁</translation>
     </message>
   </context>
   <context>
@@ -3653,7 +3653,7 @@
       <extracomment>.sections[Low Battery Failsafe].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Low Battery Failsafe</source>
-      <translation type="unfinished">Low Battery Failsafe</translation>
+      <translation>低电量故障保护</translation>
     </message>
     <message>
       <extracomment>.sections[Low Battery Failsafe].keywords[0]</extracomment>
@@ -3719,7 +3719,7 @@
       <extracomment>.sections[Object Detection].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Object Detection</source>
-      <translation type="unfinished">Object Detection</translation>
+      <translation>物体探测</translation>
     </message>
     <message>
       <extracomment>.sections[Object Detection].keywords[0]</extracomment>
@@ -3815,7 +3815,7 @@
       <extracomment>.sections[Data Link Loss Failsafe].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Data Link Loss Failsafe</source>
-      <translation type="unfinished">Data Link Loss Failsafe</translation>
+      <translation>数据连接丢失故障保护</translation>
     </message>
     <message>
       <extracomment>.sections[Data Link Loss Failsafe].keywords[0]</extracomment>
@@ -3893,7 +3893,7 @@
       <extracomment>.sections[Geofence Failsafe].keywords[5], .sections[Return to launch settings].keywords[5]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>altitude</source>
-      <translation type="unfinished">altitude</translation>
+      <translation>高度</translation>
     </message>
     <message>
       <extracomment>.sections[Geofence Failsafe].keywords[6]</extracomment>
@@ -3965,25 +3965,25 @@
       <extracomment>.sections[Return to launch settings].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Return to launch, then:</source>
-      <translation type="unfinished">Return to launch, then:</translation>
+      <translation>返回启动，然后：</translation>
     </message>
     <message>
       <extracomment>.sections[Return to launch settings].controls[1].options[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Land immediately</source>
-      <translation type="unfinished">Land immediately</translation>
+      <translation>立即着陆</translation>
     </message>
     <message>
       <extracomment>.sections[Return to launch settings].controls[1].options[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Loiter and do not land</source>
-      <translation type="unfinished">Loiter and do not land</translation>
+      <translation>留待但不着陆</translation>
     </message>
     <message>
       <extracomment>.sections[Return to launch settings].controls[1].options[2].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Loiter and land after specified time</source>
-      <translation type="unfinished">Loiter and land after specified time</translation>
+      <translation>留待并在指定时间后着陆</translation>
     </message>
     <message>
       <extracomment>.sections[Return to launch settings].controls[2].label</extracomment>
@@ -4001,7 +4001,7 @@
       <extracomment>.sections[Land Mode Settings].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Safety.VehicleConfig.json"/>
       <source>Land Mode Settings</source>
-      <translation type="unfinished">Land Mode Settings</translation>
+      <translation>着陆模式设置</translation>
     </message>
     <message>
       <extracomment>.sections[Land Mode Settings].keywords[0]</extracomment>
@@ -4046,7 +4046,7 @@
       <extracomment>.sections[Battery].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Battery</source>
-      <translation type="unfinished">Battery</translation>
+      <translation>电池</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].keywords[0]</extracomment>
@@ -4064,7 +4064,7 @@
       <extracomment>.sections[Battery].keywords[2]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>current</source>
-      <translation type="unfinished">current</translation>
+      <translation>电流</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].keywords[3]</extracomment>
@@ -4094,7 +4094,7 @@
       <extracomment>.sections[Battery].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Source</source>
-      <translation type="unfinished">Source</translation>
+      <translation>来源</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].controls[1].label</extracomment>
@@ -4124,19 +4124,19 @@
       <extracomment>.sections[Battery].controls[5].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Voltage divider</source>
-      <translation type="unfinished">Voltage divider</translation>
+      <translation>电压分压器：</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].controls[5].dialogButton.text, .sections[Battery].controls[6].dialogButton.text</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Calculate</source>
-      <translation type="unfinished">Calculate</translation>
+      <translation>计算</translation>
     </message>
     <message>
       <extracomment>.sections[Battery].controls[6].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Amps per volt</source>
-      <translation type="unfinished">Amps per volt</translation>
+      <translation>安培/伏特</translation>
     </message>
     <message>
       <extracomment>.sections[ESC PWM Calibration].title</extracomment>
@@ -4178,25 +4178,25 @@
       <extracomment>.sections[ESC PWM Calibration].controls[0].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>WARNING: Propellers must be removed from vehicle prior to performing ESC calibration.</source>
-      <translation type="unfinished">WARNING: Propellers must be removed from vehicle prior to performing ESC calibration.</translation>
+      <translation>警告：在执行电调校准之前，飞机上的螺旋桨必须先拆卸下来。</translation>
     </message>
     <message>
       <extracomment>.sections[ESC PWM Calibration].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>You must use USB connection for this operation.</source>
-      <translation type="unfinished">You must use USB connection for this operation.</translation>
+      <translation>必须使用 USB 连接进行此操作。</translation>
     </message>
     <message>
       <extracomment>.sections[ESC PWM Calibration].controls[2].dialogButton.text</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Calibrate</source>
-      <translation type="unfinished">Calibrate</translation>
+      <translation>校准</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].title</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>UAVCAN Bus Configuration</source>
-      <translation type="unfinished">UAVCAN Bus Configuration</translation>
+      <translation>UAVCAN总线配置</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].keywords[0]</extracomment>
@@ -4232,31 +4232,31 @@
       <extracomment>.sections[UAVCAN Bus Configuration].controls[1].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>WARNING: Propellers must be removed from vehicle prior to performing UAVCAN ESC configuration.</source>
-      <translation type="unfinished">WARNING: Propellers must be removed from vehicle prior to performing UAVCAN ESC configuration.</translation>
+      <translation>警告: 在执行 UAVCAN 电调校准之前，飞机上的螺旋桨必须先拆卸下来。</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].controls[2].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>ESC parameters will only be accessible in the editor after assignment.</source>
-      <translation type="unfinished">ESC parameters will only be accessible in the editor after assignment.</translation>
+      <translation>电调参数只有在分配后才能在编辑器中访问。</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].controls[3].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Start the process, then turn each motor into its turn direction, in the order of their motor indices.</source>
-      <translation type="unfinished">Start the process, then turn each motor into its turn direction, in the order of their motor indices.</translation>
+      <translation>开始流程，然后按电机序号的顺序调整每个电机的旋转方向。</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].controls[4].actionButton.text</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Start Assignment</source>
-      <translation type="unfinished">Start Assignment</translation>
+      <translation>开始分配</translation>
     </message>
     <message>
       <extracomment>.sections[UAVCAN Bus Configuration].controls[5].actionButton.text</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AutoPilotPlugins/PX4/VehicleConfig/Power.VehicleConfig.json"/>
       <source>Stop Assignment</source>
-      <translation type="unfinished">Stop Assignment</translation>
+      <translation>停止分配</translation>
     </message>
   </context>
   <context>
@@ -4342,7 +4342,7 @@
       <extracomment>.QGC.MetaData.Facts[diskLoggingEnabled].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/LogManager.SettingsGroup.json"/>
       <source>Enable</source>
-      <translation type="unfinished">Enable</translation>
+      <translation>启用</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[diskLoggingMaxFileSizeMB].shortDesc</extracomment>
@@ -4643,7 +4643,7 @@
       <extracomment>.QGC.MetaData.Facts[showGimbalOnlyWhenSet].shortDesc, .QGC.MetaData.Facts[showGimbalOnlyWhenSet].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/PlanView.SettingsGroup.json"/>
       <source>Show gimbal yaw visual only when set explicitly for the waypoint</source>
-      <translation type="unfinished">Show gimbal yaw visual only when set explicitly for the waypoint</translation>
+      <translation>仅当为航点明确设置时，才显示云台偏航视觉信息。</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[vtolTransitionDistance].shortDesc</extracomment>
@@ -4922,7 +4922,7 @@
       <extracomment>.QGC.MetaData.Facts[videoSource].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Source</source>
-      <translation type="unfinished">Source</translation>
+      <translation>来源</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[videoSource].keywords</extracomment>
@@ -5034,7 +5034,7 @@
       <extracomment>.QGC.MetaData.Facts[aspectRatio].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Aspect Ratio</source>
-      <translation type="unfinished">Aspect Ratio</translation>
+      <translation>宽高比</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[aspectRatio].keywords</extracomment>
@@ -5053,13 +5053,13 @@
       <extracomment>.QGC.MetaData.Facts[gridLines].longDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Displays a grid overlaid over the video view.</source>
-      <translation type="unfinished">Displays a grid overlaid over the video view.</translation>
+      <translation>在视频视图上显示网格覆盖。</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[videoFit].shortDesc, .QGC.MetaData.Facts[videoFit].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Video Display Fit</source>
-      <translation type="unfinished">Video Display Fit</translation>
+      <translation>适合的视频显示</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[videoFit].longDesc</extracomment>
@@ -5109,7 +5109,7 @@
       <extracomment>.QGC.MetaData.Facts[recordingFormat].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Record File Format</source>
-      <translation type="unfinished">Record File Format</translation>
+      <translation>录像文件格式</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[recordingFormat].keywords</extracomment>
@@ -5134,7 +5134,7 @@
       <extracomment>.QGC.MetaData.Facts[maxVideoSize].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Max Storage Usage</source>
-      <translation type="unfinished">Max Storage Usage</translation>
+      <translation>最大存储用量</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[maxVideoSize].keywords</extracomment>
@@ -5159,7 +5159,7 @@
       <extracomment>.QGC.MetaData.Facts[enableStorageLimit].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Auto-Delete Saved Recordings</source>
-      <translation type="unfinished">Auto-Delete Saved Recordings</translation>
+      <translation>自动删除已保存录像</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[enableStorageLimit].keywords</extracomment>
@@ -5208,7 +5208,7 @@
       <extracomment>.QGC.MetaData.Facts[disableWhenDisarmed].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Stop recording when disarmed</source>
-      <translation type="unfinished">Stop recording when disarmed</translation>
+      <translation>未解锁时停止录像</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[disableWhenDisarmed].keywords</extracomment>
@@ -5233,7 +5233,7 @@
       <extracomment>.QGC.MetaData.Facts[lowLatencyMode].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Low Latency Mode</source>
-      <translation type="unfinished">Low Latency Mode</translation>
+      <translation>低延迟模式</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[lowLatencyMode].keywords</extracomment>
@@ -5265,7 +5265,7 @@
       <extracomment>.QGC.MetaData.Facts[forceVideoDecoder].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Video.SettingsGroup.json"/>
       <source>Force video decoder priority</source>
-      <translation type="unfinished">Force video decoder priority</translation>
+      <translation>视频解码优先级</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[forceVideoDecoder].keywords</extracomment>
@@ -5512,7 +5512,7 @@
       <extracomment>.QGC.MetaData.Facts[autoConnectNmeaBaud].shortDesc, .QGC.MetaData.Facts[autoConnectNmeaBaud].longDesc, .QGC.MetaData.Facts[autoConnectNmeaBaud].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/AutoConnect.SettingsGroup.json"/>
       <source>NMEA GPS Baudrate</source>
-      <translation type="unfinished">NMEA GPS Baudrate</translation>
+      <translation>NMEA GPS 波特率</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[autoConnectZeroConf].shortDesc, .QGC.MetaData.Facts[autoConnectZeroConf].label</extracomment>
@@ -5563,7 +5563,7 @@
       <extracomment>.QGC.MetaData.Facts[flyViewActionsFile].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/MavlinkActions.SettingsGroup.json"/>
       <source>Fly View Actions</source>
-      <translation type="unfinished">Fly View Actions</translation>
+      <translation>飞行视图操作</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[joystickActionsFile].shortDesc</extracomment>
@@ -5575,7 +5575,7 @@
       <extracomment>.QGC.MetaData.Facts[joystickActionsFile].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/MavlinkActions.SettingsGroup.json"/>
       <source>Joystick Actions</source>
-      <translation type="unfinished">Joystick Actions</translation>
+      <translation>摇杆操作</translation>
     </message>
   </context>
   <context>
@@ -5596,7 +5596,7 @@
       <extracomment>.QGC.MetaData.Facts[operatorID].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Operator ID</source>
-      <translation type="unfinished">Operator ID</translation>
+      <translation>操作员 ID</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[operatorID].keywords</extracomment>
@@ -5659,7 +5659,7 @@
       <extracomment>.QGC.MetaData.Facts[sendOperatorID].label, .QGC.MetaData.Facts[sendSelfID].label, .QGC.MetaData.Facts[sendBasicID].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Broadcast</source>
-      <translation type="unfinished">Broadcast</translation>
+      <translation>广播</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[sendOperatorID].keywords</extracomment>
@@ -5734,7 +5734,7 @@
       <extracomment>.QGC.MetaData.Facts[selfIDExtended].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Extended Status</source>
-      <translation type="unfinished">Extended Status</translation>
+      <translation>扩展状态</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[selfIDType].shortDesc</extracomment>
@@ -5753,7 +5753,7 @@
       <extracomment>.QGC.MetaData.Facts[selfIDType].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Broadcast Message</source>
-      <translation type="unfinished">Broadcast Message</translation>
+      <translation>广播消息</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[selfIDType].keywords, .QGC.MetaData.Facts[sendSelfID].keywords</extracomment>
@@ -5784,7 +5784,7 @@
       <extracomment>.QGC.MetaData.Facts[basicID].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/RemoteID.SettingsGroup.json"/>
       <source>Basic ID</source>
-      <translation type="unfinished">Basic ID</translation>
+      <translation>基础 ID</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[basicID].keywords</extracomment>
@@ -6111,7 +6111,7 @@
       <extracomment>.QGC.MetaData.Facts[telemetrySave].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Save log after each flight</source>
-      <translation type="unfinished">Save log after each flight</translation>
+      <translation>每次飞行后保存日志</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[telemetrySave].keywords</extracomment>
@@ -6136,7 +6136,7 @@
       <extracomment>.QGC.MetaData.Facts[telemetrySaveNotArmed].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Save logs even if vehicle was not armed</source>
-      <translation type="unfinished">Save logs even if vehicle was not armed</translation>
+      <translation>即使飞行器未解锁也保存日志</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[telemetrySaveNotArmed].keywords</extracomment>
@@ -6155,7 +6155,7 @@
       <extracomment>.QGC.MetaData.Facts[apmStartMavlinkStreams].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Request start of MAVLink telemetry streams (ArduPilot only)</source>
-      <translation type="unfinished">Request start of MAVLink telemetry streams (ArduPilot only)</translation>
+      <translation>请求启动MAVLink遥测流（仅ArduPilot）</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[apmStartMavlinkStreams].keywords</extracomment>
@@ -6180,7 +6180,7 @@
       <extracomment>.QGC.MetaData.Facts[saveCsvTelemetry].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Save CSV log of telemetry data</source>
-      <translation type="unfinished">Save CSV log of telemetry data</translation>
+      <translation>保存遥测数据 CSV 日志</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[saveCsvTelemetry].keywords</extracomment>
@@ -6205,7 +6205,7 @@
       <extracomment>.QGC.MetaData.Facts[forwardMavlink].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Enable</source>
-      <translation type="unfinished">Enable</translation>
+      <translation>启用</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[forwardMavlink].keywords</extracomment>
@@ -6230,7 +6230,7 @@
       <extracomment>.QGC.MetaData.Facts[forwardMavlinkHostName].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Host name</source>
-      <translation type="unfinished">Host name</translation>
+      <translation>主机名</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[forwardMavlinkHostName].keywords</extracomment>
@@ -6261,7 +6261,7 @@
       <extracomment>.QGC.MetaData.Facts[sendGCSHeartbeat].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>Emit heartbeat</source>
-      <translation type="unfinished">Emit heartbeat</translation>
+      <translation>发送心跳</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[sendGCSHeartbeat].keywords</extracomment>
@@ -6280,7 +6280,7 @@
       <extracomment>.QGC.MetaData.Facts[gcsMavlinkSystemID].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/Mavlink.SettingsGroup.json"/>
       <source>MAVLink System ID</source>
-      <translation type="unfinished">MAVLink System ID</translation>
+      <translation>MAVLink 系统 ID</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[gcsMavlinkSystemID].keywords</extracomment>
@@ -6960,7 +6960,7 @@
       <extracomment>.QGC.MetaData.Facts[virtualJoystick].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Virtual Joystick</source>
-      <translation type="unfinished">Virtual Joystick</translation>
+      <translation>虚拟摇杆</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[virtualJoystick].keywords</extracomment>
@@ -6985,7 +6985,7 @@
       <extracomment>.QGC.MetaData.Facts[virtualJoystickAutoCenterThrottle].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Auto-Center Throttle</source>
-      <translation type="unfinished">Auto-Center Throttle</translation>
+      <translation>油门自动居中</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[virtualJoystickAutoCenterThrottle].keywords</extracomment>
@@ -7067,7 +7067,7 @@
       <extracomment>.QGC.MetaData.Facts[useChecklist].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Use Preflight Checklist</source>
-      <translation type="unfinished">Use Preflight Checklist</translation>
+      <translation>使用飞行前检查单</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[useChecklist].keywords, .QGC.MetaData.Facts[enforceChecklist].keywords</extracomment>
@@ -7086,13 +7086,13 @@
       <extracomment>.QGC.MetaData.Facts[enforceChecklist].longDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>If this option is enabled the preflight checklist must pass before arming.</source>
-      <translation type="unfinished">If this option is enabled the preflight checklist must pass before arming.</translation>
+      <translation>如果启用此选项，则在解锁前必须通过解锁检查。</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[enforceChecklist].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Enforce Preflight Checklist</source>
-      <translation type="unfinished">Enforce Preflight Checklist</translation>
+      <translation>强制执行飞行前检查单</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[enableMultiVehiclePanel].shortDesc</extracomment>
@@ -7110,7 +7110,7 @@
       <extracomment>.QGC.MetaData.Facts[enableMultiVehiclePanel].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Enable Multi-Vehicle Panel</source>
-      <translation type="unfinished">Enable Multi-Vehicle Panel</translation>
+      <translation>启用多机面板</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[enableMultiVehiclePanel].keywords</extracomment>
@@ -7135,7 +7135,7 @@
       <extracomment>.QGC.MetaData.Facts[uiScalePercent].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>UI Scaling</source>
-      <translation type="unfinished">UI Scaling</translation>
+      <translation>界面缩放</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[uiScalePercent].keywords</extracomment>
@@ -7167,7 +7167,7 @@
       <extracomment>.QGC.MetaData.Facts[indoorPalette].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Color Scheme</source>
-      <translation type="unfinished">Color Scheme</translation>
+      <translation>配色方案</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[indoorPalette].keywords</extracomment>
@@ -7192,7 +7192,7 @@
       <extracomment>.QGC.MetaData.Facts[savePath].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Application Load/Save Path</source>
-      <translation type="unfinished">Application Load/Save Path</translation>
+      <translation>应用程序加载/保存路径</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[savePath].keywords</extracomment>
@@ -7286,7 +7286,7 @@
       <extracomment>.QGC.MetaData.Facts[mapboxAccount].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Account</source>
-      <translation type="unfinished">Account</translation>
+      <translation>账号</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[mapboxAccount].keywords</extracomment>
@@ -7311,7 +7311,7 @@
       <extracomment>.QGC.MetaData.Facts[mapboxStyle].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Map Style</source>
-      <translation type="unfinished">Map Style</translation>
+      <translation>地图样式</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[mapboxStyle].keywords</extracomment>
@@ -7361,7 +7361,7 @@
       <extracomment>.QGC.MetaData.Facts[customURL].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Server URL</source>
-      <translation type="unfinished">Server URL</translation>
+      <translation>服务器 URL</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[customURL].keywords</extracomment>
@@ -7437,7 +7437,7 @@
       <extracomment>.QGC.MetaData.Facts[followTarget].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Stream GCS Position</source>
-      <translation type="unfinished">Stream GCS Position</translation>
+      <translation>流动地面站位置</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[followTarget].keywords</extracomment>
@@ -7456,7 +7456,7 @@
       <extracomment>.QGC.MetaData.Facts[qLocaleLanguage].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Language</source>
-      <translation type="unfinished">Language</translation>
+      <translation>语言</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[qLocaleLanguage].keywords</extracomment>
@@ -7481,7 +7481,7 @@
       <extracomment>.QGC.MetaData.Facts[clearSettingsNextBoot].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/App.SettingsGroup.json"/>
       <source>Clear all settings on next start</source>
-      <translation type="unfinished">Clear all settings on next start</translation>
+      <translation>下次使用前清除所有数据</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[clearSettingsNextBoot].keywords</extracomment>
@@ -7552,7 +7552,7 @@
       <extracomment>.QGC.MetaData.Facts[guidedMinimumAltitude].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Minimum Altitude</source>
-      <translation type="unfinished">Minimum Altitude</translation>
+      <translation>最小高度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[guidedMinimumAltitude].keywords</extracomment>
@@ -7571,7 +7571,7 @@
       <extracomment>.QGC.MetaData.Facts[guidedMaximumAltitude].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Maximum Altitude</source>
-      <translation type="unfinished">Maximum Altitude</translation>
+      <translation>最大高度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[guidedMaximumAltitude].keywords</extracomment>
@@ -7590,7 +7590,7 @@
       <extracomment>.QGC.MetaData.Facts[showLogReplayStatusBar].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Show Telemetry Log Replay Status Bar</source>
-      <translation type="unfinished">Show Telemetry Log Replay Status Bar</translation>
+      <translation>显示遥测日志回放状态栏</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[showLogReplayStatusBar].keywords</extracomment>
@@ -7609,7 +7609,7 @@
       <extracomment>.QGC.MetaData.Facts[showAdditionalIndicatorsCompass].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Show additional heading indicators on Compass</source>
-      <translation type="unfinished">Show additional heading indicators on Compass</translation>
+      <translation>在罗盘上显示额外航向指示</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[showAdditionalIndicatorsCompass].keywords</extracomment>
@@ -7628,7 +7628,7 @@
       <extracomment>.QGC.MetaData.Facts[lockNoseUpCompass].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Lock Compass Nose-Up</source>
-      <translation type="unfinished">Lock Compass Nose-Up</translation>
+      <translation>锁定罗盘机头朝上</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[lockNoseUpCompass].keywords</extracomment>
@@ -7647,7 +7647,7 @@
       <extracomment>.QGC.MetaData.Facts[keepMapCenteredOnVehicle].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Keep Map Centered On Vehicle</source>
-      <translation type="unfinished">Keep Map Centered On Vehicle</translation>
+      <translation>保持地图以飞行器为中心</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[keepMapCenteredOnVehicle].keywords</extracomment>
@@ -7666,7 +7666,7 @@
       <extracomment>.QGC.MetaData.Facts[showSimpleCameraControl].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Show simple camera controls (DIGICAM_CONTROL)</source>
-      <translation type="unfinished">Show simple camera controls (DIGICAM_CONTROL)</translation>
+      <translation>显示简易相机控制（DIGICAM_CONTROL）</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[showSimpleCameraControl].keywords</extracomment>
@@ -7691,7 +7691,7 @@
       <extracomment>.QGC.MetaData.Facts[maxGoToLocationDistance].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Go To Location Max Distance</source>
-      <translation type="unfinished">Go To Location Max Distance</translation>
+      <translation>前往位置最大距离</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[maxGoToLocationDistance].keywords</extracomment>
@@ -7710,7 +7710,7 @@
       <extracomment>.QGC.MetaData.Facts[forwardFlightGoToLocationLoiterRad].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Loiter Radius in Forward Flight Guided Mode</source>
-      <translation type="unfinished">Loiter Radius in Forward Flight Guided Mode</translation>
+      <translation>前飞引导模式盘旋半径</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[forwardFlightGoToLocationLoiterRad].keywords</extracomment>
@@ -7729,7 +7729,7 @@
       <extracomment>.QGC.MetaData.Facts[goToLocationRequiresConfirmInGuided].label</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Settings/FlyView.SettingsGroup.json"/>
       <source>Require Confirmation for Go To Location in Guided Mode</source>
-      <translation type="unfinished">Require Confirmation for Go To Location in Guided Mode</translation>
+      <translation>引导模式前往位置时需要确认</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[goToLocationRequiresConfirmInGuided].keywords</extracomment>
@@ -8150,7 +8150,7 @@
       <extracomment>.QGC.MetaData.Facts[rotationNone].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/DistanceSensorFact.json"/>
       <source>Forward</source>
-      <translation type="unfinished">Forward</translation>
+      <translation>向前</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[rotationYaw45].shortDesc</extracomment>
@@ -8257,7 +8257,7 @@
       <extracomment>.QGC.MetaData.Facts[voltage].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/BatteryFact.json"/>
       <source>Voltage</source>
-      <translation type="unfinished">Voltage</translation>
+      <translation>电压</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[percentRemaining].shortDesc</extracomment>
@@ -8281,7 +8281,7 @@
       <extracomment>.QGC.MetaData.Facts[temperature].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/BatteryFact.json"/>
       <source>Temperature</source>
-      <translation type="unfinished">Temperature</translation>
+      <translation>温度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[instantPower].shortDesc</extracomment>
@@ -8299,7 +8299,7 @@
       <extracomment>.QGC.MetaData.Facts[chargeState].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/BatteryFact.json"/>
       <source>Charge State</source>
-      <translation type="unfinished">Charge State</translation>
+      <translation>充电状态</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[chargeState].enumStrings</extracomment>
@@ -8315,13 +8315,13 @@
       <extracomment>.QGC.MetaData.Facts[lat].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/GPSFact.json"/>
       <source>Latitude</source>
-      <translation type="unfinished">Latitude</translation>
+      <translation>纬度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[lon].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/GPSFact.json"/>
       <source>Longitude</source>
-      <translation type="unfinished">Longitude</translation>
+      <translation>经度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[mgrs].shortDesc</extracomment>
@@ -8351,7 +8351,7 @@
       <extracomment>.QGC.MetaData.Facts[yaw].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/GPSFact.json"/>
       <source>Yaw</source>
-      <translation type="unfinished">Yaw</translation>
+      <translation>偏航</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[lock].shortDesc</extracomment>
@@ -8481,7 +8481,7 @@
       <extracomment>.QGC.MetaData.Facts[voltage].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/EscStatusFactGroup.json"/>
       <source>Voltage</source>
-      <translation type="unfinished">Voltage</translation>
+      <translation>电压</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[count].shortDesc</extracomment>
@@ -8518,7 +8518,7 @@
       <extracomment>.QGC.MetaData.Facts[temperature].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/EscStatusFactGroup.json"/>
       <source>Temperature</source>
-      <translation type="unfinished">Temperature</translation>
+      <translation>温度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[errorCount].shortDesc</extracomment>
@@ -8557,7 +8557,7 @@
       <extracomment>.QGC.MetaData.Facts[clipCount2].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/VibrationFact.json"/>
       <source>Clip Count (2)</source>
-      <translation type="unfinished">Clip Count (2)</translation>
+      <translation>片段数量 (2)</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[clipCount3].shortDesc</extracomment>
@@ -8572,7 +8572,7 @@
       <extracomment>.QGC.MetaData.Facts[currentTime].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/ClockFact.json"/>
       <source>Time</source>
-      <translation type="unfinished">Time</translation>
+      <translation>时间</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[currentUTCTime].shortDesc</extracomment>
@@ -8584,7 +8584,7 @@
       <extracomment>.QGC.MetaData.Facts[currentDate].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/ClockFact.json"/>
       <source>Date</source>
-      <translation type="unfinished">Date</translation>
+      <translation>日期</translation>
     </message>
   </context>
   <context>
@@ -8593,19 +8593,19 @@
       <extracomment>.QGC.MetaData.Facts[roll].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/VehicleFact.json"/>
       <source>Roll</source>
-      <translation type="unfinished">Roll</translation>
+      <translation>横滚</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[pitch].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/VehicleFact.json"/>
       <source>Pitch</source>
-      <translation type="unfinished">Pitch</translation>
+      <translation>俯仰</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[heading].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/VehicleFact.json"/>
       <source>Heading</source>
-      <translation type="unfinished">Heading</translation>
+      <translation>航向</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[rollRate].shortDesc</extracomment>
@@ -8797,7 +8797,7 @@
       <extracomment>.QGC.MetaData.Facts[temperature].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/HygrometerFact.json"/>
       <source>Temperature</source>
-      <translation type="unfinished">Temperature</translation>
+      <translation>温度</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[humidity].shortDesc</extracomment>
@@ -8818,7 +8818,7 @@
       <extracomment>.QGC.MetaData.Facts[status].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/GeneratorFact.json"/>
       <source>Status</source>
-      <translation type="unfinished">Status</translation>
+      <translation>状态</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[genSpeed].shortDesc</extracomment>
@@ -9049,7 +9049,7 @@
       <extracomment>.QGC.MetaData.Facts[temperature2].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Vehicle/FactGroups/TemperatureFact.json"/>
       <source>Temperature (2)</source>
-      <translation type="unfinished">Temperature (2)</translation>
+      <translation>温度 (2)</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[temperature3].shortDesc</extracomment>
@@ -9238,7 +9238,7 @@
       <extracomment>.QGC.MetaData.Facts[gimbalPitch].shortDesc</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/Gimbal/GimbalFact.json"/>
       <source>Gimbal Pitch</source>
-      <translation type="unfinished">Gimbal Pitch</translation>
+      <translation>云台俯仰</translation>
     </message>
     <message>
       <extracomment>.QGC.MetaData.Facts[gimbalYaw].shortDesc</extracomment>
@@ -9265,7 +9265,7 @@
       <extracomment>.groups[General].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>General</source>
-      <translation type="unfinished">General</translation>
+      <translation>常规</translation>
     </message>
     <message>
       <extracomment>.groups[General].keywords[0]</extracomment>
@@ -9319,13 +9319,13 @@
       <extracomment>.groups[Guided Commands].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>Guided Commands</source>
-      <translation type="unfinished">Guided Commands</translation>
+      <translation>引导命令</translation>
     </message>
     <message>
       <extracomment>.groups[Guided Commands].keywords[0]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>altitude</source>
-      <translation type="unfinished">altitude</translation>
+      <translation>高度</translation>
     </message>
     <message>
       <extracomment>.groups[Guided Commands].keywords[1]</extracomment>
@@ -9373,7 +9373,7 @@
       <extracomment>.groups[MAVLink Actions].sectionName</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>MAVLink Actions</source>
-      <translation type="unfinished">MAVLink Actions</translation>
+      <translation>MAVLink 操作</translation>
     </message>
     <message>
       <extracomment>.groups[MAVLink Actions].keywords[0]</extracomment>
@@ -9403,7 +9403,7 @@
       <extracomment>.groups[Virtual Joystick].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>Virtual Joystick</source>
-      <translation type="unfinished">Virtual Joystick</translation>
+      <translation>虚拟摇杆</translation>
     </message>
     <message>
       <extracomment>.groups[Virtual Joystick].keywords[0]</extracomment>
@@ -9439,7 +9439,7 @@
       <extracomment>.groups[Instrument Panel].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/FlyView.SettingsUI.json"/>
       <source>Instrument Panel</source>
-      <translation type="unfinished">Instrument Panel</translation>
+      <translation>仪表面板</translation>
     </message>
     <message>
       <extracomment>.groups[Instrument Panel].keywords[0]</extracomment>
@@ -9478,7 +9478,7 @@
       <extracomment>.groups[Ground Station].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Telemetry.SettingsUI.json"/>
       <source>Ground Station</source>
-      <translation type="unfinished">Ground Station</translation>
+      <translation>地面站</translation>
     </message>
     <message>
       <extracomment>.groups[Ground Station].keywords[0]</extracomment>
@@ -9514,7 +9514,7 @@
       <extracomment>.groups[MAVLink Forwarding].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Telemetry.SettingsUI.json"/>
       <source>MAVLink Forwarding</source>
-      <translation type="unfinished">MAVLink Forwarding</translation>
+      <translation>MAVLink 转发</translation>
     </message>
     <message>
       <extracomment>.groups[MAVLink Forwarding].keywords[0]</extracomment>
@@ -9544,7 +9544,7 @@
       <extracomment>.groups[Logging].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Telemetry.SettingsUI.json"/>
       <source>Logging</source>
-      <translation type="unfinished">Logging</translation>
+      <translation>日志记录</translation>
     </message>
     <message>
       <extracomment>.groups[Logging].keywords[0]</extracomment>
@@ -9580,7 +9580,7 @@
       <extracomment>.groups[Stream Rates (ArduPilot Only)].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Telemetry.SettingsUI.json"/>
       <source>Stream Rates (ArduPilot Only)</source>
-      <translation type="unfinished">Stream Rates (ArduPilot Only)</translation>
+      <translation>数据流速率（仅 ArduPilot）</translation>
     </message>
     <message>
       <extracomment>.groups[Stream Rates (ArduPilot Only)].keywords[0]</extracomment>
@@ -9697,7 +9697,7 @@
       <extracomment>.groups[AutoConnect].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/CommLinks.SettingsUI.json"/>
       <source>AutoConnect</source>
-      <translation type="unfinished">AutoConnect</translation>
+      <translation>自动连接</translation>
     </message>
     <message>
       <extracomment>.groups[AutoConnect].keywords[0]</extracomment>
@@ -9813,7 +9813,12 @@
       <source>add link</source>
       <translation type="unfinished">add link</translation>
     </message>
-  </context>
+      <message>
+      <location filename="../src/AppSettings/pages/CommLinks.SettingsUI.json"/>
+      <source>Connection Alerts</source>
+      <translation>连接告警</translation>
+    </message>
+</context>
   <context>
     <name>Maps.SettingsUI.json</name>
     <message>
@@ -9868,7 +9873,7 @@
       <extracomment>.groups[Offline Maps].sectionName</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Maps.SettingsUI.json"/>
       <source>Offline Maps</source>
-      <translation type="unfinished">Offline Maps</translation>
+      <translation>离线地图</translation>
     </message>
     <message>
       <extracomment>.groups[Offline Maps].keywords[0]</extracomment>
@@ -9898,7 +9903,7 @@
       <extracomment>.groups[Tokens].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Maps.SettingsUI.json"/>
       <source>Tokens</source>
-      <translation type="unfinished">Tokens</translation>
+      <translation>令牌</translation>
     </message>
     <message>
       <extracomment>.groups[Tokens].keywords[0]</extracomment>
@@ -9946,7 +9951,7 @@
       <extracomment>.groups[Mapbox Login].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Maps.SettingsUI.json"/>
       <source>Mapbox Login</source>
-      <translation type="unfinished">Mapbox Login</translation>
+      <translation>Mapbox 登录</translation>
     </message>
     <message>
       <extracomment>.groups[Mapbox Login].keywords[1]</extracomment>
@@ -9964,7 +9969,7 @@
       <extracomment>.groups[Custom Map URL].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Maps.SettingsUI.json"/>
       <source>Custom Map URL</source>
-      <translation type="unfinished">Custom Map URL</translation>
+      <translation>自定义地图 URL</translation>
     </message>
     <message>
       <extracomment>.groups[Custom Map URL].keywords[0]</extracomment>
@@ -9994,7 +9999,7 @@
       <extracomment>.groups[Tile Cache].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Maps.SettingsUI.json"/>
       <source>Tile Cache</source>
-      <translation type="unfinished">Tile Cache</translation>
+      <translation>瓦片缓存</translation>
     </message>
     <message>
       <extracomment>.groups[Tile Cache].keywords[1]</extracomment>
@@ -10021,37 +10026,37 @@
       <extracomment>.pages[General].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>General</source>
-      <translation type="unfinished">General</translation>
+      <translation>常规</translation>
     </message>
     <message>
       <extracomment>.pages[Fly View].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Fly View</source>
-      <translation type="unfinished">Fly View</translation>
+      <translation>飞行视图</translation>
     </message>
     <message>
       <extracomment>.pages[3D View].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>3D View</source>
-      <translation type="unfinished">3D View</translation>
+      <translation>3D 视图</translation>
     </message>
     <message>
       <extracomment>.pages[Plan View].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Plan View</source>
-      <translation type="unfinished">Plan View</translation>
+      <translation>计划视图</translation>
     </message>
     <message>
       <extracomment>.pages[ADSB Server].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>ADSB Server</source>
-      <translation type="unfinished">ADSB Server</translation>
+      <translation>ADSB 服务器</translation>
     </message>
     <message>
       <extracomment>.pages[Comm Links].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Comm Links</source>
-      <translation type="unfinished">Comm Links</translation>
+      <translation>通信链路</translation>
     </message>
     <message>
       <extracomment>.pages[App Logging].name</extracomment>
@@ -10069,7 +10074,7 @@
       <extracomment>.pages[Maps].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Maps</source>
-      <translation type="unfinished">Maps</translation>
+      <translation>地图</translation>
     </message>
     <message>
       <extracomment>.pages[NTRIP/RTK].name</extracomment>
@@ -10081,49 +10086,49 @@
       <extracomment>.pages[PX4 Log Transfer].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>PX4 Log Transfer</source>
-      <translation type="unfinished">PX4 Log Transfer</translation>
+      <translation>PX4 日志传输</translation>
     </message>
     <message>
       <extracomment>.pages[Remote ID].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Remote ID</source>
-      <translation type="unfinished">Remote ID</translation>
+      <translation>远程 ID</translation>
     </message>
     <message>
       <extracomment>.pages[Telemetry].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Telemetry</source>
-      <translation type="unfinished">Telemetry</translation>
+      <translation>遥测</translation>
     </message>
     <message>
       <extracomment>.pages[Video].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Video</source>
-      <translation type="unfinished">Video</translation>
+      <translation>视频</translation>
     </message>
     <message>
       <extracomment>.pages[Help].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Help</source>
-      <translation type="unfinished">Help</translation>
+      <translation>帮助</translation>
     </message>
     <message>
       <extracomment>.pages[Mock Link].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Mock Link</source>
-      <translation type="unfinished">Mock Link</translation>
+      <translation>模拟链路</translation>
     </message>
     <message>
       <extracomment>.pages[Debug].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Debug</source>
-      <translation type="unfinished">Debug</translation>
+      <translation>调试</translation>
     </message>
     <message>
       <extracomment>.pages[Palette Test].name</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/SettingsPages.json"/>
       <source>Palette Test</source>
-      <translation type="unfinished">Palette Test</translation>
+      <translation>调色板测试</translation>
     </message>
   </context>
   <context>
@@ -10132,7 +10137,7 @@
       <extracomment>.groups[General].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Viewer3D.SettingsUI.json"/>
       <source>General</source>
-      <translation type="unfinished">General</translation>
+      <translation>常规</translation>
     </message>
     <message>
       <extracomment>.groups[General].keywords[0]</extracomment>
@@ -10354,7 +10359,7 @@
       <extracomment>.groups[Basic ID].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>Basic ID</source>
-      <translation type="unfinished">Basic ID</translation>
+      <translation>基础 ID</translation>
     </message>
     <message>
       <extracomment>.groups[Basic ID].keywords[0]</extracomment>
@@ -10396,7 +10401,7 @@
       <extracomment>.groups[Operator ID].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>Operator ID</source>
-      <translation type="unfinished">Operator ID</translation>
+      <translation>操作员 ID</translation>
     </message>
     <message>
       <extracomment>.groups[Operator ID].keywords[0]</extracomment>
@@ -10414,7 +10419,7 @@
       <extracomment>.groups[Self ID].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>Self ID</source>
-      <translation type="unfinished">Self ID</translation>
+      <translation>自身 ID</translation>
     </message>
     <message>
       <extracomment>.groups[Self ID].keywords[0]</extracomment>
@@ -10444,7 +10449,7 @@
       <extracomment>.groups[GroundStation Location].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>GroundStation Location</source>
-      <translation type="unfinished">GroundStation Location</translation>
+      <translation>地面站位置</translation>
     </message>
     <message>
       <extracomment>.groups[GroundStation Location].keywords[0]</extracomment>
@@ -10474,7 +10479,7 @@
       <extracomment>.groups[GroundStation Location].keywords[4]</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>altitude</source>
-      <translation type="unfinished">altitude</translation>
+      <translation>高度</translation>
     </message>
     <message>
       <extracomment>.groups[GroundStation Location].keywords[5]</extracomment>
@@ -10534,7 +10539,7 @@
       <extracomment>.groups[EU Vehicle Info].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/RemoteID.SettingsUI.json"/>
       <source>EU Vehicle Info</source>
-      <translation type="unfinished">EU Vehicle Info</translation>
+      <translation>欧盟飞行器信息</translation>
     </message>
     <message>
       <extracomment>.groups[EU Vehicle Info].keywords[1]</extracomment>
@@ -10663,7 +10668,7 @@
       <extracomment>.groups[Options].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/NTRIP.SettingsUI.json"/>
       <source>Options</source>
-      <translation type="unfinished">Options</translation>
+      <translation>选项</translation>
     </message>
     <message>
       <extracomment>.groups[Options].keywords[0], .groups[UDP Forwarding].keywords[3]</extracomment>
@@ -10732,7 +10737,7 @@
       <extracomment>.groups[ADSB Server].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/ADSBVehicleManager.SettingsUI.json"/>
       <source>ADSB Server</source>
-      <translation type="unfinished">ADSB Server</translation>
+      <translation>ADSB 服务器</translation>
     </message>
     <message>
       <extracomment>.groups[ADSB Server].keywords[0]</extracomment>
@@ -10906,7 +10911,7 @@
       <extracomment>.groups[Video Source].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Video.SettingsUI.json"/>
       <source>Video Source</source>
-      <translation type="unfinished">Video Source</translation>
+      <translation>视频源</translation>
     </message>
     <message>
       <extracomment>.groups[Video Source].keywords[0]</extracomment>
@@ -10930,7 +10935,7 @@
       <extracomment>.groups[Connection].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Video.SettingsUI.json"/>
       <source>Connection</source>
-      <translation type="unfinished">Connection</translation>
+      <translation>连接</translation>
     </message>
     <message>
       <extracomment>.groups[Connection].keywords[0]</extracomment>
@@ -10972,7 +10977,7 @@
       <extracomment>.groups[Settings].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Video.SettingsUI.json"/>
       <source>Settings</source>
-      <translation type="unfinished">Settings</translation>
+      <translation>设置</translation>
     </message>
     <message>
       <extracomment>.groups[Settings].keywords[0]</extracomment>
@@ -11020,7 +11025,7 @@
       <extracomment>.groups[Local Video Storage].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/Video.SettingsUI.json"/>
       <source>Local Video Storage</source>
-      <translation type="unfinished">Local Video Storage</translation>
+      <translation>本地视频存储</translation>
     </message>
     <message>
       <extracomment>.groups[Local Video Storage].keywords[0]</extracomment>
@@ -11058,14 +11063,29 @@
       <source>video file</source>
       <translation type="unfinished">video file</translation>
     </message>
-  </context>
+      <message>
+      <location filename="../src/AppSettings/pages/Video.SettingsUI.json"/>
+      <source>DeepShark Decoder</source>
+      <translation>DeepShark 解码器</translation>
+    </message>
+    <message>
+      <location filename="../src/AppSettings/pages/Video.SettingsUI.json"/>
+      <source>AI Detection</source>
+      <translation>AI 检测</translation>
+    </message>
+    <message>
+      <location filename="../src/AppSettings/pages/Video.SettingsUI.json"/>
+      <source>Connection Alerts</source>
+      <translation>连接告警</translation>
+    </message>
+</context>
   <context>
     <name>General.SettingsUI.json</name>
     <message>
       <extracomment>.groups[General].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/General.SettingsUI.json"/>
       <source>General</source>
-      <translation type="unfinished">General</translation>
+      <translation>常规</translation>
     </message>
     <message>
       <extracomment>.groups[General].keywords[0]</extracomment>
@@ -11257,7 +11277,7 @@
       <extracomment>.groups[Units].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/General.SettingsUI.json"/>
       <source>Units</source>
-      <translation type="unfinished">Units</translation>
+      <translation>单位</translation>
     </message>
     <message>
       <extracomment>.groups[Units].keywords[0]</extracomment>
@@ -11320,7 +11340,7 @@
       <extracomment>.groups[General].heading</extracomment>
       <location filename="/home/runner/work/qgroundcontrol/qgroundcontrol/src/AppSettings/pages/PlanView.SettingsUI.json"/>
       <source>General</source>
-      <translation type="unfinished">General</translation>
+      <translation>常规</translation>
     </message>
     <message>
       <extracomment>.groups[General].keywords[0]</extracomment>

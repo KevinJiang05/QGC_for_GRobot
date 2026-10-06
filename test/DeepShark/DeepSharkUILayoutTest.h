@@ -8,4 +8,5 @@ class DeepSharkUILayoutTest : public QmlUITestBase
 
 private slots:
     void _customWindowCanCloseAndReopen();
+    void _chineseSettingsPages();
 };

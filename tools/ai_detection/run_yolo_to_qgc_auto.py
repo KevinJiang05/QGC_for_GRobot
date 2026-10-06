@@ -14,23 +14,29 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ai_detection_core import LatestFrameReader, clean_source, collect_due_frames, source_description
+from ai_detection_core import (
+    LatestFrameReader,
+    clean_source,
+    collect_due_frames,
+    source_description,
+)
 from yolo_to_qgc_udp import _build_payload
-
 
 DEFAULT_SOURCES: list[tuple[str, str]] = []
 
 
 def _candidate_settings_files(settings_file: str | None = None) -> list[Path]:
+    if settings_file:
+        return [Path(settings_file)]
     appdata = Path(os.environ.get("APPDATA", ""))
     candidates = [
+        appdata / "KevinJiang" / "QGC_KevinJiang_v5_1_5_Debug Daily.ini",
+        appdata / "KevinJiang" / "QGC_KevinJiang_v5_1_5_Debug.ini",
         appdata / "KevinJiang" / "QGC_KevinJiang Daily.ini",
         appdata / "KevinJiang" / "QGC_KevinJiang.ini",
         appdata / "QGroundControl" / "QGroundControl Daily.ini",
         appdata / "QGroundControl.org" / "QGroundControl.ini",
     ]
-    if settings_file:
-        candidates.insert(0, Path(settings_file))
     return candidates
 
 
@@ -43,7 +49,7 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
         parser.optionxform = str
         parser.read(settings_file, encoding="utf-8")
         if not parser.has_section("DeepShark"):
-            continue
+            break
 
         sources: list[tuple[str, str]] = []
         section = parser["DeepShark"]
@@ -55,25 +61,48 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
         if sources:
             print(f"Loaded DeepShark video sources from {settings_file}", flush=True)
             return sources
+        break
 
     print("QGC DeepShark settings not found or no RTSP source configured.", flush=True)
     return DEFAULT_SOURCES
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Auto-launch YOLO bridges for DeepShark multi-video panel.")
+    parser = argparse.ArgumentParser(
+        description="Auto-launch YOLO bridges for DeepShark multi-video panel."
+    )
     parser.add_argument("--model", required=True, help="YOLO model path.")
     parser.add_argument("--host", default="127.0.0.1", help="QGC host address.")
     parser.add_argument("--port", type=int, default=57610, help="QGC AI detection UDP port.")
     parser.add_argument("--imgsz", type=int, default=640, help="YOLO inference image size.")
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold.")
     parser.add_argument("--iou", type=float, default=0.45, help="NMS IoU threshold.")
-    parser.add_argument("--device", default=None, help="Inference device, for example cpu, 0, cuda:0.")
-    parser.add_argument("--max-fps", type=float, default=8.0, help="Maximum inference rate per source. Set 0 for every fresh frame.")
-    parser.add_argument("--log-every", type=float, default=2.0, help="Seconds between console status lines.")
-    parser.add_argument("--settings-file", default=None, help="QGC settings ini file used to read DeepShark video sources.")
-    parser.add_argument("--instance-port", type=int, default=0, help="Local single-instance lock port. Defaults to UDP port + 1.")
-    parser.add_argument("--dry-run", action="store_true", help="Print detected sources without starting YOLO.")
+    parser.add_argument(
+        "--device", default=None, help="Inference device, for example cpu, 0, cuda:0."
+    )
+    parser.add_argument(
+        "--max-fps",
+        type=float,
+        default=8.0,
+        help="Maximum inference rate per source. Set 0 for every fresh frame.",
+    )
+    parser.add_argument(
+        "--log-every", type=float, default=2.0, help="Seconds between console status lines."
+    )
+    parser.add_argument(
+        "--settings-file",
+        default=None,
+        help="QGC settings ini file used to read DeepShark video sources.",
+    )
+    parser.add_argument(
+        "--instance-port",
+        type=int,
+        default=0,
+        help="Local single-instance lock port. Defaults to UDP port + 1.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print detected sources without starting YOLO."
+    )
     return parser.parse_args()
 
 
@@ -102,17 +131,25 @@ def _install_stop_handlers(stop_event: threading.Event) -> None:
 def _run_detection(args: argparse.Namespace, sources: list[tuple[str, str]]) -> int:
     try:
         import cv2
+
         from ultralytics import YOLO
     except ImportError as exc:
         raise SystemExit(
             "Missing AI dependency. Install with `pip install -r tools/ai_detection/requirements.txt`."
         ) from exc
 
-    lock_port = args.instance_port if args.instance_port > 0 else (args.port + 1 if args.port < 65535 else args.port - 1)
+    lock_port = (
+        args.instance_port
+        if args.instance_port > 0
+        else (args.port + 1 if args.port < 65535 else args.port - 1)
+    )
     try:
         instance_lock = _open_instance_lock(lock_port)
     except OSError as exc:
-        print(f"AI detection is already running or lock port {lock_port} is unavailable: {exc}", flush=True)
+        print(
+            f"AI detection is already running or lock port {lock_port} is unavailable: {exc}",
+            flush=True,
+        )
         return 2
 
     stop_event = threading.Event()
@@ -162,7 +199,7 @@ def _run_detection(args: argparse.Namespace, sources: list[tuple[str, str]]) -> 
                 )
                 now = time.monotonic()
                 detection_count = 0
-                for source_id, result in zip(source_ids, results):
+                for source_id, result in zip(source_ids, results, strict=False):
                     payload = _build_payload(result, source_id)
                     message = json.dumps(payload, separators=(",", ":")).encode("utf-8")
                     udp_socket.sendto(message, destination)

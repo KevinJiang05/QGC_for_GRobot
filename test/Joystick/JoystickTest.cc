@@ -2,10 +2,12 @@
 
 #include <QtCore/QPointer>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QSettings>
 
 #include "Fact.h"
 #include "Joystick.h"
+#include "JoystickManagerSettings.h"
 #include "JoystickSDL.h"
 #include "MockJoystick.h"
 #include "SDLJoystick.h"
@@ -1013,6 +1015,53 @@ void JoystickTest::_legacySettingsDoNotOverrideV2Test()
     JoystickSettings joystickSettings(name, 6, 20);
     QCOMPARE(settings.value(QStringLiteral("JoystickSettingsV2/%1/exponentialPct").arg(name)).toDouble(), 15.0);
     QVERIFY(!settings.contains(QStringLiteral("JoystickSettingsV2/%1/JoystickAxisSettingsArray").arg(name)));
+}
+
+void JoystickTest::_legacyManagerSettingsMigration_data()
+{
+    QTest::addColumn<bool>("hasV2");
+    QTest::newRow("legacy-selection-and-enable") << false;
+    QTest::newRow("explicit-v2-disabled-wins") << true;
+}
+
+void JoystickTest::_legacyManagerSettingsMigration()
+{
+    QFETCH(bool, hasV2);
+    QSettings settings;
+    const QStringList keys = {
+        QStringLiteral("JoystickManager/ActiveJoystick"), QStringLiteral("JoystickManager/activeJoystickName"),
+        QStringLiteral("JoystickManager/joystickEnabledVehiclesIds"), QStringLiteral("Vehicle202/JoystickEnabled"),
+        QStringLiteral("Vehicle203/JoystickEnabled")};
+    QMap<QString, QVariant> saved;
+    for (const QString& key : keys) {
+        if (settings.contains(key)) {
+            saved.insert(key, settings.value(key));
+        }
+        settings.remove(key);
+    }
+    const auto restore = qScopeGuard([&]() {
+        for (const QString& key : keys) {
+            if (saved.contains(key)) {
+                settings.setValue(key, saved.value(key));
+            } else {
+                settings.remove(key);
+            }
+        }
+    });
+    settings.setValue(keys[0], QStringLiteral("Legacy Controller"));
+    settings.setValue(keys[3], true);
+    settings.setValue(keys[4], false);
+    if (hasV2) {
+        settings.setValue(keys[1], QStringLiteral("V2 Controller"));
+        settings.setValue(keys[2], QString());
+    }
+    JoystickManagerSettings migrated;
+    QCOMPARE(settings.value(keys[1]).toString(),
+             hasV2 ? QStringLiteral("V2 Controller") : QStringLiteral("Legacy Controller"));
+    QCOMPARE(settings.value(keys[2]).toString(), hasV2 ? QString() : QStringLiteral("202"));
+    QCOMPARE(settings.value(keys[0]).toString(), QStringLiteral("Legacy Controller"));
+    QVERIFY(settings.value(keys[3]).toBool());
+    QVERIFY(!settings.value(keys[4]).toBool());
 }
 
 void JoystickTest::_invalidLegacyCalibrationTest()

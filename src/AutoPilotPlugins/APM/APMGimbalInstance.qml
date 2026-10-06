@@ -8,6 +8,7 @@ import QGroundControl.AutoPilotPlugins.APM
 
 ColumnLayout {
     property int instance: 1
+    property alias parameterController: gimbalParams.controller
     property real verticalSpacing: ScreenTools.defaultFontPixelHeight / 2
     property real horizontalSpacing: ScreenTools.defaultFontPixelWidth * 2
 
@@ -17,7 +18,26 @@ ColumnLayout {
     property var _controller: gimbalParams.controller
     property var _rcRateFact: gimbalParams.rcRateFact
 
+    function _servoParameterName(channel, suffix) {
+        const servoName = "SERVO" + channel + "_" + suffix
+        const rcName = "RC" + channel + "_" + suffix
+        return _controller.parameterExists(-1, servoName) || !gimbalParams.legacyParameters ? servoName : rcName
+    }
+
+    function _servoFact(channel, suffix) {
+        return _controller.getParameterFact(-1, _servoParameterName(channel, suffix), false)
+    }
+
     function _servoChannelCount() {
+        if (gimbalParams.legacyParameters) {
+            let lastChannel = 0
+            for (let channel = 1; channel <= 16; channel++) {
+                if (_controller.parameterExists(-1, _servoParameterName(channel, "FUNCTION"))) {
+                    lastChannel = channel
+                }
+            }
+            return lastChannel
+        }
         let servoIndex = 1
         while (_controller.parameterExists(-1, "SERVO" + servoIndex + "_FUNCTION")) {
             servoIndex++
@@ -61,6 +81,7 @@ ColumnLayout {
         LabelledFactComboBox {
             label: qsTr("Gimbal Type")
             fact: gimbalParams.typeFact
+            visible: fact !== null
             indexModel: false
             comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 30
         }
@@ -86,6 +107,7 @@ ColumnLayout {
 
             SettingsGroupLayout {
                 heading: qsTr("Neutral Position")
+                visible: gimbalParams.neutralXFact !== null || gimbalParams.neutralYFact !== null || gimbalParams.neutralZFact !== null
 
                 RowLayout {
                     spacing: horizontalSpacing
@@ -94,24 +116,28 @@ ColumnLayout {
                         Layout.fillWidth: true
                         label: qsTr("Pitch")
                         fact: gimbalParams.neutralYFact
+                        visible: fact !== null
                     }
 
                     LabelledFactTextField {
                         Layout.fillWidth: true
                         label: qsTr("Yaw")
                         fact: gimbalParams.neutralZFact
+                        visible: fact !== null
                     }
 
                     LabelledFactTextField {
                         Layout.fillWidth: true
                         label: qsTr("Roll")
                         fact: gimbalParams.neutralXFact
+                        visible: fact !== null
                     }
                 }
             }
 
             SettingsGroupLayout {
                 heading: qsTr("Retracted Position")
+                visible: gimbalParams.retractXFact !== null || gimbalParams.retractYFact !== null || gimbalParams.retractZFact !== null
 
                 RowLayout {
                     spacing: horizontalSpacing
@@ -120,18 +146,21 @@ ColumnLayout {
                         Layout.fillWidth: true
                         label: qsTr("Pitch")
                         fact: gimbalParams.retractYFact
+                        visible: fact !== null
                     }
 
                     LabelledFactTextField {
                         Layout.fillWidth: true
                         label: qsTr("Yaw")
                         fact: gimbalParams.retractZFact
+                        visible: fact !== null
                     }
 
                     LabelledFactTextField {
                         Layout.fillWidth: true
                         label: qsTr("Roll")
                         fact: gimbalParams.retractXFact
+                        visible: fact !== null
                     }
                 }
             }
@@ -160,6 +189,7 @@ ColumnLayout {
 
                     ColumnLayout {
                         spacing: verticalSpacing
+                        visible: modelData.minFact !== null || modelData.maxFact !== null
 
                         QGCLabel {
                             text: modelData.axisLabel
@@ -172,12 +202,14 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 label: qsTr("Min Angle")
                                 fact: modelData.minFact
+                                visible: fact !== null
                             }
 
                             LabelledFactTextField {
                                 Layout.fillWidth: true
                                 label: qsTr("Max Angle")
                                 fact: modelData.maxFact
+                                visible: fact !== null
                             }
                         }
                     }
@@ -189,6 +221,39 @@ ColumnLayout {
 
                 RowLayout {
                     spacing: horizontalSpacing
+                    visible: gimbalParams.legacyParameters
+                    Repeater {
+                        model: [
+                            { axisLabel: qsTr("Pitch"), inputFact: gimbalParams.pitchInputFact },
+                            { axisLabel: qsTr("Yaw"), inputFact: gimbalParams.yawInputFact },
+                            { axisLabel: qsTr("Roll"), inputFact: gimbalParams.rollInputFact }
+                        ]
+                        LabelledFactComboBox {
+                            label: modelData.axisLabel
+                            fact: modelData.inputFact
+                            indexModel: false
+                            visible: fact !== null
+                            Connections {
+                                target: modelData.inputFact
+                                function onValueChanged() {
+                                    if (gimbalParams.defaultModeFact) {
+                                        gimbalParams.defaultModeFact.rawValue = 3
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                LabelledFactTextField {
+                    label: qsTr("Joystick speed")
+                    fact: gimbalParams.joystickSpeedFact
+                    visible: fact !== null
+                }
+
+                RowLayout {
+                    spacing: horizontalSpacing
+                    visible: !gimbalParams.legacyParameters
 
                     Repeater {
                         model: [
@@ -240,19 +305,20 @@ ColumnLayout {
 
                 ColumnLayout {
                     spacing: 0
+                    visible: _rcRateFact !== null
 
                     RowLayout {
                         spacing: horizontalSpacing
 
                         QGCRadioButton {
                             text: qsTr("Angle Control")
-                            checked: !(_rcRateFact.rawValue > 0)
+                            checked: _rcRateFact ? !(_rcRateFact.rawValue > 0) : false
                             onClicked: _rcRateFact.rawValue = 0
                         }
 
                         QGCRadioButton {
                             text: qsTr("Rate Control")
-                            checked: _rcRateFact.rawValue > 0
+                            checked: _rcRateFact ? _rcRateFact.rawValue > 0 : false
                             onClicked: _rcRateFact.rawValue = 90
                         }
 
@@ -267,13 +333,13 @@ ColumnLayout {
 
             SettingsGroupLayout {
                 heading: qsTr("Servo Controlled Gimbal")
-                visible: gimbalParams.typeFact.rawValue === 1
+                visible: gimbalParams.typeFact ? gimbalParams.typeFact.rawValue === 1 : gimbalParams.legacyParameters
 
                 Repeater {
                     model: [
-                        { axisLabel: qsTr("Pitch"), functionValue: 7, stabilizeFact: gimbalParams.pitchLeadFact },
-                        { axisLabel: qsTr("Yaw"), functionValue: 6, stabilizeFact: null },
-                        { axisLabel: qsTr("Roll"), functionValue: 8, stabilizeFact: gimbalParams.rollLeadFact }
+                        { axisLabel: qsTr("Pitch"), functionValue: 7, stabilizeFact: gimbalParams.pitchLeadFact, legacyStabilizeFact: gimbalParams.pitchStabilizeFact },
+                        { axisLabel: qsTr("Yaw"), functionValue: 6, stabilizeFact: null, legacyStabilizeFact: gimbalParams.yawStabilizeFact },
+                        { axisLabel: qsTr("Roll"), functionValue: 8, stabilizeFact: gimbalParams.rollLeadFact, legacyStabilizeFact: gimbalParams.rollStabilizeFact }
                     ]
 
                     ColumnLayout {
@@ -294,7 +360,15 @@ ColumnLayout {
 
                             FactCheckBox {
                                 text: qsTr("Servo Reversed")
-                                fact: _controller.getParameterFact(-1, servoPrefix + "REVERSED")
+                                fact: _servoFact(validServoChannel, "REVERSED")
+                                visible: fact !== null
+                                enabled: servoChannelValid
+                            }
+
+                            FactCheckBox {
+                                text: qsTr("Stabilize")
+                                fact: modelData.legacyStabilizeFact
+                                visible: fact !== null
                                 enabled: servoChannelValid
                             }
                         }
@@ -306,6 +380,7 @@ ColumnLayout {
                             LabelledComboBox {
                                 Layout.fillWidth: hasStabilizeParam
                                 id: outputChannelCombo
+                                objectName: "gimbalOutputChannel_" + modelData.functionValue
                                 label: qsTr("Output Channel")
                                 comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 30
                                 model: _servoChannelModel()
@@ -313,9 +388,8 @@ ColumnLayout {
                                 Component.onCompleted: {
                                     let maxServoChannel = _servoChannelCount()
                                     for (let servoIndex = 1; servoIndex <= maxServoChannel; servoIndex++) {
-                                        let parameterName = "SERVO" + servoIndex + "_FUNCTION"
-                                        let functionFact = _controller.getParameterFact(-1, parameterName)
-                                        if (functionFact.value == modelData.functionValue) {
+                                        let functionFact = _servoFact(servoIndex, "FUNCTION")
+                                        if (functionFact && functionFact.value == modelData.functionValue) {
                                             currentIndex = servoIndex
                                             return
                                         }
@@ -323,23 +397,22 @@ ColumnLayout {
                                     currentIndex = 0
                                 }
 
-                                onActivated: {
-                                    if (currentIndex == 0) {
-                                        // Disabled selected
-                                        let maxServoChannel = _servoChannelCount()
-                                        for (let servoIndex = 1; servoIndex <= maxServoChannel; servoIndex++) {
-                                            let parameterName = "SERVO" + servoIndex + "_FUNCTION"
-                                            let functionFact = _controller.getParameterFact(-1, parameterName)
-                                            if (functionFact.value == modelData.functionValue) {
-                                                functionFact.rawValue = 0
-                                                return
-                                            }
-                                        }
+                                onActivated: (index) => {
+                                    const selectedFact = index > 0 ? _servoFact(index, "FUNCTION") : null
+                                    if (index > 0 && !selectedFact) {
                                         return
                                     }
-                                    let servoIndex = currentIndex
-                                    let parameterName = "SERVO" + servoIndex + "_FUNCTION"
-                                    _controller.getParameterFact(-1, parameterName).rawValue = modelData.functionValue
+                                    // Keep this axis assigned to one output, including when disabling stale duplicates.
+                                    const maxServoChannel = _servoChannelCount()
+                                    for (let servoIndex = 1; servoIndex <= maxServoChannel; servoIndex++) {
+                                        const functionFact = _servoFact(servoIndex, "FUNCTION")
+                                        if (servoIndex !== index && functionFact && functionFact.value == modelData.functionValue) {
+                                            functionFact.rawValue = 0
+                                        }
+                                    }
+                                    if (selectedFact && selectedFact.value != modelData.functionValue) {
+                                        selectedFact.rawValue = modelData.functionValue
+                                    }
                                 }
                             }
 
@@ -361,13 +434,15 @@ ColumnLayout {
                             LabelledFactTextField {
                                 Layout.fillWidth: true
                                 label: qsTr("Min PWM")
-                                fact: _controller.getParameterFact(-1, servoPrefix + "MIN")
+                                fact: _servoFact(validServoChannel, "MIN")
+                                visible: fact !== null
                             }
 
                             LabelledFactTextField {
                                 Layout.fillWidth: true
                                 label: qsTr("Max PWM")
-                                fact: _controller.getParameterFact(-1, servoPrefix + "MAX")
+                                fact: _servoFact(validServoChannel, "MAX")
+                                visible: fact !== null
                             }
                         }
                     }
@@ -381,7 +456,7 @@ ColumnLayout {
 
         QGCLabel {
             text: qsTr("Gimbal settings will be available after rebooting the vehicle.")
-            visible: gimbalParams.typeFact.rawValue !== 0
+            visible: gimbalParams.typeFact !== null && gimbalParams.typeFact.rawValue !== 0
         }
     }
 }

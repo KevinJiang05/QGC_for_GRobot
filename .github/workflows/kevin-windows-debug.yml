@@ -1,0 +1,105 @@
+name: Kevin Windows Debug
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install GStreamer
+        uses: ./.github/actions/install-dependencies
+        with:
+          gstreamer: 'true'
+          gstreamer-version: '1.28.4'
+
+      - name: Build setup
+        id: setup
+        uses: ./.github/actions/build-setup
+        with:
+          qt-host: windows
+          qt-arch: win64_msvc2022_64
+          qt-version: '6.11.1'
+          build-type: Debug
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Configure Kevin Debug
+        uses: ./.github/actions/cmake-configure
+        with:
+          build-dir: ${{ runner.temp }}/kevin-debug
+          build-type: Debug
+          testing: 'true'
+          extra-args: >-
+            -DQGC_DEBUG_CANDIDATE=ON
+            -DQGC_BUILD_INSTALLER=OFF
+            -DQGC_ENABLE_GST_VIDEOSTREAMING=ON
+
+      - name: Resolve GStreamer runtime
+        shell: pwsh
+        env:
+          BUILD_DIR: ${{ runner.temp }}/kevin-debug
+        run: |
+          $gst = python .github/scripts/cmake_helper.py cache-var --build-dir $env:BUILD_DIR --name GStreamer_ROOT_DIR --required
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$gst/bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$gst/lib/libproxy" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "GST_PLUGIN_PATH_1_0=$gst/lib/gstreamer-1.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "GST_PLUGIN_SYSTEM_PATH_1_0=$gst/lib/gstreamer-1.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "GST_PLUGIN_SCANNER_1_0=$gst/libexec/gstreamer-1.0/gst-plugin-scanner.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build
+        uses: ./.github/actions/cmake-build
+        with:
+          build-dir: ${{ runner.temp }}/kevin-debug
+          build-type: Debug
+          parallel-jobs: '4'
+
+      - name: Validate custom functions and settings
+        shell: pwsh
+        env:
+          BUILD_DIR: ${{ runner.temp }}/kevin-debug
+          QT_PLUGIN_PATH: ${{ steps.setup.outputs.qt_root_dir }}/plugins
+          QML_IMPORT_PATH: ${{ steps.setup.outputs.qt_root_dir }}/qml
+          PYTHONIOENCODING: utf-8
+        run: |
+          $names = @(
+            'AIDetectionReceiverTest', 'DeepSharkAuvControllerTest', 'DeepSharkConnectionMonitorTest',
+            'DeepSharkVideoControllerTest', 'ThrusterDirectControlControllerTest', 'APMGimbalCompatibilityTest',
+            'AppSettingsTest', 'JoystickTest', 'JoystickManagerTest', 'QGCCameraManagerTest', 'VehicleLinkManagerTest'
+          )
+          $tests = '^(' + ($names -join '|') + ')$'
+          ctest --test-dir $env:BUILD_DIR -C Debug --output-on-failure --parallel 1 --timeout 90 --output-junit "$env:BUILD_DIR/kevin-debug-junit.xml" -R $tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .venv/Scripts/python.exe -B -m unittest discover -s tools/ai_detection/tests -v
+          exit $LASTEXITCODE
+
+      - name: Upload validation evidence
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kevin-debug-validation
+          path: |
+            ${{ runner.temp }}/kevin-debug/kevin-debug-junit.xml
+            ${{ runner.temp }}/kevin-debug/qtest-results-*.xml
+            ${{ runner.temp }}/kevin-debug/Testing/Temporary/LastTest.log
+          if-no-files-found: warn

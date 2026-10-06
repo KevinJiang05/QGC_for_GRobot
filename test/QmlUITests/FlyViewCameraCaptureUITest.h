@@ -9,5 +9,7 @@ class FlyViewCameraCaptureUITest : public QmlUITestBase
     Q_OBJECT
 
 private slots:
+    void _testCaptureLayout_data();
+    void _testCaptureLayout();
     void _testTimelapseShutterStopsCapture();
 };

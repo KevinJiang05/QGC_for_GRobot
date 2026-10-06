@@ -12,7 +12,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$buildDirectory = Join-Path $projectRoot 'build-release'
+$buildDirectory = Join-Path $projectRoot 'build-v5.1.5-release'
+$qtRoot = 'D:\Develop\envs\Qt\6.11.1\msvc2022_64'
+$gstreamerRoot = 'D:\Develop\envs\GStreamer\1.28.4\msvc_x86_64'
+$pythonExecutable = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $distributionDirectory = Join-Path $projectRoot ("dist\QGC_KevinJiang_v{0}" -f $Version)
 $installerName = "QGC_v{0}_KevinJiang-installer.exe" -f $Version
 $installerPath = Join-Path $distributionDirectory $installerName
@@ -230,6 +233,17 @@ function Set-ReleaseVersion {
     Write-Host "Version sources updated to $Version"
 }
 
+function Get-NormalizedProductVersion {
+    param([Parameter(Mandatory = $true)][string]$ProductVersion)
+    if ($ProductVersion -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+        throw "Unexpected product version format: $ProductVersion"
+    }
+    if (($ProductVersion -split '\.').Count -eq 3) {
+        return "$ProductVersion.0"
+    }
+    return $ProductVersion
+}
+
 function Write-FinalReport {
     $stepRows = foreach ($step in $script:Steps) {
         "| {0} | {1} | {2} | {3} |" -f $step.number, $step.name, $step.status, $step.durationSeconds
@@ -282,11 +296,13 @@ try {
             'CMakeLists.txt',
             'custom\cmake\CustomOverrides.cmake',
             'custom\GRobot.rc',
-            'src\UI\AppSettings\HelpSettings.qml',
+            'src\AppSettings\HelpSettings.qml',
             'deploy\windows\nullsoft_installer.nsi',
-            'deploy\windows\driver.msi',
             'deploy\windows\installheader.bmp',
-            'branding\GRobot_icons\GRobot_taskbar.ico'
+            'branding\GRobot_icons\GRobot_taskbar.ico',
+            'tools\ai_detection\run_yolo_to_qgc_auto.py',
+            'tools\ai_detection\ai_detection_core.py',
+            'tools\ai_detection\yolo_to_qgc_udp.py'
         )
         foreach ($relativePath in $requiredFiles) {
             $path = Join-Path $projectRoot $relativePath
@@ -296,7 +312,7 @@ try {
             Write-Host "OK: $path"
         }
 
-        $helpContent = Get-Content -LiteralPath (Join-Path $projectRoot 'src\UI\AppSettings\HelpSettings.qml') -Raw
+        $helpContent = Get-Content -LiteralPath (Join-Path $projectRoot 'src\AppSettings\HelpSettings.qml') -Raw
         if ($helpContent -notmatch '\.arg\(QGroundControl\.qgcVersion\)') {
             throw 'Help page must display the runtime QGroundControl.qgcVersion instead of a fixed release number.'
         }
@@ -308,10 +324,20 @@ try {
         if ($null -eq (Get-Command cmake -ErrorAction SilentlyContinue)) {
             throw 'cmake is not available on PATH.'
         }
+        foreach ($dependency in @((Join-Path $qtRoot 'lib\cmake\Qt6\Qt6Config.cmake'),
+                                  (Join-Path $gstreamerRoot 'bin\gst-inspect-1.0.exe'),
+                                  $pythonExecutable)) {
+            if (-not (Test-Path -LiteralPath $dependency -PathType Leaf)) {
+                throw "Required v5.1.5 build dependency is missing: $dependency"
+            }
+            Write-Host "Dependency OK: $dependency"
+        }
 
         $nsisCandidates = @(
             (Join-Path $buildDirectory 'nsis-portable\nsis-3.11\Bin\makensis.exe'),
             (Join-Path $buildDirectory 'nsis-portable\nsis-3.11\makensis.exe'),
+            (Join-Path $projectRoot 'build-release\nsis-portable\nsis-3.11\Bin\makensis.exe'),
+            (Join-Path $projectRoot 'build-release\nsis-portable\nsis-3.11\makensis.exe'),
             'C:\Program Files\NSIS\makensis.exe',
             'C:\Program Files (x86)\NSIS\makensis.exe'
         )
@@ -340,8 +366,16 @@ try {
     }
 
     Invoke-ReleaseStep -Name 'Configure Release' -Action {
-        $command = 'cmake -S "{0}" -B "{1}"' -f $projectRoot, $buildDirectory
-        Invoke-VsCommand -Command $command
+        $previousPath = $env:PATH
+        try {
+            $env:PATH = "{0};{1};{2};{3}" -f (Join-Path $qtRoot 'bin'), (Join-Path $gstreamerRoot 'bin'),
+                                               (Split-Path -Parent $pythonExecutable), $previousPath
+            $command = 'cmake -S "{0}" -B "{1}" -G Ninja -DCMAKE_BUILD_TYPE=Release -DQGC_DEBUG_CANDIDATE=OFF -DQGC_BUILD_TESTING=OFF -DQGC_BUILD_INSTALLER=ON -DQGC_USE_CACHE=OFF -DCPM_SOURCE_CACHE=D:/Develop/envs/qgc-cpm-cache "-DCMAKE_PREFIX_PATH={2}" "-DGStreamer_ROOT_DIR={3}" "-DPython3_EXECUTABLE={4}" "-DPython_EXECUTABLE={4}" "-DCMAKE_C_FLAGS=/DWIN32 /D_WINDOWS /nologo" "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /nologo"' -f $projectRoot, $buildDirectory, $qtRoot, $gstreamerRoot, $pythonExecutable
+            Invoke-VsCommand -Command $command
+        }
+        finally {
+            $env:PATH = $previousPath
+        }
     }
 
     Invoke-ReleaseStep -Name 'Build Release' -Action {
@@ -360,7 +394,12 @@ try {
             $env:PATH = $previousPath
         }
 
-        $generatedInstaller = Join-Path $buildDirectory 'QGC_KevinJiang-installer.exe'
+        $installScript = Get-Content -LiteralPath (Join-Path $buildDirectory 'cmake_install.cmake') -Raw
+        $installerMatches = [regex]::Matches($installScript, 'set\(QGC_WINDOWS_OUT "([^"\r\n]+)"\)')
+        if ($installerMatches.Count -ne 1) {
+            throw 'Expected one architecture-specific QGC_WINDOWS_OUT in the generated install script.'
+        }
+        $generatedInstaller = $installerMatches[0].Groups[1].Value
         if (-not (Test-Path -LiteralPath $generatedInstaller)) {
             throw "Expected installer was not generated: $generatedInstaller"
         }
@@ -377,7 +416,10 @@ try {
             'bin\Qt6Qml.dll',
             'bin\Qt6Quick.dll',
             'bin\gstgl-1.0-0.dll',
-            'bin\gstreamer-1.0-0.dll'
+            'bin\gstreamer-1.0-0.dll',
+            'bin\ai_detection\run_yolo_to_qgc_auto.py',
+            'bin\ai_detection\ai_detection_core.py',
+            'bin\ai_detection\yolo_to_qgc_udp.py'
         )
         foreach ($relativePath in $requiredRuntimeFiles) {
             $path = Join-Path $stagingDirectory $relativePath
@@ -404,10 +446,10 @@ try {
 
         Invoke-StagedBootTest -ApplicationPath $applicationPath
 
-        if ($installer.VersionInfo.ProductVersion -ne $Version) {
+        if ((Get-NormalizedProductVersion $installer.VersionInfo.ProductVersion) -ne "$Version.0") {
             throw "Installer product version mismatch: $($installer.VersionInfo.ProductVersion)"
         }
-        if ($application.VersionInfo.ProductVersion -ne $Version) {
+        if ((Get-NormalizedProductVersion $application.VersionInfo.ProductVersion) -ne "$Version.0") {
             throw "Application product version mismatch: $($application.VersionInfo.ProductVersion)"
         }
 
@@ -417,6 +459,9 @@ try {
         }
         if ($nsisScript -notmatch 'ExecWait "\$R0 /S -LEAVE_DATA=1') {
             throw 'In-place upgrade and user-data preservation contract is missing.'
+        }
+        if ($nsisScript -notmatch '(?m)ExecWait "\$R0 /S -LEAVE_DATA=1[^"\r\n]*" \$0') {
+            throw 'Previous uninstaller return-code capture is missing.'
         }
 
         $script:Artifact = [ordered]@{

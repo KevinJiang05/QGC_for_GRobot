@@ -12,6 +12,8 @@ target_sources(
             DeepSharkUILayoutTest.h
             ThrusterDirectControlControllerTest.cc
             ThrusterDirectControlControllerTest.h
+            APMGimbalCompatibilityTest.cc
+            APMGimbalCompatibilityTest.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -25,6 +27,8 @@ add_qgc_test(DeepSharkConnectionMonitorTest LABELS Unit DeepShark)
 add_qgc_test(DeepSharkVideoControllerTest LABELS Unit DeepShark ENV_MODIFICATION "QGC_TEST_ENABLE_GSTREAMER=set:1")
 
 add_qgc_test(ThrusterDirectControlControllerTest LABELS Unit DeepShark)
+
+add_qgc_test(APMGimbalCompatibilityTest LABELS Unit DeepShark)
 
 add_qgc_test(
     DeepSharkUILayoutTest

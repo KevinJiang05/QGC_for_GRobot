@@ -1,5 +1,8 @@
 #include "FlyViewCameraCaptureUITest.h"
 
+#include <QtCore/QDir>
+#include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
 #include <QtTest/QTest>
 
 #include "MavlinkCameraControlInterface.h"
@@ -8,6 +11,77 @@
 #include "Vehicle.h"
 
 UT_REGISTER_TEST(FlyViewCameraCaptureUITest, TestLabel::Integration)
+
+void FlyViewCameraCaptureUITest::_testCaptureLayout_data()
+{
+    QTest::addColumn<bool>("photoMode");
+    QTest::newRow("photo") << true;
+    QTest::newRow("video") << false;
+}
+
+void FlyViewCameraCaptureUITest::_testCaptureLayout()
+{
+    QFETCH(bool, photoMode);
+    runWithMockLink(
+        [] { return MockLink::startPX4MockLink(MockConfiguration::OptionEnableCamera); },
+        [this, photoMode](QPointer<MockLink>, Vehicle* vehicle) {
+            auto* const manager = vehicle->cameraManager();
+            QVERIFY(manager);
+            MavlinkCameraControlInterface* camera = nullptr;
+            const auto findCamera = [&]() {
+                for (int i = 0; i < manager->cameras()->count(); ++i) {
+                    auto* candidate = qobject_cast<MavlinkCameraControlInterface*>(manager->cameras()->get(i));
+                    if (candidate && candidate->compID() == MAV_COMP_ID_CAMERA) {
+                        camera = candidate;
+                        return true;
+                    }
+                }
+                return false;
+            };
+            QVERIFY_TRUE_WAIT(findCamera(), TestTimeout::longMs());
+            manager->setCurrentCamera(manager->cameras()->indexOf(camera));
+            if (photoMode) {
+                camera->setCameraModePhoto();
+            } else {
+                camera->setCameraModeVideo();
+            }
+            const auto mode = photoMode ? MavlinkCameraControlInterface::CAM_MODE_PHOTO
+                                        : MavlinkCameraControlInterface::CAM_MODE_VIDEO;
+            QVERIFY_TRUE_WAIT(camera->cameraMode() == mode, TestTimeout::mediumMs());
+            auto* const capture =
+                findVisibleItem(_rootItem, photoMode ? QStringLiteral("photoVideoControl_photoCaptureButton")
+                                                     : QStringLiteral("photoVideoControl_videoCaptureButton"));
+            auto* const counter =
+                findVisibleItem(_rootItem, photoMode ? QStringLiteral("photoVideoControl_captureCount")
+                                                     : QStringLiteral("photoVideoControl_recordTime"));
+            auto* const settings = findVisibleItem(_rootItem, QStringLiteral("photoVideoControl_settingsButton"));
+            QVERIFY(capture);
+            QVERIFY(counter);
+            QVERIFY(settings);
+            const auto bounds = [](QQuickItem* item) {
+                return QRectF(item->mapToScene(QPointF()), QSizeF(item->width(), item->height()));
+            };
+            const auto layoutDescription = [&]() {
+                return QStringLiteral("Capture/counter/settings centre Y: %1/%2/%3; same row: %4/%5")
+                    .arg(bounds(capture).center().y())
+                    .arg(bounds(counter).center().y())
+                    .arg(bounds(settings).center().y())
+                    .arg(capture->parentItem() == counter->parentItem())
+                    .arg(capture->parentItem() == settings->parentItem());
+            };
+            if (qApp->platformName() != QLatin1String("offscreen")) {
+                QVERIFY(_window->grabWindow().save(QDir::current().filePath(
+                    photoMode ? QStringLiteral("photo-layout.png") : QStringLiteral("video-layout.png"))));
+            }
+            QTRY_VERIFY2_WITH_TIMEOUT(qAbs(bounds(capture).center().y() - bounds(counter).center().y()) < 1.0,
+                                      qPrintable(layoutDescription()), 3000);
+            QTRY_VERIFY_WITH_TIMEOUT(qAbs(bounds(capture).center().y() - bounds(settings).center().y()) < 1.0, 3000);
+            QVERIFY(bounds(capture).right() <= bounds(counter).left());
+            QVERIFY(bounds(counter).right() <= bounds(settings).left());
+            QVERIFY(clickItemFraction(QStringLiteral("photoVideoControl_settingsButton"), 0.5, 0.5));
+            QVERIFY(waitForDialog(QCoreApplication::translate("PhotoVideoControl", "Settings")));
+        });
+}
 
 void FlyViewCameraCaptureUITest::_testTimelapseShutterStopsCapture()
 {

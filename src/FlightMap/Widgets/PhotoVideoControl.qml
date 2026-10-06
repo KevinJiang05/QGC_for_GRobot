@@ -137,14 +137,16 @@ Rectangle {
                 }
             }
 
-            ColumnLayout {
+            RowLayout {
+                id: captureControls
                 Layout.alignment: Qt.AlignHCenter
-                spacing: _smallMargins
+                spacing: _margins
 
                 // Start/Stop Video button
                 Rectangle {
                     id: videoCaptureButton
-                    Layout.alignment: Qt.AlignHCenter
+                    objectName: "photoVideoControl_videoCaptureButton"
+                    Layout.alignment: Qt.AlignVCenter
                     color: videoCaptureButtonPalette.button
                     width: ScreenTools.defaultFontPixelWidth * 6
                     height: width
@@ -185,7 +187,7 @@ Rectangle {
                 }
 
                 QGCLabel {
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Video")
                     font.pointSize: ScreenTools.smallFontPointSize
                     visible: videoCaptureButton.visible && photoCaptureButton.visible
@@ -193,7 +195,8 @@ Rectangle {
 
                 // Record time
                 Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
+                    objectName: "photoVideoControl_recordTime"
+                    Layout.alignment: Qt.AlignVCenter
                     color: _videoCaptureIdle ? "transparent" : videoCaptureButtonPalette.videoCaptureButtonColor
                     Layout.preferredWidth: videoRecordTime.width + (_smallMargins * 2)
                     Layout.preferredHeight: videoRecordTime.height
@@ -211,7 +214,7 @@ Rectangle {
                 }
 
                 Item {
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.alignment: Qt.AlignVCenter
                     width: 1
                     height: 1
                     visible: videoCaptureButton.visible && photoCaptureButton.visible
@@ -221,7 +224,7 @@ Rectangle {
                 Rectangle {
                     id: photoCaptureButton
                     objectName: "photoVideoControl_photoCaptureButton"
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.alignment: Qt.AlignVCenter
                     color: photoCaptureButtonPalette.button
                     width: ScreenTools.defaultFontPixelWidth * 6
                     height: width
@@ -269,7 +272,7 @@ Rectangle {
                 }
 
                 QGCLabel {
-                    Layout.alignment: Qt.AlignHCenter
+                    Layout.alignment: Qt.AlignVCenter
                     text: qsTr("Photo")
                     font.pointSize: ScreenTools.smallFontPointSize
                     visible: videoCaptureButton.visible && photoCaptureButton.visible
@@ -277,7 +280,8 @@ Rectangle {
 
                 // Capture count
                 Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
+                    objectName: "photoVideoControl_captureCount"
+                    Layout.alignment: Qt.AlignVCenter
                     color: _photoCaptureIdle ? "transparent" : photoCaptureButtonPalette.photoCaptureButtonColor
                     Layout.preferredWidth: photoCaptureCount.width + (_smallMargins * 2)
                     Layout.preferredHeight: photoCaptureCount.height
@@ -291,6 +295,23 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.top: parent.top
                         text: _activeVehicle ? ('00000' + _activeVehicle.cameraTriggerPoints.count).slice(-5) : "00000"
+                    }
+                }
+
+                QGCColoredImage {
+                    objectName: "photoVideoControl_settingsButton"
+                    Layout.alignment: Qt.AlignVCenter
+                    source: "/res/gear-black.svg"
+                    mipmap: true
+                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                    Layout.preferredWidth: Layout.preferredHeight
+                    sourceSize.height: Layout.preferredHeight
+                    color: qgcPal.text
+                    fillMode: Image.PreserveAspectFit
+
+                    QGCMouseArea {
+                        fillItem: parent
+                        onClicked: settingsDialogFactory.open()
                     }
                 }
             }
@@ -360,21 +381,6 @@ Rectangle {
                 }
             }
 
-            QGCColoredImage {
-                Layout.alignment: Qt.AlignHCenter
-                source: "/res/gear-black.svg"
-                mipmap: true
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
-                Layout.preferredWidth: Layout.preferredHeight
-                sourceSize.height: Layout.preferredHeight
-                color: qgcPal.text
-                fillMode: Image.PreserveAspectFit
-
-                QGCMouseArea {
-                    fillItem: parent
-                    onClicked: settingsDialogFactory.open()
-                }
-            }
         }
 
         QGCPopupDialogFactory {
@@ -590,7 +596,7 @@ Rectangle {
                             displayValue: true
                             live: true
                             visible: _camera.capturesPhotos && _camera.photoCaptureMode === MavlinkCameraControlInterface.PHOTO_CAPTURE_TIMELAPSE
-                            onValueChanged: _camera.photoLapse = value
+                            onMoved: _camera.photoLapse = value
                         }
 
                         QGCCheckBoxSlider {

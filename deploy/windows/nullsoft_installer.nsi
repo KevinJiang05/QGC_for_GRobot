@@ -39,6 +39,15 @@ RequestExecutionLevel admin
 !macroend
 
 Name "${APPNAME}"
+!ifdef APPVERSION
+    VIProductVersion "${APPVERSION}.0"
+    VIAddVersionKey "ProductName" "${APPNAME}"
+    VIAddVersionKey "ProductVersion" "${APPVERSION}"
+    VIAddVersionKey "CompanyName" "${ORGNAME}"
+    VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${ORGNAME}. Based on QGroundControl."
+    VIAddVersionKey "FileDescription" "${APPNAME} Windows Installer"
+    VIAddVersionKey "FileVersion" "${APPVERSION}"
+!endif
 Var StartMenuFolder
 
 InstallDir "$PROGRAMFILES64\${APPNAME}"
@@ -85,7 +94,7 @@ cleanupOrphanedRegistry:
 doUninstall:
     DetailPrint "Uninstalling previous version..."
     ClearErrors
-    ExecWait "$R0 /S -LEAVE_DATA=1 _?=$INSTDIR"
+    ExecWait "$R0 /S -LEAVE_DATA=1 _?=$INSTDIR" $0
     ${If} ${Errors}
         MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to start previous uninstaller."
         Abort
@@ -132,6 +141,7 @@ Section "Uninstall"
 
     ; Remove files and shortcuts
     SetShellVarContext all
+    Delete "$DESKTOP\${APPNAME}.lnk"
     RMDir /r /REBOOTOK "$INSTDIR"
     RMDir /r /REBOOTOK "$SMPROGRAMS\$StartMenuFolder\"
     SetShellVarContext current
@@ -148,6 +158,7 @@ SectionEnd
 Section "Create Start Menu Shortcuts"
     SetRegView 64
     SetShellVarContext all
+    CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\bin\${EXENAME}.exe" "" "$INSTDIR\bin\${EXENAME}.exe" 0
     CreateDirectory "$SMPROGRAMS\$StartMenuFolder"
 
     !insertmacro MUI_STARTMENU_WRITE_BEGIN Application

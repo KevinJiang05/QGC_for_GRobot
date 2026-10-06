@@ -15,6 +15,11 @@ Item {
     /// True if gimbal parameters are available, False indicates MNT#_TYPE disabled, or reboot required to get params
     property bool paramsAvailable: false
 
+    readonly property bool legacyParameters: instance === 1 && !controller.parameterExists(-1, "MNT1_TYPE") &&
+                                            (controller.parameterExists(-1, "MNT_TYPE") ||
+                                             controller.parameterExists(-1, "MNT_RC_IN_TILT") ||
+                                             controller.parameterExists(-1, "MNT_DEFLT_MODE"))
+
     property Fact typeFact: controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "TYPE", false)
     property Fact defaultModeFact: controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "DEFLT_MODE", false)
 
@@ -34,9 +39,20 @@ Item {
     property Fact rcRateFact: null
     property Fact pitchLeadFact: null
     property Fact rollLeadFact: null
+    property Fact pitchInputFact: null
+    property Fact rollInputFact: null
+    property Fact yawInputFact: null
+    property Fact pitchStabilizeFact: null
+    property Fact rollStabilizeFact: null
+    property Fact yawStabilizeFact: null
+    property Fact joystickSpeedFact: null
 
-    property int _instanceCount: _instancedParamCount("MNT#_TYPE")
-    property string _prefixTemplate: "MNT#_"
+    property int _instanceCount: _instancedParamCount("MNT#_TYPE") || (legacyParameters ? 1 : 0)
+    property string _prefixTemplate: legacyParameters ? "MNT_" : "MNT#_"
+
+    function _optionalFact(suffix) {
+        return controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + suffix, false)
+    }
 
     function _instancedParamCount(paramNameTemplate) {
         let instanceIndex = 1
@@ -47,25 +63,35 @@ Item {
     }
 
     Component.onCompleted: {
-        if (defaultModeFact === null) {
+        if (defaultModeFact === null && !legacyParameters) {
             paramsAvailable = false
         } else {
-            optionsFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "OPTIONS")
-            neutralXFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "NEUTRAL_X")
-            neutralYFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "NEUTRAL_Y")
-            neutralZFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "NEUTRAL_Z")
-            retractXFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "RETRACT_X")
-            retractYFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "RETRACT_Y")
-            retractZFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "RETRACT_Z")
-            pitchMinFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "PITCH_MIN")
-            pitchMaxFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "PITCH_MAX")
-            rollMinFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "ROLL_MIN")
-            rollMaxFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "ROLL_MAX")
-            yawMinFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "YAW_MIN")
-            yawMaxFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "YAW_MAX")
-            rcRateFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "RC_RATE")
-            pitchLeadFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "LEAD_PTCH")
-            rollLeadFact = controller.getParameterFact(-1, _prefixTemplate.replace("#", instance) + "LEAD_RLL")
+            optionsFact = _optionalFact("OPTIONS")
+            neutralXFact = _optionalFact("NEUTRAL_X")
+            neutralYFact = _optionalFact("NEUTRAL_Y")
+            neutralZFact = _optionalFact("NEUTRAL_Z")
+            retractXFact = _optionalFact("RETRACT_X")
+            retractYFact = _optionalFact("RETRACT_Y")
+            retractZFact = _optionalFact("RETRACT_Z")
+            // Keep the original Facts and their metadata/unit conversion for old angle parameters.
+            pitchMinFact = _optionalFact(legacyParameters ? "ANGMIN_TIL" : "PITCH_MIN")
+            pitchMaxFact = _optionalFact(legacyParameters ? "ANGMAX_TIL" : "PITCH_MAX")
+            rollMinFact = _optionalFact(legacyParameters ? "ANGMIN_ROL" : "ROLL_MIN")
+            rollMaxFact = _optionalFact(legacyParameters ? "ANGMAX_ROL" : "ROLL_MAX")
+            yawMinFact = _optionalFact(legacyParameters ? "ANGMIN_PAN" : "YAW_MIN")
+            yawMaxFact = _optionalFact(legacyParameters ? "ANGMAX_PAN" : "YAW_MAX")
+            rcRateFact = legacyParameters ? null : _optionalFact("RC_RATE")
+            pitchLeadFact = _optionalFact("LEAD_PTCH")
+            rollLeadFact = _optionalFact("LEAD_RLL")
+            if (legacyParameters) {
+                pitchInputFact = _optionalFact("RC_IN_TILT")
+                rollInputFact = _optionalFact("RC_IN_ROLL")
+                yawInputFact = _optionalFact("RC_IN_PAN")
+                pitchStabilizeFact = _optionalFact("STAB_TILT")
+                rollStabilizeFact = _optionalFact("STAB_ROLL")
+                yawStabilizeFact = _optionalFact("STAB_PAN")
+                joystickSpeedFact = _optionalFact("JSTICK_SPD")
+            }
             paramsAvailable = true
         }
     }

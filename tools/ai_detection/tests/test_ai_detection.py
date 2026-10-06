@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import socket
 import sys
+import tempfile
 import unittest
 from pathlib import Path
-
+from unittest.mock import patch
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-from ai_detection_core import clean_source, collect_due_frames, source_description
-from run_yolo_to_qgc_auto import _open_instance_lock, _read_sources
+from ai_detection_core import clean_source, collect_due_frames, source_description  # noqa: E402
+from run_yolo_to_qgc_auto import _open_instance_lock, _read_sources  # noqa: E402
 
 
 class _FakeReader:
@@ -80,6 +80,39 @@ class AIDetectionCoreTest(unittest.TestCase):
         with self.assertRaises(OSError):
             second = _open_instance_lock(port)
             second.close()
+
+    def test_auto_sources_prefer_debug_settings(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict("os.environ", {"APPDATA": directory}),
+        ):
+            root = Path(directory) / "KevinJiang"
+            root.mkdir()
+            (root / "QGC_KevinJiang Daily.ini").write_text(
+                "[DeepShark]\nVideo\\Camera1Url=rtsp://old.test/live\n", encoding="utf-8"
+            )
+            debug = root / "QGC_KevinJiang_v5_1_5_Debug Daily.ini"
+            debug.write_text(
+                "[DeepShark]\nVideo\\Camera1Url=rtsp://debug.test/live\n", encoding="utf-8"
+            )
+            self.assertEqual(_read_sources(None), [("deepSharkVideo1", "rtsp://debug.test/live")])
+            debug.write_text("[DeepShark]\n", encoding="utf-8")
+            self.assertEqual(_read_sources(None), [])
+
+    def test_explicit_settings_do_not_fall_back_to_another_application(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict("os.environ", {"APPDATA": directory}),
+        ):
+            root = Path(directory) / "KevinJiang"
+            root.mkdir()
+            (root / "QGC_KevinJiang Daily.ini").write_text(
+                "[DeepShark]\nVideo\\Camera1Url=rtsp://old.test/live\n", encoding="utf-8"
+            )
+            explicit = Path(directory) / "selected.ini"
+            self.assertEqual(_read_sources(str(explicit)), [])
+            explicit.write_text("[DeepShark]\n", encoding="utf-8")
+            self.assertEqual(_read_sources(str(explicit)), [])
 
 
 if __name__ == "__main__":

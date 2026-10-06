@@ -23,11 +23,11 @@ foreach ($p in $all) {
     $exe = [string]$p.ExecutablePath
 
     $matches =
-        $name -eq 'QGC_KevinJiang.exe' -or
+        ($name -in @('QGC_KevinJiang.exe', 'QGC_KevinJiang_v5_1_5_Debug.exe')) -or
         ($name -eq 'mediamtx.exe' -and ($cmd -like '*mediamtx-deepshark.yml*' -or $exe -like '*QGC_for_GRobot*tools*rtsp*')) -or
         ($name -eq 'ffmpeg.exe' -and $cmd -like '*rtsp://127.0.0.1:8554/deepshark*') -or
         ($name -eq 'python.exe' -and ($cmd -like '*deep_shark_studio.qgc.runtime_service*' -or $cmd -like '*DeepSharkViewStudio*app.py*' -or $exe -like '*deep-shark-view-studio*')) -or
-        ($name -eq 'cmd.exe' -and ($cmd -like '*StartDeepSharkQGC.cmd*' -or $cmd -like '*StartDeepSharkRTSP.cmd*' -or $cmd -like '*StartDeepSharkViewStudio.cmd*' -or $cmd -like '*mediamtx-deepshark.yml*' -or $cmd -like '*QGC_KevinJiang.exe*'))
+        ($name -eq 'cmd.exe' -and ($cmd -like '*StartDeepSharkQGC.cmd*' -or $cmd -like '*StartDeepSharkRTSP.cmd*' -or $cmd -like '*StartDeepSharkViewStudio.cmd*' -or $cmd -like '*mediamtx-deepshark.yml*' -or $cmd -like '*QGC_KevinJiang.exe*' -or $cmd -like '*QGC_KevinJiang_v5_1_5_Debug.exe*'))
 
     if ($matches) {
         [void]$rootIds.Add([int]$p.ProcessId)

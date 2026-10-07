@@ -39,6 +39,8 @@ private slots:
     void _testD3D12MemoryDispatch();
     void _testD3D11MapTexturesWithQRhi();
     void _testD3D11MapNv12TexturesWithQRhi();
+    void _testD3D11PaddedFrameViewport_data();
+    void _testD3D11PaddedFrameViewport();
     void _testD3D12MapTexturesWithQRhi();
     void _testD3D12MapNv12TexturesWithQRhi();
     void _testDmaBufDispatch();

@@ -2,10 +2,7 @@
 
 #if defined(Q_OS_WIN) && defined(QGC_HAS_GST_D3D11_GPU_PATH)
 
-#include <QtCore/QMutex>
 #include <algorithm>
-#include <array>
-#include <cstddef>
 #include <d3d11.h>
 #include <gst/d3d11/gstd3d11.h>
 
@@ -13,7 +10,6 @@
 #include "GstD3D11ContextBridge.h"
 #include "GstD3DContextBridgeCommon.h"
 #include "GstD3DVideoBufferCommon.h"
-#include "GstHwImportCache.h"
 #include "GstHwPathTelemetry.h"
 #include "QGCLoggingCategory.h"
 
@@ -24,91 +20,13 @@ namespace {
 using GstD3DVideoBufferCommon::kMaxPlanes;
 using GstD3DVideoBufferCommon::MapDiagnostics;
 using D3D11FrameTextures = GstD3DVideoBufferCommon::FrameTextures<ID3D11Texture2D>;
-using GstD3DVideoBufferCommon::StagingKey;
-using GstD3DVideoBufferCommon::StagingKeyHash;
 
 MapDiagnostics s_diag;
 
-/// Caches a small ring of staging ID3D11Texture2D per (size, format, plane); acquire() rotates through the ring so a
-/// new frame's CopySubresourceRegion never lands on the texture a reused QRhi view may still be sampling (D3D11 has no
-/// fence against QRhi's frame boundary). Pool keeps one ref per texture; acquire() returns an extra AddRef'd ref.
-/// Bounded to cap memory under resolution churn.
-class StagingTexturePool
-{
-public:
-    static StagingTexturePool& instance()
-    {
-        static StagingTexturePool pool;
-        return pool;
-    }
-
-    ~StagingTexturePool() { clear(); }
-
-    /// Returns an AddRef'd staging texture for @p key (caller owns the ref), round-robin over the ring, creating slots
-    /// lazily. nullptr on CreateTexture2D failure.
-    ID3D11Texture2D* acquire(ID3D11Device* dev, const StagingKey& key, const D3D11_TEXTURE2D_DESC& dstDesc,
-                             int planeIdx, guint subIdx)
-    {
-        QMutexLocker lock(&_mutex);
-        StagingRing* ring = _entries.find(key);
-        if (!ring) {
-            _entries.insert(key, StagingRing{});
-            ring = _entries.find(key);
-        }
-        const std::size_t slot = ring->next;
-        ring->next = (ring->next + 1) % kRingSize;
-        if (ring->textures[slot]) {
-            GstHwPathTelemetry::recordImageCacheHit(HwVideoBufferPath::D3D11);
-            ring->textures[slot]->AddRef();
-            return ring->textures[slot];
-        }
-        ID3D11Texture2D* tex = nullptr;
-        if (FAILED(dev->CreateTexture2D(&dstDesc, nullptr, &tex))) {
-            QGC_HW_WARN_ONCE(GstD3D11Log, s_diag.loggedTextureCreateFail,
-                             "mapTextures: CreateTexture2D for slice copy failed (plane=" << planeIdx << "subresource="
-                                                                                          << subIdx << ")");
-            return nullptr;
-        }
-        tex->AddRef();
-        ring->textures[slot] = tex;  // pool keeps the create ref
-        GstHwPathTelemetry::recordImageCacheMiss(HwVideoBufferPath::D3D11);
-        return tex;
-    }
-
-    void clear()
-    {
-        QMutexLocker lock(&_mutex);
-        _entries.clear();
-    }
-
-private:
-    // Ring depth 3: the streaming thread can copy a new frame while QRhi still samples the previous one.
-    static constexpr std::size_t kRingSize = 3;
-
-    struct StagingRing
-    {
-        std::array<ID3D11Texture2D*, kRingSize> textures{};
-        std::size_t next = 0;
-    };
-
-    static constexpr std::size_t kMaxEntries = 8;
-    QMutex _mutex;
-    GstHw::GstHwImportCache<StagingKey, StagingRing, StagingKeyHash> _entries{
-        kMaxEntries,
-        [](const StagingKey&, StagingRing& ring) {
-            for (ID3D11Texture2D*& tex : ring.textures) {
-                if (tex) {
-                    tex->Release();
-                    tex = nullptr;
-                }
-            }
-        }};
-};
-
-/// Copy one subresource slice into a pooled ID3D11Texture2D for QRhi (which has no subresource selector); returns the
-/// staging texture (caller owns the ref) or nullptr. Does NOT flush — the caller flushes once after all planes.
-ID3D11Texture2D* copySliceToStaging(ID3D11Texture2D* tex, guint subIdx, int planeIdx,
-                                    const D3D11_TEXTURE2D_DESC& srcDesc, GstD3D11Memory* d3dmem)
+/// Copy the visible part of a subresource slice into a frame-owned ID3D11Texture2D for QRhi; returns the staging
+/// texture (caller owns the ref) or nullptr. Does NOT flush — the caller flushes once after all planes.
+ID3D11Texture2D* copyToStaging(ID3D11Texture2D* tex, guint subIdx, int planeIdx, const D3D11_TEXTURE2D_DESC& srcDesc,
+                               QSize planeSize, GstD3D11Memory* d3dmem)
 {
     ID3D11Device* d3dDev = gst_d3d11_device_get_device_handle(d3dmem->device);
     ID3D11DeviceContext* d3dCtx = gst_d3d11_device_get_device_context_handle(d3dmem->device);
@@ -117,14 +35,21 @@ ID3D11Texture2D* copySliceToStaging(ID3D11Texture2D* tex, guint subIdx, int plan
     dstDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     dstDesc.MiscFlags = 0;
     dstDesc.MipLevels = 1;
-    const StagingKey key{srcDesc.Width, srcDesc.Height, UINT(srcDesc.Format), planeIdx};
-    ID3D11Texture2D* stagingTex = StagingTexturePool::instance().acquire(d3dDev, key, dstDesc, planeIdx, subIdx);
-    if (!stagingTex) {
+    dstDesc.Width = static_cast<UINT>(planeSize.width());
+    dstDesc.Height = static_cast<UINT>(planeSize.height());
+    // A global size-keyed ring can overwrite a texture still displayed by another stream.
+    // Keep the copy owned by this frame until Qt releases its buffer and texture bundle.
+    ID3D11Texture2D* stagingTex = nullptr;
+    if (FAILED(d3dDev->CreateTexture2D(&dstDesc, nullptr, &stagingTex))) {
+        QGC_HW_WARN_ONCE(
+            GstD3D11Log, s_diag.loggedTextureCreateFail,
+            "resolve: CreateTexture2D for frame copy failed (plane=" << planeIdx << " subresource=" << subIdx << ")");
         return nullptr;
     }
     // The immediate ID3D11DeviceContext is not free-threaded; gst-d3d11 device-lock contract requires this guard.
     gst_d3d11_device_lock(d3dmem->device);
-    d3dCtx->CopySubresourceRegion(stagingTex, 0, 0, 0, 0, tex, subIdx, nullptr);
+    const D3D11_BOX sourceBox{0, 0, 0, dstDesc.Width, dstDesc.Height, 1};
+    d3dCtx->CopySubresourceRegion(stagingTex, 0, 0, 0, 0, tex, subIdx, &sourceBox);
     gst_d3d11_device_unlock(d3dmem->device);
     return stagingTex;
 }
@@ -133,7 +58,6 @@ ID3D11Texture2D* copySliceToStaging(ID3D11Texture2D* tex, guint subIdx, int plan
 
 void GstD3D11VideoBuffer::resetCachedState() noexcept
 {
-    StagingTexturePool::instance().clear();
     s_diag.reset();
 }
 
@@ -225,8 +149,19 @@ void GstD3D11VideoBuffer::resolvePlaneResources()
         const guint subIdx = gst_d3d11_memory_get_subresource_index(GST_D3D11_MEMORY_CAST(mem));
         D3D11_TEXTURE2D_DESC srcDesc = {};
         tex->GetDesc(&srcDesc);
-        if (subIdx > 0 || srcDesc.ArraySize > 1) {
-            ID3D11Texture2D* stagingTex = copySliceToStaging(tex, subIdx, i, srcDesc, GST_D3D11_MEMORY_CAST(mem));
+        const QSize planeSize =
+            i == 0 ? _format.frameSize()
+                   : QSize(GST_VIDEO_INFO_COMP_WIDTH(&_videoInfo, i), GST_VIDEO_INFO_COMP_HEIGHT(&_videoInfo, i));
+        if (planeSize.isEmpty() || srcDesc.Width < static_cast<UINT>(planeSize.width()) ||
+            srcDesc.Height < static_cast<UINT>(planeSize.height())) {
+            return;
+        }
+        // Hardware decoders can pad beyond the negotiated picture (e.g. 1080 -> 1152 rows).
+        // Copy only the picture so Qt samples no padding and retains the original display aspect ratio.
+        const bool padded = srcDesc.Width != static_cast<UINT>(planeSize.width()) ||
+                            srcDesc.Height != static_cast<UINT>(planeSize.height());
+        if (subIdx > 0 || srcDesc.ArraySize > 1 || padded) {
+            ID3D11Texture2D* stagingTex = copyToStaging(tex, subIdx, i, srcDesc, planeSize, GST_D3D11_MEMORY_CAST(mem));
             if (!stagingTex) {
                 return;
             }

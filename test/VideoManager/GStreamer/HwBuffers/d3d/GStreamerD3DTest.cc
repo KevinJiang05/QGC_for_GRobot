@@ -4,10 +4,12 @@
 
 #include <QtCore/QScopeGuard>
 #include <QtMultimedia/QVideoFrameFormat>
-#include <memory>
+#include <algorithm>
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 #include <gst/video/video-info.h>
+#include <memory>
+#include <vector>
 
 #include "GStreamer.h"
 #include "GStreamerLogging.h"
@@ -22,6 +24,9 @@
 #include "GstHwFrameTexturesBase.h"
 
 #if defined(QGC_HAS_GST_D3D11_GPU_PATH)
+#include <d3d11.h>
+#include <gst/d3d11/gstd3d11.h>
+
 #include "GstD3D11ContextBridge.h"
 #endif
 #if defined(QGC_HAS_GST_D3D12_GPU_PATH)
@@ -290,6 +295,155 @@ void GStreamerTest::_testD3D11MapNv12TexturesWithQRhi()
     testD3DMapTextures(*rhi, "video/x-raw,format=NV12,width=64,height=64,framerate=30/1", "d3d11upload",
                        "video/x-raw(memory:D3D11Memory),format=NV12", QVideoFrameFormat::Format_NV12, 2,
                        HwVideoBufferPath::D3D11);
+#else
+    QSKIP("D3D11 GPU path not compiled in this build");
+#endif
+}
+
+void GStreamerTest::_testD3D11PaddedFrameViewport_data()
+{
+    QTest::addColumn<QSize>("visibleSize");
+    QTest::addColumn<QRect>("viewport");
+    QTest::addColumn<bool>("encodedSource");
+    QTest::newRow("no-padding") << QSize(640, 368) << QRect(0, 0, 640, 368) << false;
+    QTest::newRow("bottom-padding") << QSize(640, 360) << QRect(0, 0, 640, 360) << false;
+    QTest::newRow("right-and-bottom-padding") << QSize(636, 360) << QRect(0, 0, 636, 360) << false;
+    QTest::newRow("explicit-crop") << QSize(640, 360) << QRect(4, 8, 632, 344) << false;
+    QTest::newRow("decoder-array-padding") << QSize(640, 360) << QRect(0, 0, 640, 360) << true;
+}
+
+void GStreamerTest::_testD3D11PaddedFrameViewport()
+{
+#if defined(Q_OS_WIN) && defined(QGC_HAS_GST_D3D11_GPU_PATH)
+    QFETCH(QSize, visibleSize);
+    QFETCH(QRect, viewport);
+    QFETCH(bool, encodedSource);
+    QRhiD3D11InitParams params;
+    std::unique_ptr<QRhi> rhi(QRhi::create(QRhi::D3D11, &params));
+    if (!rhi) {
+        QSKIP("Could not create D3D11 QRhi");
+    }
+    auto* handles = static_cast<const QRhiD3D11NativeHandles*>(rhi->nativeHandles());
+    QVERIFY2(handles && handles->dev, "D3D11 QRhi exposes no native device handle");
+
+    SnapshotGuard snapshotGuard;
+    Q_UNUSED(snapshotGuard)
+    QGCRhiCapture::deviceSnapshot().d3d11Device.store(handles->dev, std::memory_order_release);
+    QGCRhiCapture::deviceSnapshot().d3d12Device.store(nullptr, std::memory_order_release);
+    QGCRhiCapture::deviceSnapshot().adapterLuid.store(composeLuid(handles->adapterLuidHigh, handles->adapterLuidLow),
+                                                      std::memory_order_release);
+    QGCRhiCapture::deviceSnapshot().backend.store(static_cast<int>(QRhi::D3D11), std::memory_order_release);
+    GstD3D11ContextBridge::reset();
+    auto bridgeGuard = qScopeGuard([] { GstD3D11ContextBridge::reset(); });
+    QVERIFY2(GstD3D11ContextBridge::prime(), "Could not prime D3D11 context bridge from QRhi snapshot");
+    QVERIFY2(GStreamer::completeInit(), "GStreamer::completeInit() failed");
+
+    D3DSample sample;
+    if (encodedSource) {
+        pullD3DSample(sample, "video/x-raw,format=I420,width=640,height=360,framerate=30/1 ! openh264enc ! h264parse",
+                      "d3d11h264dec", "video/x-raw(memory:D3D11Memory),format=NV12", HwVideoBufferPath::D3D11);
+    } else {
+        // Model a decoder whose NV12 allocation includes rows beyond the negotiated picture.
+        pullD3DSample(sample, "video/x-raw,format=NV12,width=640,height=368,framerate=30/1", "d3d11upload",
+                      "video/x-raw(memory:D3D11Memory),format=NV12", HwVideoBufferPath::D3D11);
+    }
+    QVERIFY(sample.sample);
+    GstVideoInfo visibleInfo;
+    gst_video_info_init(&visibleInfo);
+    QVERIFY(gst_video_info_set_format(&visibleInfo, GST_VIDEO_FORMAT_NV12, visibleSize.width(), visibleSize.height()));
+    QVideoFrameFormat format(visibleSize, QVideoFrameFormat::Format_NV12);
+    format.setViewport(viewport);
+    HwVideoBufferContext context;
+    context.gpuEnabled = true;
+    HwVideoBufferPath path = HwVideoBufferPath::None;
+    auto buffer = makeHwVideoBuffer(sample.sample, visibleInfo, format, context, path);
+    QVERIFY2(buffer, "Padded D3D11 sample did not create a hardware video buffer");
+    QCOMPARE(path, HwVideoBufferPath::D3D11);
+    QCOMPARE(buffer->format().frameSize(), visibleSize);
+    QCOMPARE(buffer->format().viewport(), viewport);
+
+    QVideoFrameTexturesUPtr oldTextures;
+    auto textures = buffer->mapTextures(*rhi, oldTextures);
+    QVERIFY(textures);
+    QVERIFY(textures->texture(0));
+    QVERIFY(textures->texture(1));
+    QCOMPARE(textures->texture(0)->pixelSize(), visibleSize);
+    QCOMPARE(textures->texture(1)->pixelSize(), visibleSize / 2);
+    auto* nativeTexture = reinterpret_cast<ID3D11Texture2D*>(textures->texture(0)->nativeTexture().object);
+    QVERIFY(nativeTexture);
+    D3D11_TEXTURE2D_DESC nativeDesc{};
+    nativeTexture->GetDesc(&nativeDesc);
+    QCOMPARE(nativeDesc.Width, static_cast<UINT>(visibleSize.width()));
+    QCOMPARE(nativeDesc.Height, static_cast<UINT>(visibleSize.height()));
+    QCOMPARE(nativeDesc.ArraySize, 1U);
+
+    // Verify both NV12 planes were copied, rather than only changing the advertised dimensions.
+    auto* device = static_cast<ID3D11Device*>(handles->dev);
+    ID3D11DeviceContext* deviceContext = nullptr;
+    device->GetImmediateContext(&deviceContext);
+    QVERIFY(deviceContext);
+    auto contextGuard = qScopeGuard([deviceContext] { deviceContext->Release(); });
+    auto download = [&](ID3D11Texture2D* texture, UINT subresource, QByteArray& pixels) {
+        D3D11_TEXTURE2D_DESC desc{};
+        texture->GetDesc(&desc);
+        desc.ArraySize = 1;
+        desc.MipLevels = 1;
+        desc.BindFlags = 0;
+        desc.MiscFlags = 0;
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ID3D11Texture2D* readback = nullptr;
+        QVERIFY(SUCCEEDED(device->CreateTexture2D(&desc, nullptr, &readback)));
+        auto readbackGuard = qScopeGuard([readback] { readback->Release(); });
+        deviceContext->CopySubresourceRegion(readback, 0, 0, 0, 0, texture, subresource, nullptr);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        QVERIFY(SUCCEEDED(deviceContext->Map(readback, 0, D3D11_MAP_READ, 0, &mapped)));
+        auto mapGuard = qScopeGuard([&] { deviceContext->Unmap(readback, 0); });
+        const int rows = static_cast<int>(desc.Height) * 3 / 2;
+        for (int y = 0; y < rows; ++y) {
+            pixels.append(static_cast<const char*>(mapped.pData) + y * mapped.RowPitch, static_cast<int>(desc.Width));
+        }
+    };
+    GstBuffer* sourceBuffer = gst_sample_get_buffer(sample.sample);
+    auto* sourceMemory = GST_D3D11_MEMORY_CAST(gst_buffer_peek_memory(sourceBuffer, 0));
+    auto* sourceTexture = reinterpret_cast<ID3D11Texture2D*>(gst_d3d11_memory_get_resource_handle(sourceMemory));
+    QVERIFY(sourceTexture);
+    D3D11_TEXTURE2D_DESC sourceDesc{};
+    sourceTexture->GetDesc(&sourceDesc);
+    QByteArray sourcePixels;
+    QByteArray croppedPixels;
+    download(sourceTexture, gst_d3d11_memory_get_subresource_index(sourceMemory), sourcePixels);
+    download(nativeTexture, 0, croppedPixels);
+    QVERIFY(!sourcePixels.isEmpty());
+    QVERIFY(!croppedPixels.isEmpty());
+    for (int y = 0; y < visibleSize.height() * 3 / 2; ++y) {
+        const int sourceRow =
+            y < visibleSize.height() ? y : y - visibleSize.height() + static_cast<int>(sourceDesc.Height);
+        QCOMPARE(croppedPixels.mid(y * visibleSize.width(), visibleSize.width()),
+                 sourcePixels.mid(sourceRow * static_cast<int>(sourceDesc.Width), visibleSize.width()));
+    }
+    if (sourceDesc.Width != nativeDesc.Width || sourceDesc.Height != nativeDesc.Height || sourceDesc.ArraySize > 1) {
+        // Multiple streams may retain more frames than the former global three-slot staging ring.
+        // None of those still-live frames may share a texture that a later copy overwrites.
+        std::vector<QVideoFrameTexturesUPtr> heldTextures;
+        std::vector<quint64> heldResources{textures->texture(0)->nativeTexture().object};
+        for (int i = 0; i < 4; ++i) {
+            auto nextBuffer = makeHwVideoBuffer(sample.sample, visibleInfo, format, context, path);
+            QVERIFY(nextBuffer);
+            QVideoFrameTexturesUPtr previous;
+            auto nextTextures = nextBuffer->mapTextures(*rhi, previous);
+            QVERIFY(nextTextures);
+            QVERIFY(nextTextures->texture(0));
+            const quint64 resource = nextTextures->texture(0)->nativeTexture().object;
+            QVERIFY2(std::find(heldResources.begin(), heldResources.end(), resource) == heldResources.end(),
+                     "A staging texture is still held by an earlier frame");
+            heldResources.push_back(resource);
+            heldTextures.push_back(std::move(nextTextures));
+        }
+    }
+    QVideoFrame frame(std::move(buffer));
+    QCOMPARE(frame.surfaceFormat().viewport(), viewport);
+    QCOMPARE(frame.size(), visibleSize);
 #else
     QSKIP("D3D11 GPU path not compiled in this build");
 #endif

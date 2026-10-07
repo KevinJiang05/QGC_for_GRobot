@@ -43,30 +43,33 @@ void QGCQVideoSinkController::syncActiveToWindowVisibility(QObject* receiver, QQ
     if (!receiver || !videoOutput)
         return;
 
-    auto applyVisibility = [receiver](QWindow* win) {
-        const QWindow::Visibility v = win ? win->visibility() : QWindow::Hidden;
-        const bool active = win && (v != QWindow::Hidden && v != QWindow::Minimized);
-        for (auto* c : controllersOf(receiver))
-            c->setActive(active);
-    };
-    // Track the previous connection so windowChanged drops it before wiring the new window,
-    // else an old hidden window keeps gating the live receiver.
-    auto prevConn = std::make_shared<QMetaObject::Connection>();
-    auto wireWindow = [applyVisibility, prevConn, receiver](QQuickWindow* qw) {
-        if (*prevConn) {
-            QObject::disconnect(*prevConn);
-            *prevConn = QMetaObject::Connection{};
-        }
-        if (!qw) {
-            applyVisibility(nullptr);
-            return;
-        }
-        applyVisibility(qw);
-        *prevConn = QObject::connect(qw, &QWindow::visibilityChanged, receiver,
-                                     [applyVisibility, qw](QWindow::Visibility) { applyVisibility(qw); });
-    };
-    wireWindow(videoOutput->window());
-    QObject::connect(videoOutput, &QQuickVideoOutput::windowChanged, receiver, wireWindow);
+    for (auto* controller : controllersOf(receiver)) {
+        if (controller->_bindingReleased)
+            continue;
+        // A replaced output must not gate a new binding owned by the same receiver.
+        // The controller's release guard and QObject lifetime retire these observers.
+        auto applyVisibility = [controller](QWindow* win) {
+            const QWindow::Visibility v = win ? win->visibility() : QWindow::Hidden;
+            const bool active = win && (v != QWindow::Hidden && v != QWindow::Minimized);
+            controller->setActive(active);
+        };
+        auto prevConn = std::make_shared<QMetaObject::Connection>();
+        auto wireWindow = [applyVisibility, prevConn, controller](QQuickWindow* qw) {
+            if (*prevConn) {
+                QObject::disconnect(*prevConn);
+                *prevConn = QMetaObject::Connection{};
+            }
+            if (!qw) {
+                applyVisibility(nullptr);
+                return;
+            }
+            applyVisibility(qw);
+            *prevConn = QObject::connect(qw, &QWindow::visibilityChanged, controller,
+                                         [applyVisibility, qw](QWindow::Visibility) { applyVisibility(qw); });
+        };
+        wireWindow(videoOutput->window());
+        QObject::connect(videoOutput, &QQuickVideoOutput::windowChanged, controller, wireWindow);
+    }
 }
 
 const GstElement* QGCQVideoSinkController::element() const noexcept

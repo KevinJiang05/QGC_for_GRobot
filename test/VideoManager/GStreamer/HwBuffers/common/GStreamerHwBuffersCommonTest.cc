@@ -245,7 +245,7 @@ void GStreamerTest::_testHwBufferLifecycleResetsNativeCaches()
     gst_object_unref(dummy);
 
     HwBuffers::onPipelineRestart();
-    QCOMPARE(s_resetCount, 3);
+    QCOMPARE(s_resetCount, 2);
 
 #if defined(QGC_HAS_GST_DMABUF_GPU_PATH) || defined(QGC_HAS_GST_D3D11_GPU_PATH) ||    \
     defined(QGC_HAS_GST_D3D12_GPU_PATH) || defined(QGC_HAS_GST_IOSURFACE_GPU_PATH) || \
@@ -254,6 +254,8 @@ void GStreamerTest::_testHwBufferLifecycleResetsNativeCaches()
     static int s_cacheReset = 0;
     s_cacheReset = 0;
     GstContextBridgeRegistry::registerCacheReset([]() { ++s_cacheReset; });
+    HwBuffers::onPipelineRestart();
+    QCOMPARE(s_cacheReset, 0);
     GstContextBridgeRegistry::resetAllCaches();
     QCOMPARE(s_cacheReset, 1);
     s_cacheReset = 0;

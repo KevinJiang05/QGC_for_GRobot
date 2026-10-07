@@ -3,16 +3,16 @@
 #ifdef QGC_GST_STREAMING
 
 #include "CpuVideoFramePool.h"
-#include "Fixtures/RAIIFixtures.h"
 #include "Fact.h"
+#include "Fixtures/RAIIFixtures.h"
 #include "GStreamer.h"
 #include "GStreamerFrameMap.h"
 #include "GStreamerHelpers.h"
 #include "GStreamerLogging.h"
-#include "GstVideoReceiver.h"
 #include "GstHwPathTelemetry.h"
 #include "GstHwVideoBufferFactory.h"
 #include "GstSourceFactory.h"
+#include "GstVideoReceiver.h"
 #include "HwBuffers/dmabuf/GstDmaDrmCaps.h"
 #include "QGCQVideoSinkController.h"
 #include "gstqgc/GstQgcAllocation.h"
@@ -42,6 +42,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QEvent>
 #include <QtCore/QEventLoop>
 #include <QtCore/QFileInfo>
 #include <QtCore/QRegularExpression>
@@ -54,14 +55,224 @@
 #include <QtMultimediaQuick/private/qquickvideooutput_p.h>
 #include <QtQuick/QQuickWindow>
 #include <QtTest/QSignalSpy>
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <gst/gst.h>
 #include <gst/video/gstvideometa.h>
+#include <gst/video/gstvideosink.h>
 #include <iterator>
 #include <memory>
 #include <string_view>
 #include <vector>
+
+namespace {
+
+// Call the sink's existing video vmethods without pumping Qt events. This makes GUI
+// starvation deterministic and observes retained GstBuffers rather than private queue state.
+class QueuedFrameFixture
+{
+public:
+    QueuedFrameFixture()
+        : element(gst_element_factory_make("qgcqvideosink", nullptr)), sink(std::make_unique<QVideoSink>())
+    {
+        if (!element)
+            return;
+        controller = std::make_unique<QGCQVideoSinkController>(element);
+        controller->setVideoSink(sink.get());
+        negotiated = negotiate();
+    }
+
+    ~QueuedFrameFixture()
+    {
+        controller.reset();
+        sink.reset();
+        gst_clear_object(&element);
+    }
+
+    bool negotiate() const
+    {
+        GstCaps* caps = gst_caps_from_string("video/x-raw,format=BGRA,width=4,height=4,framerate=30/1");
+        const bool accepted = GST_BASE_SINK_GET_CLASS(element)->set_caps(GST_BASE_SINK(element), caps);
+        gst_caps_unref(caps);
+        return accepted;
+    }
+
+    GstFlowReturn push(quint8 marker, GstClockTime timestamp, std::atomic<int>& released) const
+    {
+        GstBuffer* buffer = gst_buffer_new_allocate(nullptr, 4 * 4 * 4, nullptr);
+        if (!buffer)
+            return GST_FLOW_ERROR;
+        gst_mini_object_weak_ref(
+            GST_MINI_OBJECT(buffer),
+            [](gpointer data, GstMiniObject*) {
+                static_cast<std::atomic<int>*>(data)->fetch_add(1, std::memory_order_relaxed);
+            },
+            &released);
+        std::array<quint8, 4 * 4 * 4> pixels{};
+        for (size_t offset = 0; offset < pixels.size(); offset += 4) {
+            pixels[offset] = marker;
+            pixels[offset + 1] = marker;
+            pixels[offset + 2] = marker;
+            pixels[offset + 3] = 255;
+        }
+        gst_buffer_fill(buffer, 0, pixels.data(), pixels.size());
+        GST_BUFFER_PTS(buffer) = timestamp;
+        GST_BUFFER_DURATION(buffer) = GST_SECOND / 30;
+        const auto flow = GST_VIDEO_SINK_GET_CLASS(element)->show_frame(GST_VIDEO_SINK(element), buffer);
+        gst_buffer_unref(buffer);
+        return flow;
+    }
+
+    GstElement* element = nullptr;
+    std::unique_ptr<QVideoSink> sink;
+    std::unique_ptr<QGCQVideoSinkController> controller;
+    bool negotiated = false;
+};
+
+}  // namespace
+
+void GStreamerTest::_testQueuedFramesKeepLatestPerSink()
+{
+    QVERIFY(GStreamer::completeInit());
+    constexpr int streamCount = 3;
+    constexpr int burstSize = 120;
+    std::array<std::atomic<int>, streamCount> released{};
+    std::array<std::unique_ptr<QueuedFrameFixture>, streamCount> streams;
+    std::array<std::unique_ptr<QSignalSpy>, streamCount> frames;
+    for (int stream = 0; stream < streamCount; ++stream) {
+        streams[stream] = std::make_unique<QueuedFrameFixture>();
+        QVERIFY(streams[stream]->negotiated);
+        frames[stream] = std::make_unique<QSignalSpy>(streams[stream]->sink.get(), &QVideoSink::videoFrameChanged);
+    }
+
+    for (int frame = 0; frame < burstSize; ++frame) {
+        for (int stream = 0; stream < streamCount; ++stream) {
+            QCOMPARE(
+                streams[stream]->push(quint8(stream * 40 + frame % 40), (frame + 1) * GST_MSECOND, released[stream]),
+                GST_FLOW_OK);
+        }
+    }
+    for (int stream = 0; stream < streamCount; ++stream) {
+        QCOMPARE(frames[stream]->size(), 0);
+        QVERIFY(released[stream].load() >= burstSize - 1);
+        QCOMPARE(streams[stream]->controller->frameCount(), quint64(0));
+        QCoreApplication::sendPostedEvents(streams[stream]->sink.get(), QEvent::MetaCall);
+        QCOMPARE(frames[stream]->size(), 1);
+        QCOMPARE(streams[stream]->controller->frameCount(), quint64(1));
+        QVideoFrame latest = streams[stream]->sink->videoFrame();
+        QCOMPARE(latest.startTime(), qint64(burstSize * 1000));
+        QVERIFY(latest.map(QVideoFrame::ReadOnly));
+        QCOMPARE(latest.bits(0)[0], quint8(stream * 40 + (burstSize - 1) % 40));
+        latest.unmap();
+        latest = {};
+        frames[stream]->clear();
+        streams[stream]->sink->setVideoFrame({});
+        QCOMPARE(released[stream].load(), burstSize);
+        guint64 input = 0;
+        guint64 dropped = 0;
+        guint64 delivered = 0;
+        g_object_get(streams[stream]->element, "frames-input", &input, "frames-dropped", &dropped, "frames-delivered",
+                     &delivered, nullptr);
+        QCOMPARE(input, guint64(burstSize));
+        QCOMPARE(dropped, guint64(burstSize - 1));
+        QCOMPARE(delivered, guint64(1));
+    }
+}
+
+void GStreamerTest::_testQueuedFramesInvalidatedOnBindingChange()
+{
+    QVERIFY(GStreamer::completeInit());
+    std::atomic<int> released{0};
+    QueuedFrameFixture fixture;
+    QVERIFY(fixture.negotiated);
+    QSignalSpy oldFrames(fixture.sink.get(), &QVideoSink::videoFrameChanged);
+    QCOMPARE(fixture.push(11, GST_MSECOND, released), GST_FLOW_OK);
+    auto oldSink = std::move(fixture.sink);
+    fixture.sink = std::make_unique<QVideoSink>();
+    fixture.controller->setVideoSink(fixture.sink.get());
+    QCOMPARE(released.load(), 1);
+    QSignalSpy newFrames(fixture.sink.get(), &QVideoSink::videoFrameChanged);
+    QCOMPARE(fixture.push(22, 2 * GST_MSECOND, released), GST_FLOW_OK);
+    QCoreApplication::sendPostedEvents(oldSink.get(), QEvent::MetaCall);
+    QCOMPARE(oldFrames.size(), 0);
+    QCOMPARE(newFrames.size(), 0);
+    QCoreApplication::sendPostedEvents(fixture.sink.get(), QEvent::MetaCall);
+    QCOMPARE(newFrames.size(), 1);
+    QCOMPARE(fixture.sink->videoFrame().startTime(), qint64(2000));
+    newFrames.clear();
+    fixture.sink->setVideoFrame({});
+    QCOMPARE(released.load(), 2);
+
+    newFrames.clear();
+    QCOMPARE(fixture.push(33, 3 * GST_MSECOND, released), GST_FLOW_OK);
+    fixture.controller->prepareForRelease();
+    QCOMPARE(released.load(), 3);
+    QCoreApplication::sendPostedEvents(fixture.sink.get(), QEvent::MetaCall);
+    QCOMPARE(newFrames.size(), 0);
+
+    fixture.controller->setVideoSink(fixture.sink.get());
+    fixture.controller->setActive(true);
+    QCOMPARE(fixture.push(44, 4 * GST_MSECOND, released), GST_FLOW_OK);
+    fixture.sink.reset();
+    QCOMPARE(released.load(), 4);
+    gpointer installedSink = reinterpret_cast<gpointer>(quintptr(0x1));
+    g_object_get(fixture.element, "qvideosink", &installedSink, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(nullptr));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+
+    fixture.sink = std::make_unique<QVideoSink>();
+    fixture.controller->setVideoSink(fixture.sink.get());
+    fixture.controller->setActive(true);
+    QSignalSpy finalFrames(fixture.sink.get(), &QVideoSink::videoFrameChanged);
+    QCOMPARE(fixture.push(55, 5 * GST_MSECOND, released), GST_FLOW_OK);
+    fixture.controller.reset();
+    gst_clear_object(&fixture.element);
+    QCOMPARE(released.load(), 5);
+    QCoreApplication::sendPostedEvents(fixture.sink.get(), QEvent::MetaCall);
+    QCOMPARE(finalFrames.size(), 0);
+}
+
+void GStreamerTest::_testQueuedFramesInvalidatedOnStreamReset_data()
+{
+    QTest::addColumn<QString>("reset");
+    QTest::newRow("hidden-window") << QStringLiteral("inactive");
+    QTest::newRow("caps-renegotiation") << QStringLiteral("caps");
+    QTest::newRow("stream-stop") << QStringLiteral("stop");
+}
+
+void GStreamerTest::_testQueuedFramesInvalidatedOnStreamReset()
+{
+    QFETCH(QString, reset);
+    QVERIFY(GStreamer::completeInit());
+    std::atomic<int> released{0};
+    QueuedFrameFixture fixture;
+    QVERIFY(fixture.negotiated);
+    QSignalSpy frames(fixture.sink.get(), &QVideoSink::videoFrameChanged);
+    QCOMPARE(fixture.push(11, 9 * GST_MSECOND, released), GST_FLOW_OK);
+    if (reset == QStringLiteral("inactive")) {
+        fixture.controller->setActive(false);
+    } else if (reset == QStringLiteral("caps")) {
+        QVERIFY(fixture.negotiate());
+    } else {
+        QVERIFY(GST_BASE_SINK_GET_CLASS(fixture.element)->stop(GST_BASE_SINK(fixture.element)));
+    }
+    QCOMPARE(released.load(), 1);
+    QCoreApplication::sendPostedEvents(fixture.sink.get(), QEvent::MetaCall);
+    QCOMPARE(frames.size(), 0);
+
+    fixture.controller->setActive(true);
+    if (reset == QStringLiteral("stop"))
+        QVERIFY(GST_BASE_SINK_GET_CLASS(fixture.element)->start(GST_BASE_SINK(fixture.element)));
+    QVERIFY(fixture.negotiate());
+    QCOMPARE(fixture.push(22, GST_MSECOND, released), GST_FLOW_OK);
+    QCoreApplication::sendPostedEvents(fixture.sink.get(), QEvent::MetaCall);
+    QCOMPARE(frames.size(), 1);
+    QCOMPARE(fixture.sink->videoFrame().startTime(), qint64(1000));
+    frames.clear();
+    fixture.sink->setVideoFrame({});
+    QCOMPARE(released.load(), 2);
+}
 
 void GStreamerTest::_testAppsinkFrameDelivery()
 {
@@ -1132,6 +1343,106 @@ void GStreamerTest::_testQVideoSinkControllerRepeatedSetupKeepsNewBindingActive(
     gst_object_unref(bin);
 }
 
+void GStreamerTest::_testQVideoSinkControllerRebindIgnoresOldOutputVisibility_data()
+{
+    QTest::addColumn<bool>("detachOutput");
+    QTest::newRow("old-window-hidden") << false;
+    QTest::newRow("old-output-detached") << true;
+}
+
+void GStreamerTest::_testQVideoSinkControllerRebindIgnoresOldOutputVisibility()
+{
+    QFETCH(bool, detachOutput);
+    QVERIFY(GStreamer::completeInit());
+    GstElementFactory* factory = gst_element_factory_find("qgcvideosinkbin");
+    QVERIFY(factory);
+    GstElement* bin = gst_element_factory_create_full(factory, "gpu-zerocopy", FALSE, nullptr);
+    gst_object_unref(factory);
+    QVERIFY(bin);
+    const auto releaseBin = qScopeGuard([&]() { gst_object_unref(bin); });
+    GstElement* element = gst_qgc_video_sink_bin_get_qvideosink(GST_QGC_VIDEO_SINK_BIN(bin));
+    QVERIFY(element);
+    const auto releaseElement = qScopeGuard([&]() { gst_object_unref(element); });
+
+    QObject receiver;
+    QQuickWindow firstWindow;
+    QQuickWindow secondWindow;
+    firstWindow.setGeometry(0, 0, 64, 64);
+    secondWindow.setGeometry(80, 0, 64, 64);
+    firstWindow.setVisibility(QWindow::Windowed);
+    secondWindow.setVisibility(QWindow::Windowed);
+    QQuickVideoOutput firstOutput(firstWindow.contentItem());
+    QQuickVideoOutput secondOutput(secondWindow.contentItem());
+    QCOMPARE(firstOutput.window(), &firstWindow);
+    QCOMPARE(secondOutput.window(), &secondWindow);
+    GStreamer::attachAppSink(&receiver, bin, &firstOutput);
+    QCOMPARE(QGCQVideoSinkController::controllersOf(&receiver).size(), 1);
+    QPointer<QGCQVideoSinkController> oldController = QGCQVideoSinkController::controllersOf(&receiver).constFirst();
+    GStreamer::attachAppSink(&receiver, bin, &secondOutput);
+    QVERIFY(oldController);
+    if (detachOutput) {
+        firstOutput.setParentItem(nullptr);
+    } else {
+        firstWindow.setVisibility(QWindow::Hidden);
+    }
+    // Released controllers can remain alive until DeferredDelete is processed.
+    // Their old output must not change the new binding in that interval either.
+    gpointer pendingSink = nullptr;
+    gboolean pendingActive = FALSE;
+    g_object_get(element, "qvideosink", &pendingSink, "active", &pendingActive, nullptr);
+    QCOMPARE(pendingSink, static_cast<gpointer>(secondOutput.videoSink()));
+    QCOMPARE(pendingActive, TRUE);
+    QVERIFY(oldController);
+    if (detachOutput) {
+        firstOutput.setParentItem(firstWindow.contentItem());
+    } else {
+        firstWindow.setVisibility(QWindow::Windowed);
+    }
+    QCoreApplication::sendPostedEvents(oldController.data(), QEvent::DeferredDelete);
+    QVERIFY(oldController.isNull());
+    QCOMPARE(QGCQVideoSinkController::controllersOf(&receiver).size(), 1);
+    auto* const controller = QGCQVideoSinkController::controllersOf(&receiver).constFirst();
+    QCOMPARE(controller->element(), static_cast<const GstElement*>(element));
+
+    gpointer installedSink = nullptr;
+    gboolean active = FALSE;
+    g_object_get(element, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(secondOutput.videoSink()));
+    QCOMPARE(active, TRUE);
+    if (detachOutput) {
+        firstOutput.setParentItem(nullptr);
+        QCOMPARE(firstOutput.window(), static_cast<QQuickWindow*>(nullptr));
+    } else {
+        firstWindow.setVisibility(QWindow::Hidden);
+        QCOMPARE(firstWindow.visibility(), QWindow::Hidden);
+    }
+    QVERIFY(secondWindow.isVisible());
+    // A watcher installed for the released first binding must not gate the second one,
+    // even after its old controller has already been deleted.
+    g_object_get(element, "qvideosink", &installedSink, "active", &active, nullptr);
+    QCOMPARE(installedSink, static_cast<gpointer>(secondOutput.videoSink()));
+    QCOMPARE(active, TRUE);
+
+    GstCaps* caps = gst_caps_from_string("video/x-raw,format=BGRA,width=4,height=4,framerate=30/1");
+    const bool negotiated = GST_BASE_SINK_GET_CLASS(element)->set_caps(GST_BASE_SINK(element), caps);
+    gst_caps_unref(caps);
+    QVERIFY(negotiated);
+    GstBuffer* buffer = gst_buffer_new_allocate(nullptr, 4 * 4 * 4, nullptr);
+    QVERIFY(buffer);
+    gst_buffer_memset(buffer, 0, 0x7f, 4 * 4 * 4);
+    GST_BUFFER_PTS(buffer) = GST_MSECOND;
+    QSignalSpy firstFrames(firstOutput.videoSink(), &QVideoSink::videoFrameChanged);
+    QSignalSpy secondFrames(secondOutput.videoSink(), &QVideoSink::videoFrameChanged);
+    const GstFlowReturn flow = GST_VIDEO_SINK_GET_CLASS(element)->show_frame(GST_VIDEO_SINK(element), buffer);
+    gst_buffer_unref(buffer);
+    QCOMPARE(flow, GST_FLOW_OK);
+    QCoreApplication::sendPostedEvents(secondOutput.videoSink(), QEvent::MetaCall);
+    QCOMPARE(firstFrames.size(), 0);
+    QCOMPARE(secondFrames.size(), 1);
+    QCOMPARE(secondOutput.videoSink()->videoFrame().startTime(), qint64(1000));
+    QCOMPARE(controller->frameCount(), quint64(1));
+}
+
 void GStreamerTest::_testQVideoSinkControllerNoWindowStartsInactive()
 {
     GStreamer::redirectGLibLogging();
@@ -1568,9 +1879,9 @@ void GStreamerTest::_testAdapterFlushDropsInFlightSamples()
     QVERIFY(vsink);
 
     // Snapshot the in-flight accounting just before the flush window. frames-input counts
-    // every buffer the sink's show_frame saw; frames-delivered counts those queued to the
-    // QVideoSink. The gap (input - delivered - dropped) is the set of buffers currently in
-    // flight inside the base sink that a flush must discard.
+    // every buffer the sink's show_frame saw; frames-delivered counts frames consumed by
+    // the GUI's QVideoSink. The gap (input - delivered - dropped) includes mapping work
+    // and pending GUI refreshes that a flush must discard.
     const int duringFlushBaseline = deliveredFrames.load(std::memory_order_relaxed);
     guint64 inputBefore = 0, deliveredBefore = 0, droppedBefore = 0;
     g_object_get(vsink, "frames-input", &inputBefore, "frames-delivered", &deliveredBefore, "frames-dropped",
@@ -1602,15 +1913,16 @@ void GStreamerTest::_testAdapterFlushDropsInFlightSamples()
     gst_object_unref(flushStopPeer);
     QVERIFY(flushStopSent);
 
-    // Drain the Qt event loop so any push_frame_queued lambdas queued before the flush run.
-    QTest::qWait(100);
-
     // The flush must leave no buffer stuck in flight: every buffer the sink accepted is now
     // accounted for as either delivered or dropped. A leaked in-flight buffer would make
     // input strictly exceed delivered+dropped.
     guint64 inputAfter = 0, deliveredAfter = 0, droppedAfter = 0;
-    g_object_get(vsink, "frames-input", &inputAfter, "frames-delivered", &deliveredAfter, "frames-dropped",
-                 &droppedAfter, nullptr);
+    auto accountingSettled = [&]() {
+        g_object_get(vsink, "frames-input", &inputAfter, "frames-delivered", &deliveredAfter, "frames-dropped",
+                     &droppedAfter, nullptr);
+        return inputAfter == deliveredAfter + droppedAfter;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(accountingSettled(), 3000);
     QCOMPARE(inputAfter, deliveredAfter + droppedAfter);
     gst_object_unref(vsink);
 

@@ -179,8 +179,8 @@ GstBusSyncReply onBusSyncMessage(GstBus* /*bus*/, GstMessage* msg, gpointer /*us
 
 void onPipelineRestart() noexcept
 {
-    resetCachedGpuResources();
-    // GL is the only path needing a pipeline-restart rearm (re-prime the shared GstGLContext).
+    // A single receiver restart must preserve bridges and imports shared by other streams.
+    // Rearm exhausted context discovery only; device loss/window invalidation owns global reset.
 #if defined(QGC_HAS_GST_GLMEMORY_GPU_PATH)
     GstGlContextBridge::rearm();
 #endif

@@ -854,6 +854,15 @@ QGC_GST_SKIP_TEST(_testRecordingSinkFinalizesMidStreamH265Mp4)
 QGC_GST_SKIP_TEST(_testBindDebugLevelFactRejectsNullContext)
 QGC_GST_SKIP_TEST(_testRuntimeVersionCheck)
 QGC_GST_SKIP_TEST(_testAppsinkFrameDelivery)
+QGC_GST_SKIP_TEST(_testQueuedFramesKeepLatestPerSink)
+QGC_GST_SKIP_TEST(_testQueuedFramesInvalidatedOnBindingChange)
+
+void GStreamerTest::_testQueuedFramesInvalidatedOnStreamReset_data()
+{
+    QTest::addColumn<QString>("reset");
+    QTest::newRow("gstreamer-disabled") << QString();
+}
+QGC_GST_SKIP_TEST(_testQueuedFramesInvalidatedOnStreamReset)
 QGC_GST_SKIP_TEST(_testAppsinkYuvPassthrough)
 QGC_GST_SKIP_TEST(_testAppsinkPtsAndColorimetry)
 QGC_GST_SKIP_TEST(_testQgcVideoSinkBinGpuZeroCopyProperty)
@@ -878,6 +887,13 @@ QGC_GST_SKIP_TEST(_testQVideoSinkControllerClearsElementOnDestroy)
 QGC_GST_SKIP_TEST(_testQVideoSinkControllerClearsElementWhenVideoSinkDestroyed)
 QGC_GST_SKIP_TEST(_testQVideoSinkControllerNullSinkStillDeactivatesOnDestroy)
 QGC_GST_SKIP_TEST(_testQVideoSinkControllerRepeatedSetupKeepsNewBindingActive)
+
+void GStreamerTest::_testQVideoSinkControllerRebindIgnoresOldOutputVisibility_data()
+{
+    QTest::addColumn<bool>("detachOutput");
+    QTest::newRow("gstreamer-disabled") << false;
+}
+QGC_GST_SKIP_TEST(_testQVideoSinkControllerRebindIgnoresOldOutputVisibility)
 QGC_GST_SKIP_TEST(_testQVideoSinkControllerNoWindowStartsInactive)
 QGC_GST_SKIP_TEST(_testContextBridgeRegistry)
 QGC_GST_SKIP_TEST(_testHwBufferLifecycleResetsNativeCaches)

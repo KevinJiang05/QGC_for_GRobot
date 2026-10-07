@@ -35,7 +35,7 @@ public:
     static QList<QGCQVideoSinkController*> controllersOf(const QObject* receiver);
 
     /// Sync every controller owned by @p receiver to @p videoOutput's window visibility (drop frames
-    /// while hidden/minimized), re-wiring across windowChanged. Wiring is parented to @p receiver.
+    /// while hidden/minimized), re-wiring across windowChanged. Wiring belongs to each current controller binding.
     static void syncActiveToWindowVisibility(QObject* receiver, QQuickVideoOutput* videoOutput);
 
     // setActive(false) drops frames at the element; setVideoSink swaps the destination under

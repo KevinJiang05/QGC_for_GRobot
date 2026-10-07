@@ -18,10 +18,11 @@ namespace {
 
 // Shared test pattern source. videotestsrc's "ball" pattern makes motion obvious so a
 // stalled pipeline is easy to spot by eye.
-constexpr const char *kTestSource =
+constexpr const char* kTestSource =
     "videotestsrc is-live=true pattern=ball ! "
     "video/x-raw,width=1280,height=720,framerate=30/1 ! "
-    "videoconvert";
+    // Keep synthetic streams compatible with hardware decoders, rather than x264's Y444 default.
+    "videoconvert ! video/x-raw,format=I420";
 
 constexpr const char *kH264Encoder = "x264enc tune=zerolatency bitrate=2000 key-int-max=30";
 constexpr const char *kH265Encoder = "x265enc tune=zerolatency bitrate=2000";

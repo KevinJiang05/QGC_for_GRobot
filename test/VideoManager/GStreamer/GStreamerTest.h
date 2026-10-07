@@ -30,6 +30,10 @@ private slots:
     void _testBindDebugLevelFactRejectsNullContext();
     void _testRuntimeVersionCheck();
     void _testAppsinkFrameDelivery();
+    void _testQueuedFramesKeepLatestPerSink();
+    void _testQueuedFramesInvalidatedOnBindingChange();
+    void _testQueuedFramesInvalidatedOnStreamReset_data();
+    void _testQueuedFramesInvalidatedOnStreamReset();
     void _testAppsinkYuvPassthrough();
     void _testAppsinkPtsAndColorimetry();
     void _testQgcVideoSinkBinGpuZeroCopyProperty();
@@ -62,6 +66,8 @@ private slots:
     void _testQVideoSinkControllerClearsElementWhenVideoSinkDestroyed();
     void _testQVideoSinkControllerNullSinkStillDeactivatesOnDestroy();
     void _testQVideoSinkControllerRepeatedSetupKeepsNewBindingActive();
+    void _testQVideoSinkControllerRebindIgnoresOldOutputVisibility_data();
+    void _testQVideoSinkControllerRebindIgnoresOldOutputVisibility();
     void _testQVideoSinkControllerNoWindowStartsInactive();
     void _testContextBridgeRegistry();
     void _testHwBufferLifecycleResetsNativeCaches();

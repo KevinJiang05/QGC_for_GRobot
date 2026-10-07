@@ -18,7 +18,7 @@ Flow {
     Connections {
         target: _joystick
 
-        onRawButtonPressedChanged: (index, pressed) => {
+        function onRawButtonPressedChanged(index, pressed) {
             if (buttonRepeater.itemAt(index)) {
                 buttonRepeater.itemAt(index).pressed = pressed
             }
@@ -27,7 +27,7 @@ Flow {
 
     Repeater {
         id: buttonRepeater
-        model: _joystick.buttonCount
+        model: _joystick ? _joystick.buttonCount : 0
 
         Rectangle {
             implicitWidth: ScreenTools.defaultFontPixelHeight * 1.5

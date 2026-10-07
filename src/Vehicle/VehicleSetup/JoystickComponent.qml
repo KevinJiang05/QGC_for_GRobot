@@ -9,189 +9,213 @@ import QGroundControl.VehicleSetup
 import QGroundControl.FactControls
 
 SetupPage {
-    pageComponent: joystickManager.activeJoystick ? pageComponent : noJoysticksComponent
+    id: setupPage
+    objectName: "joystickSetupPage"
+    pageComponent: joystickPageComponent
 
     Component {
-        id: pageComponent
+        id: joystickPageComponent
 
         ColumnLayout {
             id: root
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+            width: setupPage.availableWidth
+            spacing: ScreenTools.defaultFontPixelHeight
 
-            property Fact activeJoystickNameFact: QGroundControl.settingsManager.joystickManagerSettings.activeJoystickName
-            property string activeJoystickName: activeJoystickNameFact.value
-            property var availableJoystickNames: joystickManager.availableJoystickNames
-            property var activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-            property var activeJoystick: joystickManager.activeJoystick
-            property bool activeJoystickCalibrated: activeJoystick ? activeJoystick.settings.calibrated.rawValue : false
+            readonly property Fact activeJoystickNameFact: QGroundControl.settingsManager.joystickManagerSettings.activeJoystickName
+            readonly property string activeJoystickName: activeJoystickNameFact.value
+            readonly property var activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
+            readonly property var activeJoystick: joystickManager.activeJoystick
+            readonly property bool activeJoystickCalibrated: activeJoystick ? activeJoystick.settings.calibrated.rawValue : false
+            readonly property bool configurationAvailable: activeJoystick && activeVehicle
+                                                           && (!activeVehicle.armed || activeVehicle.setupSafetyRestrictionsDisabled)
+
+            function reloadConfiguration() {
+                const configuration = configurationLoader.item
+                if (!configuration || (configuration.joystickDevice === root.activeJoystick
+                                       && configuration.configurationVehicle === root.activeVehicle)) return
+                // A controller is bound to one joystick and vehicle for its lifetime.
+                configurationLoader.active = false
+                Qt.callLater(function() {
+                    configurationLoader.active = Qt.binding(function() { return root.configurationAvailable })
+                })
+            }
+
+            onActiveJoystickChanged: reloadConfiguration()
+            onActiveVehicleChanged: reloadConfiguration()
 
             RowLayout {
+                Layout.fillWidth: true
                 spacing: ScreenTools.defaultFontPixelWidth
-                visible: joystickCombo.visible || calibrationRequiredLabel.visible
+
+                QGCLabel { text: qsTr("Joystick:") }
 
                 QGCComboBox {
                     id: joystickCombo
-                    sizeToContents: true
-                    visible: activeJoystickName !== "" && QGroundControl.corePlugin.options.allowJoystickSelection
+                    objectName: "joystickDeviceCombo"
+                    Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 32
+                    enabled: QGroundControl.corePlugin.options.allowJoystickSelection
+                             && (!configurationLoader.item || !configurationLoader.item.calibrating)
+                    onActivated: (index) => { root.activeJoystickNameFact.rawValue = textAt(index) }
 
-                    onActivated: (index) => { activeJoystickNameFact.rawValue = textAt(index) }
-
-                    function _buildModel() {
-                        const availableNames = joystickManager.availableJoystickNames || [];
-                        const modelNames = [...availableNames];
-                        if (activeJoystickName && !modelNames.includes(activeJoystickName)) {
-                            modelNames.push(activeJoystickName);
+                    function recalc() {
+                        const names = [...(joystickManager.availableJoystickNames || [])]
+                        if (root.activeJoystickName && !names.includes(root.activeJoystickName)) {
+                            names.push(root.activeJoystickName)
                         }
-                        joystickCombo.model = modelNames;
+                        model = names
+                        currentIndex = find(root.activeJoystickName)
                     }
 
-                    function _selectActiveJoystick() {
-                        let index = joystickCombo.find(activeJoystickName)
-                        if (index === -1) {
-                            console.warn("Internal error: Active joystick name not in combo", activeJoystickName)
-                        } else {
-                            joystickCombo.currentIndex = index
-                        }
-                    }
-
-                    function _recalc() {
-                        _buildModel()
-                        _selectActiveJoystick()
-                    }
-
-                    Component.onCompleted: _recalc()
-                    Connections { target: root; function onActiveJoystickNameChanged() { joystickCombo._recalc() } }
-                    Connections { target: joystickManager; function onAvailableJoystickNamesChanged() { joystickCombo._recalc() } }
+                    Component.onCompleted: recalc()
+                    Connections { target: root; function onActiveJoystickNameChanged() { joystickCombo.recalc() } }
+                    Connections { target: joystickManager; function onAvailableJoystickNamesChanged() { joystickCombo.recalc() } }
                 }
 
                 QGCCheckBox {
-                    text: qsTr("Enable")
+                    objectName: "joystickEnableCheckBox"
+                    text: qsTr("Enable joystick control")
                     checked: joystickManager.activeJoystickEnabledForActiveVehicle
-                    enabled: activeJoystickCalibrated
-
+                    enabled: root.activeJoystickCalibrated && !!root.activeVehicle
+                             && (!configurationLoader.item || !configurationLoader.item.calibrating)
                     onClicked: joystickManager.activeJoystickEnabledForActiveVehicle = checked
                 }
 
                 QGCLabel {
-                    font.pointSize: ScreenTools.smallFontPointSize
-                    text: qsTr("Not currently available")
-                    visible: !activeJoystick
+                    objectName: "joystickCalibrationStatus"
+                    Layout.fillWidth: true
+                    text: !root.activeJoystick ? qsTr("Not currently available")
+                          : (root.activeJoystick.axisCount === 0 ? qsTr("Buttons only")
+                             : (root.activeJoystickCalibrated ? qsTr("Calibrated") : qsTr("Requires Calibration")))
+                    color: root.activeJoystickCalibrated ? qgcPal.text : qgcPal.warningText
                 }
+            }
 
-                QGCLabel {
-                    id: calibrationRequiredLabel
-                    text: activeJoystickCalibrated ? qsTr("Calibrated") : qsTr("Requires Calibration")
-                    enabled: !activeJoystickCalibrated
-                }
+            QGCLabel {
+                Layout.fillWidth: true
+                visible: !root.configurationAvailable
+                wrapMode: Text.WordWrap
+                text: !root.activeJoystick ? qsTr("No joysticks or gamepads detected. Connect a device to configure it.")
+                      : (!root.activeVehicle ? qsTr("Connect a vehicle to configure joystick control.")
+                         : qsTr("Disarm the vehicle before configuring the joystick."))
             }
 
             Loader {
-                id: remoteControlCalibrationLoader
+                id: configurationLoader
                 Layout.fillWidth: true
                 objectName: "joystickConfigurationLoader"
-                sourceComponent: activeJoystick && activeVehicle && (!activeVehicle.armed || activeVehicle.setupSafetyRestrictionsDisabled) ? remoteControlCalibrationComponent : null
+                active: root.configurationAvailable
+                sourceComponent: configurationComponent
             }
 
             Component {
-                id: remoteControlCalibrationComponent
+                id: configurationComponent
 
-                RemoteControlCalibration {
-                    id: remoteControlCalibration
+                ColumnLayout {
+                    id: configuration
+                    spacing: ScreenTools.defaultFontPixelHeight
+                    readonly property bool calibrating: joystickController.calibrating
+                    readonly property var configurationVehicle: joystickController.vehicle
+                    property var joystickDevice: root.activeJoystick
 
-                    controller: JoystickConfigController {
-                        joystick: joystickManager.activeJoystick
-                        statusText: remoteControlCalibration.statusText
-                        cancelButton: remoteControlCalibration.cancelButton
-                        nextButton: remoteControlCalibration.nextButton
-                        joystickMode: true
+                    Component.onCompleted: {
+                        joystickDevice = root.activeJoystick
+                        joystickController.start()
+                        tabBar.currentIndex = configuration.joystickDevice.axisCount === 0 ? 1
+                                              : (root.activeJoystickCalibrated ? 0 : 2)
                     }
-
-                    useDeadband: controller && controller.joystick && controller.joystick.settings.useDeadband.rawValue
-                    calibrationEnabled: !_activeVehicle || !_activeVehicle.armed
-
-                    additionalSetupComponent: _activeJoystick ? _additionalSetupComponent : null
-                    additionalMonitorComponent: _activeJoystick ? _additionalMonitorComponent : null
-
-                    property var _controller: controller
-                    property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-                    property var _activeJoystick: _controller.joystick
-                    property bool _requiresCalibration: _activeJoystick ? (_activeJoystick.requiresCalibration && !_activeJoystick.settings.calibrated.rawValue) : false
-
-                    Component.onCompleted: controller.start()
 
                     Connections {
-                        target: controller
-
+                        target: joystickController
                         function onCalibrationCompleted() {
-                            if (joystickManager.activeJoystickEnabledForActiveVehicle) {
-                                return;
-                            }
+                            if (joystickManager.activeJoystickEnabledForActiveVehicle) return
                             QGroundControl.showMessageDialog(
-                                        root,
-                                        qsTr("Enable Joystick"),
-                                        qsTr("%1 calibration is complete. Enable it now?").arg(_activeJoystick.name),
-                                        Dialog.Yes | Dialog.No,
-                                        function() { joystickManager.activeJoystickEnabledForActiveVehicle = true });
+                                root, qsTr("Enable Joystick"),
+                                qsTr("%1 calibration is complete. Enable it now?").arg(configuration.joystickDevice.name),
+                                Dialog.Yes | Dialog.No,
+                                function() { joystickManager.activeJoystickEnabledForActiveVehicle = true })
                         }
                     }
 
-                    Component {
-                        id: _additionalSetupComponent
+                    QGCTabBar {
+                        id: tabBar
+                        objectName: "joystickConfigurationTabs"
+                        Layout.fillWidth: true
+                        enabled: !joystickController.calibrating
 
-                        ColumnLayout {
-                            spacing: ScreenTools.defaultFontPixelHeight / 2
-                            enabled: !controller.calibrating
-
-                            QGCTabBar {
-                                id: tabBar
-                                Layout.fillWidth: true
-
-                                QGCTabButton {
-                                    text: qsTr("Buttons")
-                                    checked: true
-                                }
-
-                                QGCTabButton {
-                                    text: qsTr("Settings")
-                                    checked: false
-                                }
-                            }
-
-                            JoystickComponentButtons {
-                                id: joystickButtons
-                                Layout.fillWidth: true
-                                joystick: _activeJoystick
-                                controller: _controller
-                                visible: tabBar.currentIndex === 0
-                            }
-
-                            JoystickComponentSettings {
-                                id: joystickSettings
-                                Layout.fillWidth: true
-                                joystick: _activeJoystick
-                                visible: tabBar.currentIndex === 1
-                            }
+                        QGCTabButton { objectName: "joystickGeneralTab"; text: qsTr("General") }
+                        QGCTabButton { objectName: "joystickButtonsTab"; text: qsTr("Button Assignments") }
+                        QGCTabButton {
+                            objectName: "joystickCalibrationTab"
+                            text: qsTr("Calibration")
+                            enabled: configuration.joystickDevice.axisCount > 0
                         }
+                        QGCTabButton { objectName: "joystickAdvancedTab"; text: qsTr("Advanced") }
                     }
 
-                    Component {
-                        id: _additionalMonitorComponent
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        visible: tabBar.currentIndex === 0
+                        text: qsTr("Move the sticks or press a button to check the response.")
+                        wrapMode: Text.WordWrap
+                    }
 
-                        JoystickComponentButtonMonitor {
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        visible: tabBar.currentIndex === 2
+                        text: joystickController.vehicle && joystickController.vehicle.armed
+                              ? qsTr("Disarm the vehicle before calibrating.")
+                              : qsTr("Click Calibrate, then follow the instructions and stick diagram.")
+                        wrapMode: Text.WordWrap
+                    }
+
+                    RemoteControlCalibration {
+                        id: remoteControlCalibration
+                        objectName: "joystickAxisOverview"
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 110
+                        Layout.alignment: Qt.AlignLeft
+                        visible: configuration.joystickDevice && (tabBar.currentIndex === 0 || tabBar.currentIndex === 2)
+                                 && configuration.joystickDevice.axisCount > 0
+                        controller: JoystickConfigController {
+                            id: joystickController
+                            objectName: "joystickPageController"
+                            joystick: configuration.joystickDevice
+                            statusText: remoteControlCalibration.statusText
+                            cancelButton: remoteControlCalibration.cancelButton
+                            nextButton: remoteControlCalibration.nextButton
+                            joystickMode: true
                         }
+                        useDeadband: configuration.joystickDevice ? configuration.joystickDevice.settings.useDeadband.rawValue : false
+                        calibrationEnabled: !joystickController.vehicle || !joystickController.vehicle.armed
+                        showCalibrationControls: tabBar.currentIndex === 2
+                        showRawChannelMonitor: tabBar.currentIndex === 2
+                        showExtensions: tabBar.currentIndex === 2
+                        submersibleControls: joystickController.vehicle ? joystickController.vehicle.sub : false
+                    }
+
+                    JoystickComponentButtonMonitor {
+                        Layout.fillWidth: true
+                        visible: tabBar.currentIndex === 0
+                        _joystick: configuration.joystickDevice
+                    }
+
+                    JoystickComponentButtons {
+                        Layout.fillWidth: true
+                        objectName: "joystickButtonAssignments"
+                        joystick: configuration.joystickDevice
+                        controller: joystickController
+                        visible: tabBar.currentIndex === 1
+                    }
+
+                    JoystickComponentSettings {
+                        Layout.fillWidth: true
+                        objectName: "joystickAdvancedSettings"
+                        joystick: configuration.joystickDevice
+                        visible: tabBar.currentIndex === 3
+                        enabled: !joystickController.calibrating
                     }
                 }
             }
-        }
-    }
-
-    Component {
-        id: noJoysticksComponent
-        QGCLabel {
-            width: availableWidth
-            height: availableHeight
-            text: qsTr("No joysticks or gamepads detected.")
-            wrapMode: Text.WordWrap
         }
     }
 }

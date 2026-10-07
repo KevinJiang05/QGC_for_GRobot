@@ -23,6 +23,10 @@ ColumnLayout {
 
     property bool useDeadband: false
     property bool calibrationEnabled: !controller.vehicle || !controller.vehicle.armed
+    property bool showCalibrationControls: true
+    property bool showRawChannelMonitor: true
+    property bool showExtensions: true
+    property bool submersibleControls: false
 
     property real _channelValueDisplayWidth: ScreenTools.defaultFontPixelWidth * 30
     property bool _deadbandActive: useDeadband
@@ -40,14 +44,14 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: ScreenTools.defaultFontPixelHeight
 
-                QGCLabel { text: qsTr("Attitude Controls") }
+                QGCLabel { text: root.submersibleControls ? qsTr("Vehicle Controls") : qsTr("Attitude Controls") }
 
                 Repeater {
                     model: [
-                        { name: qsTr("Pitch"),      mapped: controller.pitchChannelMapped,      value: controller.adjustedPitchChannelValue,      deadband: controller.pitchDeadband },
-                        { name: qsTr("Roll"),       mapped: controller.rollChannelMapped,       value: controller.adjustedRollChannelValue,       deadband: controller.rollDeadband },
-                        { name: qsTr("Yaw"),        mapped: controller.yawChannelMapped,        value: controller.adjustedYawChannelValue,        deadband: controller.yawDeadband },
-                        { name: qsTr("Throttle"),   mapped: controller.throttleChannelMapped,   value: controller.adjustedThrottleChannelValue,   deadband: controller.throttleDeadband }
+                        { name: root.submersibleControls ? qsTr("Forward") : qsTr("Pitch"), mapped: controller.pitchChannelMapped, value: controller.adjustedPitchChannelValue, deadband: controller.pitchDeadband },
+                        { name: root.submersibleControls ? qsTr("Lateral") : qsTr("Roll"), mapped: controller.rollChannelMapped, value: controller.adjustedRollChannelValue, deadband: controller.rollDeadband },
+                        { name: root.submersibleControls ? qsTr("Turning") : qsTr("Yaw"), mapped: controller.yawChannelMapped, value: controller.adjustedYawChannelValue, deadband: controller.yawDeadband },
+                        { name: root.submersibleControls ? qsTr("Vertical") : qsTr("Throttle"), mapped: controller.throttleChannelMapped, value: controller.adjustedThrottleChannelValue, deadband: controller.throttleDeadband }
                     ]
 
                     RowLayout {
@@ -73,7 +77,7 @@ ColumnLayout {
 
                 QGCLabel {
                     text: qsTr("Aux Extensions")
-                    visible: controller.pitchExtensionEnabled || controller.rollExtensionEnabled
+                    visible: root.showExtensions && (controller.pitchExtensionEnabled || controller.rollExtensionEnabled)
                 }
 
                 Repeater {
@@ -84,7 +88,7 @@ ColumnLayout {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: modelData.extensionEnabled
+                        visible: root.showExtensions && modelData.extensionEnabled
 
                         QGCLabel {
                             Layout.fillWidth: true
@@ -106,8 +110,8 @@ ColumnLayout {
 
                 QGCLabel {
                     text: qsTr("Additional Axes")
-                    visible: controller.additionalAxis1Enabled || controller.additionalAxis2Enabled || controller.additionalAxis3Enabled ||
-                             controller.additionalAxis4Enabled || controller.additionalAxis5Enabled || controller.additionalAxis6Enabled
+                    visible: root.showExtensions && (controller.additionalAxis1Enabled || controller.additionalAxis2Enabled || controller.additionalAxis3Enabled ||
+                             controller.additionalAxis4Enabled || controller.additionalAxis5Enabled || controller.additionalAxis6Enabled)
                 }
 
                 Repeater {
@@ -122,7 +126,7 @@ ColumnLayout {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: modelData.extensionEnabled
+                        visible: root.showExtensions && modelData.extensionEnabled
 
                         QGCLabel {
                             Layout.fillWidth: true
@@ -250,12 +254,14 @@ ColumnLayout {
     // Command Buttons and Status Text
     RowLayout {
         objectName: "remoteControlCalibrationCommands"
+        visible: root.showCalibrationControls
         Layout.preferredWidth: parent.width
         spacing: ScreenTools.defaultFontPixelWidth
         enabled: root.calibrationEnabled
 
         QGCButton {
             id: cancelButton
+            objectName: "remoteControlCalibrationCancel"
             text: qsTr("Cancel")
             onClicked: controller.cancelButtonClicked()
         }
@@ -268,6 +274,7 @@ ColumnLayout {
 
         QGCButton {
             id: nextButton
+            objectName: "remoteControlCalibrationNext"
             primary: true
             text: qsTr("Calibrate")
 
@@ -307,6 +314,7 @@ ColumnLayout {
 
     Rectangle {
         id: separator
+        visible: root.showRawChannelMonitor || !!root.additionalSetupComponent || !!root.additionalMonitorComponent
         Layout.fillWidth: true
         implicitHeight: 1
         color: qgcPal.text
@@ -314,6 +322,7 @@ ColumnLayout {
 
     // Additional Setup + Channel Monitor
     RowLayout {
+        visible: root.showRawChannelMonitor || !!root.additionalSetupComponent || !!root.additionalMonitorComponent
         Layout.fillWidth: true
         spacing: ScreenTools.defaultFontPixelHeight
 
@@ -339,6 +348,7 @@ ColumnLayout {
                 id: channelMonitor
                 Layout.fillWidth: true
                 twoColumn: false
+                visible: root.showRawChannelMonitor
                 channelCount: controller.channelCount
                 channelValueMin: controller.channelValueMin
                 channelValueMax: controller.channelValueMax

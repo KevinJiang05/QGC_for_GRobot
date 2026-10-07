@@ -40,8 +40,15 @@ JoystickConfigController::~JoystickConfigController()
 {
     if (_joystick) {
         _joystick->_configurationAllowsVehicleControl.store(false);
-        _joystick->_stopPollingForConfiguration();
+        if (_joystick->_pollingFlags.testFlag(Joystick::PollingForConfiguration)) {
+            _joystick->_stopPollingForConfiguration();
+        }
     }
+}
+
+Joystick* JoystickConfigController::joystick() const
+{
+    return _joystick.data();
 }
 
 void JoystickConfigController::start(void)
@@ -199,6 +206,11 @@ bool JoystickConfigController::_stickFunctionEnabled(StickFunction stickFunction
 {
     if (RemoteControlCalibrationController::_stickFunctionEnabled(stickFunction)) {
         return true;
+    }
+
+    // QML can query extensions before applying the required joystick binding.
+    if (!_joystick) {
+        return false;
     }
 
     switch (stickFunction) {

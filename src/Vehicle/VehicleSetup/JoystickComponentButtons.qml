@@ -1,6 +1,7 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import QGroundControl
@@ -15,17 +16,20 @@ ColumnLayout {
     required property var joystick
     required property var controller
 
-    property int _maxButtons: 64
     readonly property var _vehicle: controller.vehicle
-    readonly property bool _firmwareButtonsReady: _vehicle && _vehicle.parameterManager.parametersReady && _vehicle.supports.jsButton
-    readonly property string _functionName: "BTN" + buttonAssignmentRow.selectedButtonIndex + "_FUNCTION"
-    readonly property string _shiftFunctionName: "BTN" + buttonAssignmentRow.selectedButtonIndex + "_SFUNCTION"
-    property Fact _buttonFunction: _firmwareButtonsReady && controller.parameterExists(-1, _functionName)
-                                   ? controller.getParameterFact(-1, _functionName, false) : null
-    property Fact _shiftFunction: _firmwareButtonsReady && controller.parameterExists(-1, _shiftFunctionName)
-                                  ? controller.getParameterFact(-1, _shiftFunctionName, false) : null
+    readonly property bool _firmwareButtonsSupported: _vehicle ? _vehicle.supports.jsButton : false
+    readonly property bool _firmwareButtonsReady: _firmwareButtonsSupported && _vehicle.parameterManager.parametersReady
+    readonly property real _numberWidth: ScreenTools.defaultFontPixelWidth * 6
+    readonly property real _repeatWidth: ScreenTools.defaultFontPixelWidth * 10
+    readonly property real _columnSpacing: ScreenTools.defaultFontPixelWidth
+    readonly property real _actionWidth: Math.max(ScreenTools.defaultFontPixelWidth * 18,
+        (width - _numberWidth - _repeatWidth - _columnSpacing * (_firmwareButtonsSupported ? 6 : 4))
+        / (_firmwareButtonsSupported ? 3 : 1))
+
+    QGCPalette { id: qgcPal }
 
     function actionIndex(actionName) {
+        if (!joystick) return -1
         for (let i = 0; i < joystick.assignableActionTitles.length; i++) {
             if (joystick.assignableActions.get(i).action === actionName) return i
         }
@@ -33,299 +37,146 @@ ColumnLayout {
     }
 
     QGCLabel {
-        Layout.preferredWidth: parent.width
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: qsTr("Press a button to highlight its row. Choose a ground station action or a vehicle action.")
+    }
+
+    QGCLabel {
+        Layout.fillWidth: true
         wrapMode: Text.WordWrap
         text: qsTr("Multiple buttons that have the same action must be pressed simultaneously to invoke the action.")
     }
 
     RowLayout {
-        id: buttonAssignmentRow
-        spacing: ScreenTools.defaultFontPixelWidth
+        spacing: root._columnSpacing
+        QGCLabel { Layout.preferredWidth: root._numberWidth; text: qsTr("Button") }
+        QGCLabel { Layout.preferredWidth: root._actionWidth; text: qsTr("Ground station action") }
+        QGCLabel { Layout.preferredWidth: root._actionWidth; visible: root._firmwareButtonsSupported; text: qsTr("Vehicle action") }
+        QGCLabel { Layout.preferredWidth: root._actionWidth; visible: root._firmwareButtonsSupported; text: qsTr("Shift action") }
+        QGCLabel { Layout.preferredWidth: root._repeatWidth; text: qsTr("Repeat") }
+    }
 
-        property int selectedButtonIndex: 0
-        property var _assignedButtonModel: assignedButtonModel
-
-        function _rebuildAssignedButtonModel() {
-            assignedButtonModel.clear()
-            let buttonActions = joystick.buttonActions
-            for (let i = 0; i < joystick.buttonCount; i++) {
-                if (buttonActions[i] !== joystick.buttonActionNone) {
-                    let actionIndex = root.actionIndex(buttonActions[i])
-                    let actionTitle = actionIndex >= 0 ? joystick.assignableActionTitles[actionIndex] : buttonActions[i]
-                    assignedButtonModel.append( { "buttonIndex": i, "buttonAction": actionTitle, "repeat": joystick.getButtonRepeat(i) } )
-                }
-            }
-        }
-
-        Component.onCompleted: _rebuildAssignedButtonModel()
-        Connections {
-            target: joystick
-            function onButtonActionsChanged() {
-                buttonAssignmentRow._rebuildAssignedButtonModel()
-                buttonActionCombo._findCurrentButtonAction()
-            }
-            function onAssignableActionsChanged() {
-                buttonAssignmentRow._rebuildAssignedButtonModel()
-                buttonActionCombo._findCurrentButtonAction()
-            }
-        }
-
-        ListModel {
-            id: assignedButtonModel
-        }
-
-        QGCComboBox {
-            id: buttonIndexCombo
-            model: joystick.buttonCount
-
-            onActivated: (index) => { buttonAssignmentRow.selectedButtonIndex = index }
-        }
-
-        QGCComboBox {
-            id: buttonActionCombo
-            objectName: "joystickQgcActionCombo"
-            model: joystick.assignableActionTitles
-            sizeToContents: true
-
-            onActivated: (index) => {
-                let action = joystick.assignableActions.get(index)
-                if (!action) return
-                if (_buttonFunction) _buttonFunction.rawValue = 0
-                if (_shiftFunction) _shiftFunction.rawValue = 0
-                joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, action.action)
-            }
-
-            function _findCurrentButtonAction() {
-                let buttonActionIndex = root.actionIndex(joystick.buttonActions[buttonAssignmentRow.selectedButtonIndex])
-                if (buttonActionIndex < 0) {
-                    buttonActionIndex = 0
-                }
-                currentIndex = buttonActionIndex
-            }
-
-            Component.onCompleted: _findCurrentButtonAction()
-            Connections { target: buttonAssignmentRow; function onSelectedButtonIndexChanged() { buttonActionCombo._findCurrentButtonAction() } }
-        }
-
-        QGCCheckBox {
-            text: qsTr("Repeat")
-            checked: joystick.getButtonRepeat(buttonAssignmentRow.selectedButtonIndex)
-            enabled: buttonActionCombo.currentIndex === -1 ? false : (joystick.assignableActions.get(buttonActionCombo.currentIndex) ? joystick.assignableActions.get(buttonActionCombo.currentIndex).canRepeat : false)
-
-            onClicked: {
-                joystick.setButtonRepeat(buttonAssignmentRow.selectedButtonIndex, checked)
-                buttonAssignmentRow._rebuildAssignedButtonModel()
-            }
+    Connections {
+        target: root.joystick
+        function onRawButtonPressedChanged(index, pressed) {
+            const row = buttonRepeater.itemAt(index)
+            if (row) row.pressed = pressed
         }
     }
 
-    GridLayout {
-        // The selected button's firmware actions live in Facts, while QGC actions
-        // remain in Joystick settings. Selecting either disables the other owner.
-        rows: buttonAssignmentRow._assignedButtonModel.count
-        columnSpacing: ScreenTools.defaultFontPixelWidth
-        rowSpacing: 0
-        flow: GridLayout.TopToBottom
+    Repeater {
+        id: buttonRepeater
+        model: root.joystick ? Math.min(root.joystick.buttonCount, 64) : 0
 
-        Repeater {
-            model: buttonAssignmentRow._assignedButtonModel
-            QGCLabel { text: buttonIndex }
-        }
-        Repeater {
-            model: buttonAssignmentRow._assignedButtonModel
-            QGCLabel { text: buttonAction }
-        }
-        Repeater {
-            model: buttonAssignmentRow._assignedButtonModel
-            QGCLabel { text: repeat ? qsTr("Repeat") : "" }
-        }
-    }
+        Rectangle {
+            id: buttonRow
+            required property int index
+            objectName: "joystickButtonRow" + index
+            Layout.fillWidth: true
+            implicitHeight: assignmentLayout.implicitHeight + ScreenTools.defaultFontPixelHeight / 2
+            implicitWidth: assignmentLayout.implicitWidth
+            color: pressed ? qgcPal.buttonHighlight : (index % 2 ? qgcPal.windowShade : qgcPal.window)
+            radius: ScreenTools.defaultBorderRadius
 
-    RowLayout {
-        visible: !!_buttonFunction
-        QGCLabel { text: qsTr("Firmware action") }
-        FactComboBox {
-            objectName: "joystickFirmwareActionCombo"
-            fact: _buttonFunction
-            indexModel: false
-            sizeToContents: true
-            onActivated: (index) => {
-                if (_buttonFunction) _buttonFunction.enumIndex = index
-                if (_buttonFunction && _buttonFunction.rawValue !== 0) {
-                    joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, joystick.buttonActionNone)
-                    buttonActionCombo._findCurrentButtonAction()
-                }
-            }
-        }
-        QGCLabel { text: qsTr("Shift action"); visible: !!_shiftFunction }
-        FactComboBox {
-            objectName: "joystickShiftActionCombo"
-            fact: _shiftFunction
-            indexModel: false
-            sizeToContents: true
-            visible: !!_shiftFunction
-            onActivated: (index) => {
-                if (_shiftFunction) _shiftFunction.enumIndex = index
-                if (_shiftFunction && _shiftFunction.rawValue !== 0) {
-                    joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, joystick.buttonActionNone)
-                    buttonActionCombo._findCurrentButtonAction()
-                }
-            }
-        }
-    }
+            property bool pressed: false
+            readonly property string _functionName: "BTN" + index + "_FUNCTION"
+            readonly property string _shiftFunctionName: "BTN" + index + "_SFUNCTION"
+            property Fact _buttonFunction: root._firmwareButtonsReady && root.controller.parameterExists(-1, _functionName)
+                                           ? root.controller.getParameterFact(-1, _functionName, false) : null
+            property Fact _shiftFunction: root._firmwareButtonsReady && root.controller.parameterExists(-1, _shiftFunctionName)
+                                          ? root.controller.getParameterFact(-1, _shiftFunctionName, false) : null
 
-    /*Column {
-        id:         buttonCol
-        Layout.fillWidth: true
-        visible:    globals.activeVehicle.supports.jsButton
-        spacing:    ScreenTools.defaultFontPixelHeight / 3
+            RowLayout {
+                id: assignmentLayout
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: root._columnSpacing
 
-        Row {
-            spacing: ScreenTools.defaultFontPixelWidth
-            QGCLabel {
-                horizontalAlignment: Text.AlignHCenter
-                width: ScreenTools.defaultFontPixelHeight * 1.5
-                text: qsTr("#")
-            }
-            QGCLabel {
-                width: ScreenTools.defaultFontPixelWidth * 26
-                text: qsTr("Function: ")
-            }
-            QGCLabel {
-                width: ScreenTools.defaultFontPixelWidth * 26
-                visible: globals.activeVehicle.supports.jsButton
-                text: qsTr("Shift Function: ")
-            }
-        }
-        Repeater {
-            id: jsButtonActionRepeater
-            model: joystick ? Math.min(joystick.buttonCount, _maxButtons) : 0
-
-            Row {
-                spacing: ScreenTools.defaultFontPixelWidth
-                visible: globals.activeVehicle.supports.jsButton
-                property var parameterName: `BTN${index}_FUNCTION`
-                property var parameterShiftName: `BTN${index}_SFUNCTION`
-                property bool hasFirmwareSupport: controller.parameterExists(-1, parameterName)
-
-                property bool pressed
-                property var currentAssignableAction: joystick ? joystick.assignableActions.get(buttonActionCombo.currentIndex) : null
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: ScreenTools.defaultFontPixelHeight * 1.5
-                    height: width
-                    border.width: 1
-                    border.color: qgcPal.text
-                    color: pressed ? qgcPal.buttonHighlight : qgcPal.button
-
-
-                    QGCLabel {
-                        anchors.fill: parent
-                        color: pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData
-                    }
+                QGCLabel {
+                    Layout.preferredWidth: root._numberWidth
+                    horizontalAlignment: Text.AlignHCenter
+                    text: buttonRow.index
+                    color: buttonRow.pressed ? qgcPal.buttonHighlightText : qgcPal.text
                 }
 
                 QGCComboBox {
                     id: buttonActionCombo
-                    width: ScreenTools.defaultFontPixelWidth * 26
-                    property Fact fact: controller.parameterExists(-1, parameterName) ? controller.getParameterFact(-1, parameterName) : null
-                    property Fact fact_shift: controller.parameterExists(-1, parameterShiftName) ? controller.getParameterFact(-1, parameterShiftName) : null
-                    property var factOptions: fact ? fact.enumStrings : [];
-                    property var qgcActions: joystick.assignableActionTitles.filter(
-                        function (s) {
-                            return [
-                                s.includes("Camera"),
-                                s.includes("Stream"),
-                                s.includes("Stream"),
-                                s.includes("Zoom"),
-                                s.includes("Gimbal"),
-                                s.includes("No Action")
-                            ].some(Boolean)
-                        }
-                    )
+                    objectName: "joystickQgcActionCombo" + buttonRow.index
+                    Layout.preferredWidth: root._actionWidth
+                    model: root.joystick ? root.joystick.assignableActionTitles : []
 
-                    model: [...qgcActions, ...factOptions]
-                    property var isFwAction: currentIndex >= qgcActions.length
-                    sizeToContents: true
-
-                    function _findCurrentButtonAction() {
-                        // Find the index in the dropdown of the current action, checks FW and QGC actions
-                        if (joystick) {
-                            if (fact && fact.value > 0) {
-                                // This is a firmware function
-                                currentIndex = qgcActions.length + fact.enumIndex
-                                // For sanity reasons, make sure qgc is set to "no action" if the firmware is set to do something
-                                joystick.setButtonAction(modelData, "No Action")
-                            } else {
-                                // If there is not firmware function, check QGC ones
-                                currentIndex = find(joystick.buttonActions[modelData])
-                            }
-                        }
+                    onActivated: (index) => {
+                        const action = root.joystick.assignableActions.get(index)
+                        if (!action) return
+                        if (buttonRow._buttonFunction) buttonRow._buttonFunction.rawValue = 0
+                        if (buttonRow._shiftFunction) buttonRow._shiftFunction.rawValue = 0
+                        root.joystick.setButtonAction(buttonRow.index, action.action)
                     }
 
-                    Component.onCompleted: _findCurrentButtonAction()
-                    onModelChanged: _findCurrentButtonAction()
-                    onActivated: function (optionIndex) {
-                        var func = textAt(optionIndex)
-                        if (factOptions.indexOf(func) > -1) {
-                            // This is a FW action, set parameter to the action and set QGC's handler to No Action
-                            fact.enumStringValue = func
-                            joystick.setButtonAction(modelData, "No Action")
-                        } else {
-                            // This is a QGC action, set parameters to Disabled and QGC to the desired action
-                            joystick.setButtonAction(modelData, func)
-                            fact.value = 0
-                            fact_shift.value = 0
-                        }
+                    function refreshAction() {
+                        if (!root.joystick) return
+                        const action = root.joystick.buttonActions[buttonRow.index]
+                        currentIndex = root.actionIndex(action)
+                        alternateText = currentIndex < 0 ? action : ""
                     }
-                }
-                QGCCheckBox {
-                    id: repeatCheck
-                    text: qsTr("Repeat")
-                    enabled: currentAssignableAction && joystick.calibrated && currentAssignableAction.canRepeat
-                    visible: !globals.activeVehicle.supports.jsButton
 
-                    onClicked: {
-                        joystick.setButtonRepeat(modelData, checked)
+                    Component.onCompleted: refreshAction()
+                    Connections {
+                        target: root.joystick
+                        function onButtonActionsChanged() { buttonActionCombo.refreshAction() }
+                        function onAssignableActionsChanged() { buttonActionCombo.refreshAction() }
                     }
-                    Component.onCompleted: {
-                        if (joystick) {
-                            checked = joystick.getButtonRepeat(modelData)
-                        }
-                    }
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                Item {
-                    width: ScreenTools.defaultFontPixelWidth * 2
-                    height: 1
                 }
 
                 FactComboBox {
-                    id: shiftJSButtonActionCombo
-                    width: ScreenTools.defaultFontPixelWidth * 26
-                    fact: controller.parameterExists(-1, parameterShiftName) ? controller.getParameterFact(-1, parameterShiftName) : null;
+                    objectName: "joystickFirmwareActionCombo" + buttonRow.index
+                    Layout.preferredWidth: root._actionWidth
+                    visible: root._firmwareButtonsSupported
+                    enabled: !!buttonRow._buttonFunction
+                    fact: buttonRow._buttonFunction
                     indexModel: false
-                    visible: buttonActionCombo.isFwAction
-                    sizeToContents: true
+                    alternateText: !fact ? (root._firmwareButtonsReady ? qsTr("Unavailable") : qsTr("Waiting for parameters")) : ""
+                    onActivated: (index) => {
+                        if (buttonRow._buttonFunction) buttonRow._buttonFunction.enumIndex = index
+                        if (buttonRow._buttonFunction && buttonRow._buttonFunction.rawValue !== 0) {
+                            root.joystick.setButtonAction(buttonRow.index, root.joystick.buttonActionNone)
+                            buttonActionCombo.refreshAction()
+                        }
+                    }
                 }
 
-                QGCLabel {
-                    text: qsTr("QGC functions do not support shift actions")
-                    width: ScreenTools.defaultFontPixelWidth * 15
-                    visible: hasFirmwareSupport && !buttonActionCombo.isFwAction
-                    anchors.verticalCenter: parent.verticalCenter
+                FactComboBox {
+                    objectName: "joystickShiftActionCombo" + buttonRow.index
+                    Layout.preferredWidth: root._actionWidth
+                    visible: root._firmwareButtonsSupported
+                    enabled: !!buttonRow._shiftFunction
+                    fact: buttonRow._shiftFunction
+                    indexModel: false
+                    alternateText: !fact ? (root._firmwareButtonsReady ? qsTr("Unavailable") : qsTr("Waiting for parameters")) : ""
+                    onActivated: (index) => {
+                        if (buttonRow._shiftFunction) buttonRow._shiftFunction.enumIndex = index
+                        if (buttonRow._shiftFunction && buttonRow._shiftFunction.rawValue !== 0) {
+                            root.joystick.setButtonAction(buttonRow.index, root.joystick.buttonActionNone)
+                            buttonActionCombo.refreshAction()
+                        }
+                    }
                 }
-                QGCLabel {
-                    text: qsTr("No firmware support")
-                    width: ScreenTools.defaultFontPixelWidth * 15
-                    visible: !hasFirmwareSupport
-                    anchors.verticalCenter: parent.verticalCenter
+
+                QGCCheckBox {
+                    id: repeatCheckBox
+                    Layout.preferredWidth: root._repeatWidth
+                    enabled: buttonActionCombo.currentIndex >= 0
+                             && !!root.joystick.assignableActions.get(buttonActionCombo.currentIndex)
+                             && root.joystick.assignableActions.get(buttonActionCombo.currentIndex).canRepeat
+                    onClicked: root.joystick.setButtonRepeat(buttonRow.index, checked)
+                    function refreshRepeat() { checked = root.joystick ? root.joystick.getButtonRepeat(buttonRow.index) : false }
+                    Component.onCompleted: refreshRepeat()
+                    Connections {
+                        target: root.joystick
+                        function onButtonActionsChanged() { repeatCheckBox.refreshRepeat() }
+                    }
                 }
             }
         }
-    }*/
+    }
 }

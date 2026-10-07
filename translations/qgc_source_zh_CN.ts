@@ -7702,6 +7702,14 @@ VTOL</source>
       <source>Disconnect</source>
       <translation>断开连接</translation>
     </message>
+    <message>
+      <source>Arm</source>
+      <translation>解锁</translation>
+    </message>
+    <message>
+      <source>Disarm</source>
+      <translation>上锁</translation>
+    </message>
   </context>
   <context>
     <name>FlyViewTopRightPanel</name>
@@ -9740,6 +9748,54 @@ VTOL</source>
       <source>Touchpad</source>
       <translation>触摸板</translation>
     </message>
+    <message>
+      <source>Joystick:</source>
+      <translation>手柄：</translation>
+    </message>
+    <message>
+      <source>Enable joystick control</source>
+      <translation>启用手柄控制</translation>
+    </message>
+    <message>
+      <source>General</source>
+      <translation>常规</translation>
+    </message>
+    <message>
+      <source>Button Assignments</source>
+      <translation>按钮分配</translation>
+    </message>
+    <message>
+      <source>Calibration</source>
+      <translation>校准</translation>
+    </message>
+    <message>
+      <source>Advanced</source>
+      <translation>高级</translation>
+    </message>
+    <message>
+      <source>No joysticks or gamepads detected. Connect a device to configure it.</source>
+      <translation>未检测到手柄，请连接设备后进行配置。</translation>
+    </message>
+    <message>
+      <source>Connect a vehicle to configure joystick control.</source>
+      <translation>请连接载具后配置手柄控制。</translation>
+    </message>
+    <message>
+      <source>Disarm the vehicle before configuring the joystick.</source>
+      <translation>请先上锁，再配置手柄。</translation>
+    </message>
+    <message>
+      <source>Move the sticks or press a button to check the response.</source>
+      <translation>移动摇杆或按下按钮，检查实时响应。</translation>
+    </message>
+    <message>
+      <source>Disarm the vehicle before calibrating.</source>
+      <translation>请先上锁，再进行校准。</translation>
+    </message>
+    <message>
+      <source>Click Calibrate, then follow the instructions and stick diagram.</source>
+      <translation>点击“校准”，按照步骤提示和摇杆示意完成操作。</translation>
+    </message>
   </context>
   <context>
     <name>JoystickComponentButtons</name>
@@ -9760,6 +9816,30 @@ VTOL</source>
     <message>
       <source>Shift action</source>
       <translation>Shift 组合动作</translation>
+    </message>
+    <message>
+      <source>Press a button to highlight its row. Choose a ground station action or a vehicle action.</source>
+      <translation>按下手柄按钮，对应行会高亮。可选择地面站动作或飞控动作。</translation>
+    </message>
+    <message>
+      <source>Button</source>
+      <translation>按钮</translation>
+    </message>
+    <message>
+      <source>Ground station action</source>
+      <translation>地面站动作</translation>
+    </message>
+    <message>
+      <source>Vehicle action</source>
+      <translation>飞控动作</translation>
+    </message>
+    <message>
+      <source>Unavailable</source>
+      <translation>不可用</translation>
+    </message>
+    <message>
+      <source>Waiting for parameters</source>
+      <translation>等待参数</translation>
     </message>
   </context>
   <context>
@@ -18449,6 +18529,26 @@ sudo apt-get 移除调制解调器管理器</translation>
       <location filename="../src/Vehicle/VehicleSetup/RemoteControlCalibration.qml" line="283"/>
       <source>Please ensure all motor power is disconnected AND all props are removed from the vehicle.</source>
       <translation>请确保断开所有电机电源，并且从飞机上卸下所有螺旋桨。</translation>
+    </message>
+    <message>
+      <source>Vehicle Controls</source>
+      <translation>载具控制</translation>
+    </message>
+    <message>
+      <source>Forward</source>
+      <translation>前后</translation>
+    </message>
+    <message>
+      <source>Lateral</source>
+      <translation>横移</translation>
+    </message>
+    <message>
+      <source>Vertical</source>
+      <translation>升沉</translation>
+    </message>
+    <message>
+      <source>Turning</source>
+      <translation>转向</translation>
     </message>
   </context>
   <context>

@@ -195,19 +195,13 @@ RowLayout {
                 visible: parametersReady
 
                 QGCDelayButton {
-                    enabled:    _armed || !_healthAndArmingChecksSupported || _activeVehicle.healthAndArmingCheckReport.canArm
-                    text:       _armed ? qsTr("Disarm") : (control._allowForceArm ? qsTr("Force Arm") : qsTr("Arm"))
+                    visible: control._allowForceArm && !_armed
+                    text: qsTr("Force Arm")
 
                     onActivated: {
-                        if (_armed) {
-                            _activeVehicle.armed = false
-                        } else {
-                            if (_allowForceArm) {
-                                _allowForceArm = false
-                                _activeVehicle.forceArm()
-                            } else {
-                                _activeVehicle.armed = true
-                            }
+                        if (_activeVehicle && !_armed && control._allowForceArm) {
+                            control._allowForceArm = false
+                            _activeVehicle.forceArm()
                         }
                         mainWindow.closeIndicatorDrawer()
                     }

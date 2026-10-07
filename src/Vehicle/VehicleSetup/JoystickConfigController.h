@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtCore/QPointer>
+
 #include "RemoteControlCalibrationController.h"
 
 class Joystick;
@@ -16,7 +18,7 @@ public:
 
     Q_PROPERTY(Joystick* joystick READ joystick WRITE _setJoystick NOTIFY joystickChanged REQUIRED)
 
-    Joystick* joystick() const { return _joystick; }
+    Joystick* joystick() const;
 
     // Overrides from RemoteControlCalibrationController
     void start() final override;
@@ -34,5 +36,5 @@ private:
     void _readStoredCalibrationValues() override;
     bool _stickFunctionEnabled(StickFunction stickFunction) override;
 
-    Joystick* _joystick = nullptr;
+    QPointer<Joystick> _joystick;
 };

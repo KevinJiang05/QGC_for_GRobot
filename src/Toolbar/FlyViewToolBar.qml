@@ -103,6 +103,26 @@ Item {
                         Layout.fillHeight:  true
                         visible:            _activeVehicle
                     }
+
+                    QGCDelayButton {
+                        objectName: "toolbar_armDisarmButton"
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10
+                        visible: !!control._activeVehicle
+                        enabled: control._activeVehicle
+                                 && QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable
+                                 && !control._communicationLost
+                                 && (control._activeVehicle.armed
+                                     || !control._activeVehicle.healthAndArmingCheckReport.supported
+                                     || control._activeVehicle.healthAndArmingCheckReport.canArm)
+                        text: control._activeVehicle && control._activeVehicle.armed
+                              ? qsTr("Disarm") : qsTr("Arm")
+                        onActivated: {
+                            if (control._activeVehicle) {
+                                control._activeVehicle.armed = !control._activeVehicle.armed
+                            }
+                        }
+                    }
                 }
             }
             Item {

@@ -5,6 +5,7 @@
 #include <QtCore/QScopeGuard>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
+#include <QtQuick/QQuickItem>
 #include <QtTest/QSignalSpy>
 #include <memory>
 
@@ -18,6 +19,21 @@
 #include "QGCCorePlugin.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
+
+namespace {
+QQuickItem* findVisualItem(QQuickItem* item, const QString& name)
+{
+    if (item->objectName() == name) {
+        return item;
+    }
+    for (auto* child : item->childItems()) {
+        if (auto* found = findVisualItem(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+}  // namespace
 
 void JoystickControlTest::_manualControlPackets_data()
 {
@@ -167,6 +183,8 @@ void JoystickControlTest::_configurationKeepsManualControl()
     QQuickItem cancelButton;
     QQuickItem nextButton;
     JoystickConfigController controller;
+    QVERIFY(!controller.additionalAxis1Enabled());
+    QVERIFY(!controller.additionalAxis6Enabled());
     controller.setProperty("joystick", QVariant::fromValue(joystick.data()));
     controller.setProperty("statusText", QVariant::fromValue(&statusText));
     controller.setProperty("cancelButton", QVariant::fromValue(&cancelButton));
@@ -225,7 +243,9 @@ void JoystickControlTest::_firmwareButtonOwnership()
 {
     Fact normal(1, QStringLiteral("BTN0_FUNCTION"), FactMetaData::valueTypeInt8);
     Fact shift(1, QStringLiteral("BTN0_SFUNCTION"), FactMetaData::valueTypeInt8);
-    for (Fact* fact : {&normal, &shift}) {
+    Fact secondNormal(1, QStringLiteral("BTN1_FUNCTION"), FactMetaData::valueTypeInt8);
+    Fact secondShift(1, QStringLiteral("BTN1_SFUNCTION"), FactMetaData::valueTypeInt8);
+    for (Fact* fact : {&normal, &shift, &secondNormal, &secondShift}) {
         fact->setEnumInfo({QStringLiteral("Disabled"), QStringLiteral("Arm"), QStringLiteral("Extended action")},
                           {0, 7, -56});  // ArduSub action 200 represented by signed int8.
         fact->setRawValue(7);
@@ -243,19 +263,26 @@ import QGroundControl.VehicleSetup
 Item {
     property var normalFact
     property var shiftFact
+    property var secondNormalFact
+    property var secondShiftFact
     property bool parametersReady: false
     property bool parametersPresent: true
     property int missingReports: 0
     QtObject {
         id: fixtureJoystick
-        property int buttonCount: 1
-        property var buttonActions: ["QGC action"]
+        property int buttonCount: 2
+        property var buttonActions: ["QGC action", "No Action"]
+        signal rawButtonPressedChanged(int index, bool pressed)
         property string buttonActionNone: "No Action"
         property var assignableActionTitles: ["无操作", "QGC 中文动作"]
         property var assignableActions: ({ get: function(index) { return {canRepeat: false, action: index === 0 ? "No Action" : "QGC action"} } })
         function getButtonRepeat(index) { return false }
         function setButtonRepeat(index, repeat) {}
-        function setButtonAction(index, action) { buttonActions = [action] }
+        function setButtonAction(index, action) {
+            const actions = buttonActions.slice()
+            actions[index] = action
+            buttonActions = actions
+        }
     }
     QtObject {
         id: fixtureController
@@ -263,15 +290,18 @@ Item {
         function parameterExists(componentId, name) { return parametersPresent }
         function getParameterFact(componentId, name, reportMissing) {
             if (!parametersPresent) { missingReports++; return null }
+            if (name.indexOf("BTN1_") === 0) return name.indexOf("SFUNCTION") >= 0 ? secondShiftFact : secondNormalFact
             return name.indexOf("SFUNCTION") >= 0 ? shiftFact : normalFact
         }
     }
     JoystickComponentButtons {
         objectName: "buttonsPage"
+        width: 1100
         joystick: fixtureJoystick
         controller: fixtureController
     }
     function currentQgcAction() { return fixtureJoystick.buttonActions[0] }
+    function pressButton(index, pressed) { fixtureJoystick.rawButtonPressedChanged(index, pressed) }
     function expandVehicleActions(expanded) {
         fixtureJoystick.assignableActionTitles = expanded ? ["无操作", "新增载具模式", "QGC 中文动作"] : ["无操作", "QGC 中文动作"]
         fixtureJoystick.assignableActions = ({ get: function(index) {
@@ -282,18 +312,26 @@ Item {
                       QUrl(QStringLiteral("qrc:/joystick-button-fixture.qml")));
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     const QVariantMap properties{{QStringLiteral("normalFact"), QVariant::fromValue(&normal)},
-                                 {QStringLiteral("shiftFact"), QVariant::fromValue(&shift)}};
+                                 {QStringLiteral("shiftFact"), QVariant::fromValue(&shift)},
+                                 {QStringLiteral("secondNormalFact"), QVariant::fromValue(&secondNormal)},
+                                 {QStringLiteral("secondShiftFact"), QVariant::fromValue(&secondShift)}};
     std::unique_ptr<QObject> root(component.createWithInitialProperties(properties));
     QVERIFY2(root, qPrintable(component.errorString()));
     auto* const page = root->findChild<QObject*>(QStringLiteral("buttonsPage"));
     QVERIFY(page);
-    QVERIFY(!qvariant_cast<Fact*>(page->property("_buttonFunction")));
+    auto* const rootItem = qobject_cast<QQuickItem*>(root.get());
+    QVERIFY(rootItem);
+    QQuickItem* firstRow = nullptr;
+    QQuickItem* secondRow = nullptr;
+    QTRY_VERIFY_WITH_TIMEOUT((firstRow = findVisualItem(rootItem, QStringLiteral("joystickButtonRow0"))), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT((secondRow = findVisualItem(rootItem, QStringLiteral("joystickButtonRow1"))), 5000);
+    QVERIFY(!qvariant_cast<Fact*>(firstRow->property("_buttonFunction")));
     root->setProperty("parametersReady", true);
-    QTRY_COMPARE(qvariant_cast<Fact*>(page->property("_buttonFunction")), &normal);
-    QCOMPARE(qvariant_cast<Fact*>(page->property("_shiftFunction")), &shift);
-    auto* const qgcCombo = root->findChild<QObject*>(QStringLiteral("joystickQgcActionCombo"));
-    auto* const normalCombo = root->findChild<QObject*>(QStringLiteral("joystickFirmwareActionCombo"));
-    auto* const shiftCombo = root->findChild<QObject*>(QStringLiteral("joystickShiftActionCombo"));
+    QTRY_COMPARE(qvariant_cast<Fact*>(firstRow->property("_buttonFunction")), &normal);
+    QCOMPARE(qvariant_cast<Fact*>(firstRow->property("_shiftFunction")), &shift);
+    auto* const qgcCombo = findVisualItem(rootItem, QStringLiteral("joystickQgcActionCombo0"));
+    auto* const normalCombo = findVisualItem(rootItem, QStringLiteral("joystickFirmwareActionCombo0"));
+    auto* const shiftCombo = findVisualItem(rootItem, QStringLiteral("joystickShiftActionCombo0"));
     QVERIFY(qgcCombo && normalCombo && shiftCombo);
     QCOMPARE(qgcCombo->property("currentIndex").toInt(), 1);
     // Connecting a vehicle can insert mode actions before an existing assignment.
@@ -319,10 +357,19 @@ Item {
     QCOMPARE(action.toString(), QStringLiteral("No Action"));
     QCOMPARE(qgcCombo->property("currentIndex").toInt(), 0);
     root->setProperty("parametersPresent", false);
-    QTRY_VERIFY(!qvariant_cast<Fact*>(page->property("_buttonFunction")));
+    QTRY_VERIFY(!qvariant_cast<Fact*>(firstRow->property("_buttonFunction")));
     QVERIFY(QMetaObject::invokeMethod(qgcCombo, "activated", Q_ARG(int, 1)));
     QCOMPARE(shift.rawValue().toInt(), -56);
     QCOMPARE(root->property("missingReports").toInt(), 0);
+    QCOMPARE(secondNormal.rawValue().toInt(), 7);
+    QCOMPARE(secondShift.rawValue().toInt(), 7);
+    QVERIFY(QMetaObject::invokeMethod(root.get(), "pressButton", Q_ARG(QVariant, QVariant(1)),
+                                      Q_ARG(QVariant, QVariant(true))));
+    QVERIFY(secondRow->property("pressed").toBool());
+    QVERIFY(!firstRow->property("pressed").toBool());
+    QVERIFY(QMetaObject::invokeMethod(root.get(), "pressButton", Q_ARG(QVariant, QVariant(1)),
+                                      Q_ARG(QVariant, QVariant(false))));
+    QVERIFY(!secondRow->property("pressed").toBool());
 }
 
 UT_REGISTER_TEST(JoystickControlTest, TestLabel::Unit, TestLabel::Joystick)

@@ -4,6 +4,8 @@
  *
  ****************************************************************************/
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 
@@ -22,9 +24,12 @@ Rectangle {
     property int mainIndex: 0
     property int fullscreenIndex: -1
     property bool attitudeMode: false
+    property QtObject attitudeViewState: defaultAttitudeViewState
     property bool auvMissionMode: false
     property string mainViewName: titleForIndex(mainIndex)
     readonly property var videoRows: [videoRow1, videoRow2, videoRow3, videoRow4]
+
+    Attitude3DViewState { id: defaultAttitudeViewState }
 
     component VideoStatusRow: QtObject {
         required property int index
@@ -637,7 +642,7 @@ Rectangle {
                 visible: active
                 z: 8
                 sourceComponent: Component {
-                    Attitude3DPanel {}
+                    Attitude3DPanel { viewState: root.attitudeViewState }
                 }
             }
 

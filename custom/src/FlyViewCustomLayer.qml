@@ -4,6 +4,8 @@
  *
  ****************************************************************************/
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import DeepShark 1.0
@@ -41,11 +43,15 @@ Item {
                                        && (!_root.statusPanelAutoCompact || _root.statusPanelManualOpen)
     property real rightPanelBottomMargin: Math.max(parentToolInsets.bottomEdgeRightInset,
                                                    ScreenTools.defaultFontPixelHeight * 3)
-    property int sidePreviewMode: 0
+    property int sidePreviewMode: 1
+    property bool attitudeEnlargedFromPreview: false
+    property bool previousVideoMainMode: true
     readonly property int effectiveSidePreviewMode: fourVideoPanel.attitudeMode ? 0 : sidePreviewMode
     readonly property bool compactAttitudeSceneActive: visible
                                                        && attitudePreviewVisible
                                                        && effectiveSidePreviewMode === 1
+                                                       && GraphicsInfo.api !== GraphicsInfo.Unknown
+                                                       && GraphicsInfo.api !== GraphicsInfo.Software
     property var activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property var primaryBattery: activeVehicle && activeVehicle.batteries.count > 0
                                  ? activeVehicle.batteries.get(0) : null
@@ -66,7 +72,7 @@ Item {
         }
         return primaryBattery.percentRemaining.valueString + primaryBattery.percentRemaining.units
     }
-    property bool attitudePreviewVisible: _root.statusPanelExpanded
+    property bool attitudePreviewVisible: _root.videoMainMode
                                           && !_root.panelMinimized
     property real attitudePreviewHeight: Math.max(ScreenTools.defaultFontPixelHeight * 8,
                                                   Math.min(height * 0.27,
@@ -76,6 +82,15 @@ Item {
                                             ? statusPanel.panelWidth + ScreenTools.defaultFontPixelWidth * 2
                                             : Math.max(parentToolInsets.rightEdgeBottomInset, ScreenTools.defaultFontPixelWidth * 2))
                                          : ScreenTools.defaultFontPixelWidth
+
+    Attitude3DViewState { id: sharedAttitudeViewState }
+
+    function enlargeAttitudePreview() {
+        previousVideoMainMode = videoMainMode
+        attitudeEnlargedFromPreview = true
+        videoMainMode = true
+        fourVideoPanel.toggleAttitudeMode()
+    }
 
     function addDeepSharkEvent(message) {
         var timestamp = Qt.formatTime(new Date(), "hh:mm:ss")
@@ -150,6 +165,13 @@ Item {
         height: _root.videoMainMode ? undefined : Math.min(parent.height * 0.58, width * 0.62)
 
         videoMainMode: _root.videoMainMode
+        attitudeViewState: sharedAttitudeViewState
+        onAttitudeModeChanged: {
+            if (!attitudeMode && _root.attitudeEnlargedFromPreview) {
+                _root.attitudeEnlargedFromPreview = false
+                _root.videoMainMode = _root.previousVideoMainMode
+            }
+        }
         onToggleVideoMainMode: _root.videoMainMode = !_root.videoMainMode
         onToggleStatusPanel: {
             if (_root.statusPanelAutoCompact && !_root.statusPanelExpanded) {
@@ -235,8 +257,23 @@ Item {
                 font.bold: true
             }
 
-            ComboBox {
+            QGCButton {
+                id: expandAttitudeButton
+                objectName: "expandAttitudePreview"
+                visible: _root.effectiveSidePreviewMode === 1
                 anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(ScreenTools.defaultFontPixelWidth * 5, 44)
+                height: parent.height - 4
+                text: qsTr("放大")
+                backgroundColor: "#dceaf2"
+                textColor: "#17212b"
+                onClicked: _root.enlargeAttitudePreview()
+            }
+
+            ComboBox {
+                anchors.right: expandAttitudeButton.visible ? expandAttitudeButton.left : parent.right
                 anchors.rightMargin: 4
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -303,6 +340,8 @@ Item {
                     Attitude3DPanel {
                         compactMode: true
                         showCompactHeader: false
+                        viewState: sharedAttitudeViewState
+                        onExpandRequested: _root.enlargeAttitudePreview()
                     }
                 }
             }

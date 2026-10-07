@@ -4,7 +4,7 @@ QGC_KevinJiang is an internal GRobot ground control application maintained by Ke
 
 - Project name: QGC_KevinJiang
 - Current stable version: 1.4.0
-- Development candidate: 1.5.0 Debug, based on QGroundControl v5.1.5
+- Development candidate: 2.0.0 Debug, based on QGroundControl v5.1.5
 - Stable v1.4.0 upstream base: QGroundControl v5.0.8
 - Maintainer: Jiang Zhongze / KevinJiang1018@gmail.com
 - Distribution: Windows installer published through GitHub Releases

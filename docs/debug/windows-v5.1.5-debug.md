@@ -1,4 +1,4 @@
-# QGroundControl v5.1.5 Windows Debug 候选版
+# Kevin v2.0.0 / QGroundControl v5.1.5 Windows Debug 候选版
 
 本候选基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），保留 DeepShark 定制功能。
 升级前检查点为 `db9c9159631a271457a7d6c395deb50e2cf3c304`；长期开发分支统一为 `main`，版本及回退节点使用 tag 记录，见 [仓库维护说明](../development/repository-maintenance.md)。
@@ -27,7 +27,7 @@ Set-Location D:\Develop\QGC_for_GRobot
 
 ## 配置隔离
 
-- 显示版本：`1.5.0 Debug (QGroundControl v5.1.5)`。
+- 显示版本：`2.0.0 Debug (QGroundControl v5.1.5)`。
 - 普通启动的应用名：`QGC_KevinJiang_v5_1_5_Debug Daily`，组织名 `KevinJiang`。
 - QSettings、应用缓存和默认保存目录使用上述独立应用名；测试模式另外使用带测试名或 PID 的配置。
 - Debug 不自动读取正式版配置。首次实测需要在候选界面重新填入视频、AI 和手柄设置；正式版设置及校准保持原样。

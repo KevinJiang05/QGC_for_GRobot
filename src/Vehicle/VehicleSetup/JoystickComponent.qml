@@ -88,7 +88,8 @@ SetupPage {
             Loader {
                 id: remoteControlCalibrationLoader
                 Layout.fillWidth: true
-                sourceComponent: activeJoystick && !activeVehicle.armed ? remoteControlCalibrationComponent : null
+                objectName: "joystickConfigurationLoader"
+                sourceComponent: activeJoystick && activeVehicle && (!activeVehicle.armed || activeVehicle.setupSafetyRestrictionsDisabled) ? remoteControlCalibrationComponent : null
             }
 
             Component {
@@ -106,6 +107,7 @@ SetupPage {
                     }
 
                     useDeadband: controller && controller.joystick && controller.joystick.settings.useDeadband.rawValue
+                    calibrationEnabled: !_activeVehicle || !_activeVehicle.armed
 
                     additionalSetupComponent: _activeJoystick ? _additionalSetupComponent : null
                     additionalMonitorComponent: _activeJoystick ? _additionalMonitorComponent : null

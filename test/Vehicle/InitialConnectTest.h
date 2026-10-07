@@ -19,4 +19,6 @@ private slots:
     void _subsystemFailureFallsThrough();
     void _stateRunMatrix_data();
     void _stateRunMatrix();
+    void _armedSubParameterDownload_data();
+    void _armedSubParameterDownload();
 };

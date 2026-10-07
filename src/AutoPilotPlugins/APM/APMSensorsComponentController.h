@@ -123,6 +123,7 @@ private slots:
     void _mavCommandResult(int vehicleId, int component, int command, int result, int failureCode);
 
 private:
+    bool _canStartCalibration() const;
     void _startLogCalibration();
     void _startVisualCalibration();
     /// Appends the specified text to the status log area in the ui

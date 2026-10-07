@@ -1,18 +1,17 @@
 #pragma once
 
-#include "QGCMAVLink.h"
-
 #include <QtCore/QObject>
 #include <QtCore/QThread>
 #include <QtCore/QVariantMap>
 #include <QtGui/QVector3D>
 #include <QtQmlIntegration/QtQmlIntegration>
-
-#include <functional>
 #include <array>
+#include <atomic>
+#include <functional>
 
-#include "RemoteControlCalibrationController.h"
 #include "JoystickSettings.h"
+#include "QGCMAVLink.h"
+#include "RemoteControlCalibrationController.h"
 
 class MavlinkActionManager;
 class QmlObjectListModel;
@@ -71,6 +70,7 @@ class Joystick : public QThread
     friend class JoystickConfigController;
 #ifdef QGC_UNITTEST_BUILD
     friend class JoystickTest;
+    friend class JoystickControlTest;
 #endif
 
 public:
@@ -420,6 +420,7 @@ private:
     void _stopPollingThread();
     QString _pollingFlagsToString(PollingFlags flags) const;
     PollingFlags _pollingFlags = PollingNone;
+    std::atomic_bool _configurationAllowsVehicleControl{false};
 
     Vehicle* _pollingVehicle = nullptr;
 

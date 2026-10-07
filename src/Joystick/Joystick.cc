@@ -307,6 +307,7 @@ void Joystick::_loadAxisSettings(bool joystickCalibrated, int transmitterMode)
     const QString reversedKey = QString::fromLatin1(kAxisReversedKey);
 
     qCDebug(JoystickLog) << "Axis Settings:";
+    bool invalidCalibration = false;
 
     axisSettings.beginGroup(QString::fromLatin1(kAxisSettingsArrayGroup));
     for (int axis = 0; axis < _axisCount; axis++) {
@@ -322,8 +323,10 @@ void Joystick::_loadAxisSettings(bool joystickCalibrated, int transmitterMode)
 
         auto& axisCalibration = _rgCalibration[axis];
 
-        const int axisFunction = axisSettings.value(functionKey, maxAxisFunction).toInt();
-        if (axisFunction < 0 || axisFunction > maxAxisFunction) {
+        bool functionOk = false;
+        const int axisFunction = axisSettings.value(functionKey, maxAxisFunction).toInt(&functionOk);
+        if (!functionOk || axisFunction < 0 || axisFunction > maxAxisFunction) {
+            invalidCalibration = true;
             qCWarning(JoystickLog) << "Invalid function" << axisFunction << "for axis" << axis;
             axisSettings.endGroup();
             continue;
@@ -333,12 +336,31 @@ void Joystick::_loadAxisSettings(bool joystickCalibrated, int transmitterMode)
             axisSettings.endGroup();
             continue;
         }
+        if (_getJoystickAxisForAxisFunction(static_cast<AxisFunction_t>(axisFunction)) != kJoystickAxisNotAssigned) {
+            invalidCalibration = true;
+            axisSettings.endGroup();
+            continue;
+        }
+        bool centerOk = false;
+        bool minOk = false;
+        bool maxOk = false;
+        bool deadbandOk = false;
+        axisCalibration.center = axisSettings.value(centerKey).toInt(&centerOk);
+        axisCalibration.min = axisSettings.value(minKey).toInt(&minOk);
+        axisCalibration.max = axisSettings.value(maxKey).toInt(&maxOk);
+        axisCalibration.deadband = axisSettings.value(deadbandKey).toInt(&deadbandOk);
+        const QString reversed = axisSettings.value(reversedKey).toString().toLower();
+        const bool reversedOk = reversed == "true" || reversed == "false" || reversed == "1" || reversed == "0";
+        // Auxiliary triggers may have their center at an endpoint; their range must still be valid.
+        if (!centerOk || !minOk || !maxOk || !deadbandOk || !reversedOk || axisCalibration.min < AxisMin ||
+            axisCalibration.max > AxisMax || axisCalibration.min >= axisCalibration.max ||
+            axisCalibration.center < axisCalibration.min || axisCalibration.center > axisCalibration.max ||
+            axisCalibration.deadband < 0 || axisCalibration.deadband >= axisCalibration.max - axisCalibration.min) {
+            invalidCalibration = true;
+            axisSettings.endGroup();
+            continue;
+        }
         _setJoystickAxisForAxisFunction(static_cast<AxisFunction_t>(axisFunction), axis);
-
-        axisCalibration.center = axisSettings.value(centerKey, axisCalibration.center).toInt();
-        axisCalibration.min = axisSettings.value(minKey, axisCalibration.min).toInt();
-        axisCalibration.max = axisSettings.value(maxKey, axisCalibration.max).toInt();
-        axisCalibration.deadband = axisSettings.value(deadbandKey, axisCalibration.deadband).toInt();
         axisCalibration.reversed = axisSettings.value(reversedKey, axisCalibration.reversed).toBool();
 
         qCDebug(JoystickLog)
@@ -428,11 +450,14 @@ void Joystick::_loadAxisSettings(bool joystickCalibrated, int transmitterMode)
             qCWarning(JoystickLog) << "Internal Error: Missing additional axis 6 function mapping!";
         }
     }
-    if (rollFunctionNotAssigned || pitchFunctionNotAssigned || yawFunctionNotAssigned || throttleFunctionNotAssigned ||
-            pitchExtensionFunctionRequiredButNotAssigned || rollExtensionFunctionRequiredButNotAssigned ||
-            additionalAxis1FunctionRequiredButNotAssigned || additionalAxis2FunctionRequiredButNotAssigned || additionalAxis3FunctionRequiredButNotAssigned ||
-            additionalAxis4FunctionRequiredButNotAssigned || additionalAxis5FunctionRequiredButNotAssigned || additionalAxis6FunctionRequiredButNotAssigned) {
-        qCWarning(JoystickLog) << "Missing control axis function(s), resetting all axis settings, marking joystick as uncalibrated and disabled";
+    if (invalidCalibration || rollFunctionNotAssigned || pitchFunctionNotAssigned || yawFunctionNotAssigned ||
+        throttleFunctionNotAssigned || pitchExtensionFunctionRequiredButNotAssigned ||
+        rollExtensionFunctionRequiredButNotAssigned || additionalAxis1FunctionRequiredButNotAssigned ||
+        additionalAxis2FunctionRequiredButNotAssigned || additionalAxis3FunctionRequiredButNotAssigned ||
+        additionalAxis4FunctionRequiredButNotAssigned || additionalAxis5FunctionRequiredButNotAssigned ||
+        additionalAxis6FunctionRequiredButNotAssigned) {
+        qCWarning(JoystickLog) << "Invalid calibration or missing control axis function(s), resetting all axis "
+                                  "settings, marking joystick as uncalibrated and disabled";
         _resetAxisCalibrationData();
         _clearAxisSettings();
         _joystickSettings.calibrated()->setRawValue(false);
@@ -770,14 +795,16 @@ void Joystick::_handleButtons()
                 emit rawButtonPressedChanged(buttonIndex, false);
             }
         }
-    } else if (_pollingFlags.testFlag(PollingForVehicle)) {
+    }
+    if (_pollingFlags.testFlag(PollingForVehicle) &&
+        (!_pollingFlags.testFlag(PollingForConfiguration) || _configurationAllowsVehicleControl.load())) {
         Vehicle *const vehicle = _pollingVehicle;
         if (!vehicle) {
             qCWarning(JoystickLog) << "Internal Error: No vehicle for joystick!";
             return;
         }
         if (!_joystickManager->activeJoystickEnabledForActiveVehicle()) {
-            qCWarning(JoystickLog) << "Internal Error: Joystick not enabled for vehicle!";
+            // Disabling changes the manager state before the polling thread has stopped.
             return;
         }
         if (!_joystickSettings.calibrated()->rawValue().toBool()) {
@@ -954,14 +981,16 @@ void Joystick::_handleAxis()
             channelValues[axisIndex] = _getAxisValue(axisIndex);
         }
         emit rawChannelValuesChanged(channelValues);
-    } else if (_pollingFlags.testFlag(PollingForVehicle)) {
+    }
+    if (_pollingFlags.testFlag(PollingForVehicle) &&
+        (!_pollingFlags.testFlag(PollingForConfiguration) || _configurationAllowsVehicleControl.load())) {
         Vehicle *const vehicle = _pollingVehicle;
         if (!vehicle) {
             qCWarning(JoystickLog) << "Internal Error: No vehicle for joystick!";
             return;
         }
         if (!_joystickManager->activeJoystickEnabledForActiveVehicle()) {
-            qCWarning(JoystickLog) << "Internal Error: Joystick not enabled for vehicle!";
+            // Disabling changes the manager state before the polling thread has stopped.
             return;
         }
         if (!_joystickSettings.calibrated()->rawValue().toBool()) {
@@ -1695,7 +1724,7 @@ void Joystick::_addAvailableButtonActionIfMissing(const QString &action)
     // No onDown handler: _executeButtonAction() falls through to flight mode / MAVLink
     // dispatch at button press time.
     _availableButtonActions->append(new AvailableButtonAction(action, nullptr));
-    _availableActionTitles << action;
+    _availableActionTitles << tr(action.toUtf8().constData());
     emit assignableActionsChanged();
 }
 
@@ -1830,7 +1859,7 @@ void Joystick::_buildAvailableButtonsActionList(Vehicle *vehicle)
 
     for (int i = 0; i < _availableButtonActions->count(); i++) {
         const AvailableButtonAction *const buttonAction = qobject_cast<const AvailableButtonAction*>(_availableButtonActions->get(i));
-        _availableActionTitles << buttonAction->action();
+        _availableActionTitles << tr(buttonAction->action().toUtf8().constData());
     }
 
     emit assignableActionsChanged();

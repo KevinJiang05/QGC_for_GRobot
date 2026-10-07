@@ -1,12 +1,12 @@
 #include "JoystickConfigController.h"
 
+#include <QtCore/QSettings>
+
 #include "Fact.h"
 #include "Joystick.h"
 #include "ParameterManager.h"
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
-
-#include <QtCore/QSettings>
 
 QGC_LOGGING_CATEGORY(JoystickConfigControllerLog, "AutoPilotPlugins.JoystickConfigController")
 QGC_LOGGING_CATEGORY(JoystickConfigControllerVerboseLog, "AutoPilotPlugins.JoystickConfigController:verbose")
@@ -27,11 +27,19 @@ JoystickConfigController::JoystickConfigController(QObject *parent)
     int valueRange = _calDefaultMaxValue - _calDefaultMinValue;
     _calValidMinValue = _calDefaultMinValue + (valueRange * 0.3f);
     _calValidMaxValue = _calDefaultMaxValue - (valueRange * 0.3f);
+
+    connect(this, &RemoteControlCalibrationController::calibratingChanged, this,
+            &JoystickConfigController::_updateConfigurationVehicleControl);
+    if (_vehicle) {
+        connect(_vehicle, &Vehicle::setupSafetyRestrictionsDisabledChanged, this,
+                &JoystickConfigController::_updateConfigurationVehicleControl);
+    }
 }
 
 JoystickConfigController::~JoystickConfigController()
 {
     if (_joystick) {
+        _joystick->_configurationAllowsVehicleControl.store(false);
         _joystick->_stopPollingForConfiguration();
     }
 }
@@ -45,7 +53,16 @@ void JoystickConfigController::start(void)
 
     qCDebug(JoystickConfigControllerLog) << "Starting joystick configuration for joystick:" << _joystick->name();
     RemoteControlCalibrationController::start();
+    _updateConfigurationVehicleControl();
     _joystick->_startPollingForConfiguration();
+}
+
+void JoystickConfigController::_updateConfigurationVehicleControl()
+{
+    if (_joystick) {
+        _joystick->_configurationAllowsVehicleControl.store(_vehicle && _vehicle->setupSafetyRestrictionsDisabled() &&
+                                                            !calibrating());
+    }
 }
 
 void JoystickConfigController::_setJoystick(Joystick* joystick)
@@ -60,6 +77,7 @@ void JoystickConfigController::_setJoystick(Joystick* joystick)
     }
 
     _joystick = joystick;
+    _updateConfigurationVehicleControl();
     _readStoredCalibrationValues();
     connect(_joystick, &Joystick::rawChannelValuesChanged, this, &JoystickConfigController::_rawChannelValuesChanged);
 

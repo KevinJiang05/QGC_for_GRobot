@@ -28,7 +28,11 @@ SetupPage {
         fact.value = reversed ? -1 : 1;
     }
 
-    Component.onCompleted: controller.vehicle.armed = false
+    Component.onCompleted: {
+        if (controller.vehicle && !controller.vehicle.setupSafetyRestrictionsDisabled) {
+            controller.vehicle.armed = false
+        }
+    }
 
     Component {
         id: pageComponent

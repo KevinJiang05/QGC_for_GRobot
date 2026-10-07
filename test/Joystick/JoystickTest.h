@@ -51,6 +51,11 @@ private slots:
     void _legacySettingsMigrationTest();
     void _legacySettingsDoNotOverrideV2Test();
     void _invalidLegacyCalibrationTest();
+    void _invalidLegacyCalibrationTest_data();
+    void _invalidV2CalibrationTest_data();
+    void _invalidV2CalibrationTest();
+    void _validV2CalibrationTest_data();
+    void _validV2CalibrationTest();
     void _legacyManagerSettingsMigration_data();
     void _legacyManagerSettingsMigration();
     void _adjustRangeTest();

@@ -149,6 +149,8 @@ public:
     Q_PROPERTY(QGeoCoordinate       armedPosition               READ armedPosition                                                  NOTIFY armedPositionChanged)
     Q_PROPERTY(bool                 armed                       READ armed                      WRITE setArmedShowError             NOTIFY armedChanged)
     Q_PROPERTY(bool                 autoDisarm                  READ autoDisarm                                                     NOTIFY autoDisarmChanged)
+    Q_PROPERTY(bool setupSafetyRestrictionsDisabled READ setupSafetyRestrictionsDisabled NOTIFY
+                   setupSafetyRestrictionsDisabledChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable      READ flightModeSetAvailable                                         CONSTANT)
     Q_PROPERTY(QStringList          flightModes                 READ flightModes                                                    NOTIFY flightModesChanged)
     Q_PROPERTY(QString              flightMode                  READ flightMode                 WRITE setFlightMode                 NOTIFY flightModeChanged)
@@ -468,6 +470,7 @@ public:
     bool vtol() const;
     bool rover() const;
     bool sub() const;
+    bool setupSafetyRestrictionsDisabled() const;
     bool spacecraft() const;
 
 
@@ -752,6 +755,7 @@ signals:
     void homePositionChanged            (const QGeoCoordinate& homePosition);
     void armedPositionChanged();
     void armedChanged                   (bool armed);
+    void setupSafetyRestrictionsDisabledChanged();
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
     void landingChanged                 (bool landing);

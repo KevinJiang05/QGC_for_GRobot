@@ -969,11 +969,21 @@ void JoystickTest::_legacySettingsMigrationTest()
     settings.setValue(legacy + "Exponential", -0.25);
     settings.setValue(legacy + "ThrottleMode", 0);
     settings.setValue(legacy + "NegativeThrust", true);
+    for (int axis = 0; axis < 4; ++axis) {
+        const QString prefix = legacy + QStringLiteral("Axis%1").arg(axis);
+        settings.setValue(prefix + "Min", -32768);
+        settings.setValue(prefix + "Max", 32767);
+        settings.setValue(prefix + "Trim", 0);
+        settings.setValue(prefix + "Deadbnd", 0);
+        settings.setValue(prefix + "Rev", false);
+    }
     settings.setValue(legacy + "Axis2Min", -30000);
     settings.setValue(legacy + "Axis2Max", 31000);
     settings.setValue(legacy + "Axis2Trim", 25);
     settings.setValue(legacy + "Axis2Deadbnd", 120);
     settings.setValue(legacy + "Axis2Rev", true);
+    // One-sided controls (for example a trigger) legitimately rest at an endpoint.
+    settings.setValue(legacy + "Axis1Trim", -32768);
     settings.setValue(legacy + "ButtonActionName1", QStringLiteral("Legacy vehicle mode"));
     settings.setValue(legacy + "ButtonActionRepeat1", true);
     const QStringList legacyKeys = settings.allKeys();
@@ -992,6 +1002,7 @@ void JoystickTest::_legacySettingsMigrationTest()
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/3/function").toInt(), 1);
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/0/function").toInt(), 2);
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/1/function").toInt(), 3);
+    QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/1/center").toInt(), -32768);
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/2/min").toInt(), -30000);
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/2/max").toInt(), 31000);
     QCOMPARE(settings.value(v2 + "JoystickAxisSettingsArray/2/center").toInt(), 25);
@@ -1064,19 +1075,144 @@ void JoystickTest::_legacyManagerSettingsMigration()
     QVERIFY(!settings.value(keys[4]).toBool());
 }
 
+void JoystickTest::_invalidLegacyCalibrationTest_data()
+{
+    QTest::addColumn<QString>("key");
+    QTest::addColumn<QVariant>("value");
+    for (const QString& field : {QStringLiteral("Min"), QStringLiteral("Max"), QStringLiteral("Trim"),
+                                 QStringLiteral("Deadbnd"), QStringLiteral("Rev")}) {
+        QTest::newRow(qPrintable("missing-" + field)) << "Axis0" + field << QVariant();
+    }
+    QTest::newRow("duplicate-axis") << QStringLiteral("PitchAxis") << QVariant(0);
+    QTest::newRow("axis-out-of-range") << QStringLiteral("RollAxis") << QVariant(6);
+    QTest::newRow("invalid-axis-text") << QStringLiteral("RollAxis") << QVariant("broken");
+    QTest::newRow("invalid-range-text") << QStringLiteral("Axis0Max") << QVariant("broken");
+    QTest::newRow("invalid-center-text") << QStringLiteral("Axis0Trim") << QVariant("broken");
+    QTest::newRow("invalid-reverse-text") << QStringLiteral("Axis0Rev") << QVariant("broken");
+    QTest::newRow("invalid-deadband-text") << QStringLiteral("Axis0Deadbnd") << QVariant("broken");
+    QTest::newRow("negative-deadband") << QStringLiteral("Axis0Deadbnd") << QVariant(-1);
+    QTest::newRow("oversized-deadband") << QStringLiteral("Axis0Deadbnd") << QVariant(65535);
+    QTest::newRow("reversed-range") << QStringLiteral("Axis0Min") << QVariant(32000);
+    QTest::newRow("out-of-range-maximum") << QStringLiteral("Axis0Max") << QVariant(100000);
+    QTest::newRow("out-of-range-minimum") << QStringLiteral("Axis0Min") << QVariant(-100000);
+}
+
 void JoystickTest::_invalidLegacyCalibrationTest()
 {
+    QFETCH(QString, key);
+    QFETCH(QVariant, value);
     const QString name = QStringLiteral("Invalid Legacy Controller");
     const QString legacy = QStringLiteral("Joysticks/%1/").arg(name);
     QSettings settings;
+    settings.remove(QStringLiteral("JoystickSettingsV2/%1").arg(name));
+    settings.remove(legacy);
     settings.setValue(legacy + "Calibrated4", true);
     settings.setValue(legacy + "RollAxis", 0);
-    settings.setValue(legacy + "PitchAxis", 0);  // Two functions cannot control the same axis.
+    settings.setValue(legacy + "PitchAxis", 1);
     settings.setValue(legacy + "YawAxis", 2);
     settings.setValue(legacy + "ThrottleAxis", 3);
+    for (int axis = 0; axis < 4; ++axis) {
+        const QString prefix = legacy + QStringLiteral("Axis%1").arg(axis);
+        settings.setValue(prefix + "Min", -32768);
+        settings.setValue(prefix + "Max", 32767);
+        settings.setValue(prefix + "Trim", 0);
+        settings.setValue(prefix + "Deadbnd", 0);
+        settings.setValue(prefix + "Rev", false);
+    }
+    if (value.isValid()) {
+        settings.setValue(legacy + key, value);
+    } else {
+        settings.remove(legacy + key);
+    }
     JoystickSettings joystickSettings(name, 6, 20);
     QVERIFY(!settings.value(joystickSettings.settingsGroup() + "/calibrated").toBool());
     QVERIFY(settings.value(legacy + "Calibrated4").toBool());
+}
+
+void JoystickTest::_invalidV2CalibrationTest_data()
+{
+    QTest::addColumn<QString>("field");
+    QTest::addColumn<QVariant>("value");
+    QTest::newRow("missing-center") << QStringLiteral("center") << QVariant();
+    QTest::newRow("invalid-minimum") << QStringLiteral("min") << QVariant("broken");
+    QTest::newRow("invalid-reversed") << QStringLiteral("reversed") << QVariant("broken");
+    QTest::newRow("zero-range") << QStringLiteral("min") << QVariant(32767);
+    QTest::newRow("center-outside-range") << QStringLiteral("center") << QVariant(32768);
+    QTest::newRow("deadband-outside-range") << QStringLiteral("deadband") << QVariant(65535);
+    QTest::newRow("duplicate-function") << QStringLiteral("function") << QVariant(1);
+}
+
+void JoystickTest::_invalidV2CalibrationTest()
+{
+    QFETCH(QString, field);
+    QFETCH(QVariant, value);
+    _mockJoystick.reset(MockJoystick::create(QStringLiteral("Invalid V2 Controller"), 6, 16, 1));
+    QVERIFY(_mockJoystick->isValid());
+    _pumpEvents();
+    _discoveredJoysticks = JoystickSDL::discover();
+    JoystickSDL* js = _findJoystickByInstanceId(_mockJoystick->instanceId());
+    QVERIFY(js);
+    QSettings settings;
+    const QString array = js->settings()->settingsGroup() + "/JoystickAxisSettingsArray/";
+    for (int axis = 0; axis < 4; ++axis) {
+        const QString prefix = array + QString::number(axis) + '/';
+        settings.setValue(prefix + "function", axis);
+        settings.setValue(prefix + "min", -32768);
+        settings.setValue(prefix + "max", 32767);
+        settings.setValue(prefix + "center", 0);
+        settings.setValue(prefix + "deadband", 0);
+        settings.setValue(prefix + "reversed", false);
+    }
+    if (value.isValid()) {
+        settings.setValue(array + "0/" + field, value);
+    } else {
+        settings.remove(array + "0/" + field);
+    }
+    js->settings()->calibrated()->setRawValue(true);
+    ignoreLogMessage("Joystick.Joystick", QtWarningMsg, QRegularExpression(".*axis function not assigned"));
+    ignoreLogMessage("Joystick.Joystick", QtWarningMsg,
+                     QRegularExpression("Invalid calibration or missing control axis.*"));
+    js->_loadFromSettingsIntoCalibrationData();
+    QVERIFY(!js->settings()->calibrated()->rawValue().toBool());
+}
+
+void JoystickTest::_validV2CalibrationTest_data()
+{
+    QTest::addColumn<bool>("oneSidedAdditionalAxis");
+    QTest::newRow("four-control-axes") << false;
+    QTest::newRow("one-sided-additional-axis") << true;
+}
+
+void JoystickTest::_validV2CalibrationTest()
+{
+    QFETCH(bool, oneSidedAdditionalAxis);
+    _mockJoystick.reset(MockJoystick::create(QStringLiteral("Valid V2 Controller"), 6, 16, 1));
+    QVERIFY(_mockJoystick->isValid());
+    _pumpEvents();
+    _discoveredJoysticks = JoystickSDL::discover();
+    JoystickSDL* js = _findJoystickByInstanceId(_mockJoystick->instanceId());
+    QVERIFY(js);
+    QSettings settings;
+    const QString array = js->settings()->settingsGroup() + "/JoystickAxisSettingsArray/";
+    for (int axis = 0; axis < (oneSidedAdditionalAxis ? 5 : 4); ++axis) {
+        const QString prefix = array + QString::number(axis) + '/';
+        settings.setValue(prefix + "function", axis == 4 ? Joystick::additionalAxis1Function : axis);
+        settings.setValue(prefix + "min", -32768);
+        settings.setValue(prefix + "max", 32767);
+        settings.setValue(prefix + "center", axis == 4 ? -32768 : 0);
+        settings.setValue(prefix + "deadband", 0);
+        settings.setValue(prefix + "reversed", false);
+    }
+    js->settings()->enableAdditionalAxis1()->setRawValue(oneSidedAdditionalAxis);
+    js->settings()->calibrated()->setRawValue(true);
+    js->_loadFromSettingsIntoCalibrationData();
+    QVERIFY(js->settings()->calibrated()->rawValue().toBool());
+    QCOMPARE(js->_getJoystickAxisForAxisFunction(Joystick::rollFunction), 0);
+    QCOMPARE(js->_getJoystickAxisForAxisFunction(Joystick::throttleFunction), 3);
+    if (oneSidedAdditionalAxis) {
+        QCOMPARE(js->_getJoystickAxisForAxisFunction(Joystick::additionalAxis1Function), 4);
+        QCOMPARE(js->_rgCalibration[4].center, -32768);
+    }
 }
 
 UT_REGISTER_TEST(JoystickTest, TestLabel::Unit, TestLabel::Joystick)

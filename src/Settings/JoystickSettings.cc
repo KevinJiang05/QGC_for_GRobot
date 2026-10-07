@@ -57,21 +57,32 @@ JoystickSettings::JoystickSettings(const QString &joystickName, int axisCount, i
 
     static constexpr const char* functionKeys[] = {"RollAxis", "PitchAxis", "YawAxis", "ThrottleAxis"};
     QSet<int> assignedAxes;
-    bool validCalibration = settings.value(legacyGroup + "Calibrated4", false).toBool();
+    const QString calibrated = settings.value(legacyGroup + "Calibrated4", false).toString().toLower();
+    bool validCalibration = calibrated == "true" || calibrated == "1";
     for (int function = 0; function < 4; ++function) {
-        const int axis = settings.value(legacyGroup + functionKeys[function], -1).toInt();
-        if (axis < 0 || axis >= axisCount || assignedAxes.contains(axis)) {
+        bool axisOk = false;
+        const int axis = settings.value(legacyGroup + functionKeys[function], -1).toInt(&axisOk);
+        if (!axisOk || axis < 0 || axis >= axisCount || assignedAxes.contains(axis)) {
             validCalibration = false;
             continue;
         }
         assignedAxes.insert(axis);
         const QString oldAxis = legacyGroup + QStringLiteral("Axis%1").arg(axis);
         const QString newAxis = newGroup + QStringLiteral("JoystickAxisSettingsArray/%1/").arg(axis);
-        const int minimum = settings.value(oldAxis + "Min", -32768).toInt();
-        const int maximum = settings.value(oldAxis + "Max", 32767).toInt();
-        const int center = settings.value(oldAxis + "Trim", 0).toInt();
-        const int deadband = settings.value(oldAxis + "Deadbnd", 0).toInt();
-        validCalibration &= minimum < center && center < maximum && deadband >= 0 && deadband < maximum - minimum;
+        bool minimumOk = false;
+        bool maximumOk = false;
+        bool centerOk = false;
+        bool deadbandOk = false;
+        const int minimum = settings.value(oldAxis + "Min").toInt(&minimumOk);
+        const int maximum = settings.value(oldAxis + "Max").toInt(&maximumOk);
+        const int center = settings.value(oldAxis + "Trim").toInt(&centerOk);
+        const int deadband = settings.value(oldAxis + "Deadbnd").toInt(&deadbandOk);
+        const QString reversed = settings.value(oldAxis + "Rev").toString().toLower();
+        const bool reversedOk = reversed == "true" || reversed == "false" || reversed == "1" || reversed == "0";
+        // Old calibration saves all five fields. Defaults cannot prove that the device was calibrated.
+        validCalibration &= minimumOk && maximumOk && centerOk && deadbandOk && reversedOk && minimum >= -32768 &&
+                            maximum <= 32767 && minimum < maximum && minimum <= center && center <= maximum &&
+                            deadband >= 0 && deadband < maximum - minimum;
         settings.setValue(newAxis + "function", function);  // Both versions persist mappings in TX mode 2.
         settings.setValue(newAxis + "min", minimum);
         settings.setValue(newAxis + "max", maximum);

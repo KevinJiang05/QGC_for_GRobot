@@ -46,6 +46,9 @@
                     "showWhen": "!ScreenTools.isMobile"
                 },
                 {
+                    "setting": "appSettings.disableSetupSafetyRestrictions"
+                },
+                {
                     "setting": "appSettings.clearSettingsNextBoot"
                 }
             ]

@@ -87,6 +87,7 @@ public:
         ROIModeCapability =         1 << 5, ///< Vehicle supports ROI (both in Fly guided mode and from Plan creation)
         ChangeHeadingCapability =   1 << 6, ///< Vehicle supports changing heading at current location
         GuidedTakeoffCapability =   1 << 7, ///< Vehicle supports guided takeoff
+        ArmedSetupOverrideCapability = 1 << 8,  ///< QGC may optionally allow configuration editing while armed
     };
 
     /// Parameter name remapping support:

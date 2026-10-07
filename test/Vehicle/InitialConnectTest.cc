@@ -1,29 +1,97 @@
 #include "InitialConnectTest.h"
 
+#include <QtCore/QRegularExpression>
+#include <QtCore/qscopeguard.h>
+#include <QtTest/QSignalSpy>
+#include <QtTest/QTest>
 #include <memory>
 
-#include <QtTest/QSignalSpy>
-
+#include "APMSensorsComponentController.h"
+#include "AppSettings.h"
+#include "ComponentInformationManager.h"
+#include "Fact.h"
 #include "GeoFenceManager.h"
 #include "LinkManager.h"
 #include "MAVLinkProtocol.h"
-#include "MultiVehicleManager.h"
+#include "MavlinkSettings.h"
+#include "MissionManager.h"
 #include "MockConfiguration.h"
 #include "MockLink.h"
 #include "MockLinkMissionItemHandler.h"
-#include "MissionManager.h"
+#include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "RallyPointManager.h"
+#include "SettingsManager.h"
 #include "StandardModes.h"
 #include "UnitTest.h"
 #include "Vehicle.h"
-#include "ComponentInformationManager.h"
-#include "MavlinkSettings.h"
-#include "SettingsManager.h"
 
-#include <QtCore/QRegularExpression>
-#include <QtCore/qscopeguard.h>
-#include <QtTest/QTest>
+void InitialConnectTest::_armedSubParameterDownload_data()
+{
+    QTest::addColumn<bool>("overrideEnabled");
+    QTest::newRow("upstream-restrictions") << false;
+    QTest::newRow("armed-editing") << true;
+}
+
+void InitialConnectTest::_armedSubParameterDownload()
+{
+    QFETCH(bool, overrideEnabled);
+    auto* const overrideSetting = SettingsManager::instance()->appSettings()->disableSetupSafetyRestrictions();
+    auto* const skipSetting = SettingsManager::instance()->mavlinkSettings()->noInitialDownloadWhenFlying();
+    const QVariant previousOverride = overrideSetting->rawValue();
+    const QVariant previousSkip = skipSetting->rawValue();
+    const auto restoreSettings = qScopeGuard([&]() {
+        overrideSetting->setRawValue(previousOverride);
+        skipSetting->setRawValue(previousSkip);
+    });
+    overrideSetting->setRawValue(overrideEnabled);
+    skipSetting->setRawValue(true);
+    LinkManager::instance()->setConnectionsAllowed();
+    auto* const manager = MultiVehicleManager::instance();
+    QVERIFY(!manager->activeVehicle());
+    auto* const config = new MockConfiguration(QStringLiteral("ArmedSubSetup"));
+    config->setFirmwareType(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    config->setVehicleType(MAV_TYPE_SUBMARINE);
+    config->setStartArmed(true);
+    config->setDynamic(true);
+    auto linkConfig = LinkManager::instance()->addConfiguration(config);
+    QVERIFY(LinkManager::instance()->createConnectedLink(linkConfig));
+    _mockLink = qobject_cast<MockLink*>(linkConfig->link());
+    QVERIFY(_mockLink);
+    QTRY_VERIFY_WITH_TIMEOUT(manager->activeVehicle(), TestTimeout::longMs());
+    _vehicle = manager->activeVehicle();
+    QVERIFY(waitForInitialConnect());
+    QVERIFY(_vehicle->armed());
+    QCOMPARE(_vehicle->setupSafetyRestrictionsDisabled(), overrideEnabled);
+    QCOMPARE(_vehicle->parameterManager()->parameterDownloadSkipped(), !overrideEnabled);
+    QCOMPARE(_vehicle->parameterManager()->parametersReady(), overrideEnabled);
+    if (!overrideEnabled) {
+        overrideSetting->setRawValue(true);
+        QTRY_VERIFY_WITH_TIMEOUT(_vehicle->parameterManager()->parametersReady(), 10000);
+        QVERIFY(!_vehicle->parameterManager()->parameterDownloadSkipped());
+        QVERIFY(_vehicle->armed());
+    }
+    {
+        auto* const parameters = _vehicle->parameterManager();
+        Fact* const gain =
+            parameters->getParameter(ParameterManager::defaultComponentId, QStringLiteral("JS_GAIN_DEFAULT"));
+        QVERIFY(gain);
+        const int writesBefore = _mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET);
+        gain->setRawValue(0.25);
+        QTRY_VERIFY_WITH_TIMEOUT(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET) > writesBefore, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!parameters->pendingWrites(), 5000);
+        QCOMPARE(gain->rawValue().toDouble(), 0.25);
+        QVERIFY(_vehicle->armed());
+        APMSensorsComponentController sensors;
+        ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("showAppMessage:.*"));
+        sensors.calibrateGyro();
+        QVERIFY(!sensors.calibrationActive());
+        sensors.calibrateCompassNorth(0, 0, 1);
+        QVERIFY(!sensors.calibrationActive());
+    }
+    // Configuration editing does not relax the separate mission-download policy.
+    QCOMPARE(_mockLink->receivedMissionRequestListCount(MAV_MISSION_TYPE_MISSION), 0);
+}
 
 void InitialConnectTest::_performTestCases_data()
 {
@@ -211,6 +279,8 @@ void InitialConnectTest::_multipleReconnects()
 
 void InitialConnectTest::_rallyFailurePathDoesNotLeakCompletionHandler()
 {
+    // This fault injection intentionally presents an application error message.
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("showAppMessage:.*"));
     // Injected rally read failure pops a transfer-failed app message.
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression("Rally Point transfer failed"));
@@ -315,6 +385,8 @@ void InitialConnectTest::_subsystemFailureFallsThrough_data()
 
 void InitialConnectTest::_subsystemFailureFallsThrough()
 {
+    // Error dialogs are expected for failed parameter/plan downloads; state assertions below remain strict.
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg, QRegularExpression("showAppMessage:.*"));
     QFETCH(QList<uint32_t>, blockedMessageIds);
     QFETCH(int, configFailureMode);
     QFETCH(bool, blockMissionProtocolImmediately);

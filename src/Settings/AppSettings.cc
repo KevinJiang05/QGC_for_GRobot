@@ -200,6 +200,7 @@ DECLARE_SETTINGSFACT(AppSettings, androidUsePosixSerial)
 DECLARE_SETTINGSFACT(AppSettings, useChecklist)
 DECLARE_SETTINGSFACT(AppSettings, enforceChecklist)
 DECLARE_SETTINGSFACT(AppSettings, enableMultiVehiclePanel)
+DECLARE_SETTINGSFACT(AppSettings, disableSetupSafetyRestrictions)
 DECLARE_SETTINGSFACT(AppSettings, tiandituToken)
 DECLARE_SETTINGSFACT(AppSettings, mapboxToken)
 DECLARE_SETTINGSFACT(AppSettings, mapboxAccount)
@@ -236,7 +237,7 @@ DECLARE_SETTINGSFACT_NO_FUNC(AppSettings, qLocaleLanguage)
         QVariantList    rgEnumValues;
 
         // System is always an available selection
-        rgEnumStrings.append(_rgLanguageInfo[0].languageName);
+        rgEnumStrings.append(AppSettings::tr("System"));
         rgEnumValues.append(_rgLanguageInfo[0].languageId);
 
         for (const auto& languageInfo: _rgLanguageInfo) {

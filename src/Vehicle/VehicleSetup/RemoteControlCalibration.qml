@@ -22,6 +22,7 @@ ColumnLayout {
     spacing: ScreenTools.defaultFontPixelHeight
 
     property bool useDeadband: false
+    property bool calibrationEnabled: !controller.vehicle || !controller.vehicle.armed
 
     property real _channelValueDisplayWidth: ScreenTools.defaultFontPixelWidth * 30
     property bool _deadbandActive: useDeadband
@@ -248,8 +249,10 @@ ColumnLayout {
 
     // Command Buttons and Status Text
     RowLayout {
+        objectName: "remoteControlCalibrationCommands"
         Layout.preferredWidth: parent.width
         spacing: ScreenTools.defaultFontPixelWidth
+        enabled: root.calibrationEnabled
 
         QGCButton {
             id: cancelButton

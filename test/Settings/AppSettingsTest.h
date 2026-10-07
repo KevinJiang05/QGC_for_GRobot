@@ -13,6 +13,8 @@ private slots:
     void _offlineEditingFirmwareClassEnumFiltered();
     void _chineseTranslations_data();
     void _chineseTranslations();
+    void _setupSafetyOverride_data();
+    void _setupSafetyOverride();
 
 private:
     void _verifyFirmwareClassEnumFiltered(Fact *fact);

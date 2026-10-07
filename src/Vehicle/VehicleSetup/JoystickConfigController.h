@@ -26,6 +26,7 @@ signals:
 
 private slots:
     void _setJoystick(Joystick* joystick);
+    void _updateConfigurationVehicleControl();
 
 private:
     // Overrides from RemoteControlCalibrationController

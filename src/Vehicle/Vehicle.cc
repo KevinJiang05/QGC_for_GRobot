@@ -204,6 +204,12 @@ Vehicle::Vehicle(MAV_AUTOPILOT              firmwareType,
     _firmwarePlugin->initializeVehicle(this);
 }
 
+bool Vehicle::setupSafetyRestrictionsDisabled() const
+{
+    return sub() && _firmwarePlugin && _firmwarePlugin->isCapable(this, FirmwarePlugin::ArmedSetupOverrideCapability) &&
+           SettingsManager::instance()->appSettings()->disableSetupSafetyRestrictions()->rawValue().toBool();
+}
+
 void Vehicle::trackFirmwareVehicleTypeChanges(void)
 {
     connect(SettingsManager::instance()->appSettings()->offlineEditingFirmwareClass(), &Fact::rawValueChanged, this, &Vehicle::_offlineFirmwareTypeSettingChanged);
@@ -224,6 +230,25 @@ void Vehicle::_commonInit(LinkInterface* link)
     _firmwarePlugin = FirmwarePluginManager::instance()->firmwarePluginForAutopilot(_firmwareType, _vehicleType);
 
     connect(_firmwarePlugin, &FirmwarePlugin::toolIndicatorsChanged, this, &Vehicle::toolIndicatorsChanged);
+
+    const auto refreshSkippedSetupParameters = [this]() {
+        if (!isInitialConnectComplete() || !setupSafetyRestrictionsDisabled() || !_parameterManager ||
+            !_parameterManager->parameterDownloadSkipped() || !_vehicleLinkManager) {
+            return;
+        }
+        const auto sharedLink = _vehicleLinkManager->primaryLink().lock();
+        if (sharedLink && !sharedLink->isLogReplay() && !sharedLink->linkConfiguration()->isHighLatency()) {
+            _parameterManager->refreshAllParameters(MAV_COMP_ID_ALL);
+        }
+    };
+    connect(SettingsManager::instance()->appSettings()->disableSetupSafetyRestrictions(), &Fact::rawValueChanged, this,
+            [this, refreshSkippedSetupParameters]() {
+                emit setupSafetyRestrictionsDisabledChanged();
+                refreshSkippedSetupParameters();
+            });
+    connect(this, &Vehicle::initialConnectComplete, this, refreshSkippedSetupParameters);
+    connect(this, &Vehicle::firmwareTypeChanged, this, &Vehicle::setupSafetyRestrictionsDisabledChanged);
+    connect(this, &Vehicle::vehicleTypeChanged, this, &Vehicle::setupSafetyRestrictionsDisabledChanged);
 
     connect(this, &Vehicle::coordinateChanged,      this, &Vehicle::_updateDistanceHeadingHome);
     connect(this, &Vehicle::coordinateChanged,      this, &Vehicle::_updateDistanceHeadingGCS);

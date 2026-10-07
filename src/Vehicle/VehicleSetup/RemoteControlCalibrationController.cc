@@ -74,6 +74,14 @@ RemoteControlCalibrationController::RemoteControlCalibrationController(QObject *
     _resetInternalCalibrationValues();
     _loadCalibrationUISettings();
 
+    if (_vehicle) {
+        connect(_vehicle, &Vehicle::armedChanged, this, [this](bool armed) {
+            if (armed && calibrating()) {
+                cancelButtonClicked();
+            }
+        });
+    }
+
     _stickDisplayPositions = { _stickDisplayPositionCentered.horizontal, _stickDisplayPositionCentered.vertical,
                                _stickDisplayPositionCentered.horizontal, _stickDisplayPositionCentered.vertical };
 
@@ -832,6 +840,10 @@ void RemoteControlCalibrationController::_validateAndAdjustCalibrationValues()
 
 void RemoteControlCalibrationController::_startCalibration()
 {
+    if (_vehicle && _vehicle->armed()) {
+        QGC::showAppMessage(tr("Disarm the vehicle before calibrating."));
+        return;
+    }
     if (_chanCount < _chanMinimum) {
         qCWarning(RemoteControlCalibrationControllerLog) << "Call to RemoteControlCalibrationController::_startCalibration with _chanCount < _chanMinimum";
         return;
@@ -1393,6 +1405,13 @@ int RemoteControlCalibrationController::throttleDeadband()
 
 void RemoteControlCalibrationController::copyTrims()
 {
+    if (!_vehicle) {
+        return;
+    }
+    if (_vehicle->armed()) {
+        QGC::showAppMessage(tr("Disarm the vehicle before calibrating."));
+        return;
+    }
     _vehicle->startCalibration(QGCMAVLink::CalibrationCopyTrims);
 }
 

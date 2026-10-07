@@ -42,7 +42,10 @@ APMSensorsComponentController::~APMSensorsComponentController()
 
 void APMSensorsComponentController::_appendStatusLog(const QString &text)
 {
-    Q_ASSERT(_statusLog);
+    if (!_statusLog) {
+        qCWarning(APMSensorsComponentControllerLog) << "Calibration status log is unavailable";
+        return;
+    }
 
     const QString varText = text;
     (void) QMetaObject::invokeMethod(_statusLog, "append", varText);
@@ -206,8 +209,23 @@ void APMSensorsComponentController::_mavCommandResult(int vehicleId, int compone
     }
 }
 
+bool APMSensorsComponentController::_canStartCalibration() const
+{
+    if (!_vehicle) {
+        return false;
+    }
+    if (_vehicle->setupSafetyRestrictionsDisabled() && _vehicle->armed()) {
+        QGC::showAppMessage(tr("Disarm the vehicle before calibrating sensors."));
+        return false;
+    }
+    return true;
+}
+
 void APMSensorsComponentController::calibrateCompass()
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationMag;
     _magCalStartAccepted = false;
     _rgCompassCalProgress[0] = 0;
@@ -280,6 +298,9 @@ void APMSensorsComponentController::_sendStartMagCal()
 
 void APMSensorsComponentController::calibrateCompassNorth(float lat, float lon, int mask)
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationMag;
     _startLogCalibration();
     (void) connect(_vehicle, &Vehicle::mavCommandResult, this, &APMSensorsComponentController::_mavCommandResult, Qt::UniqueConnection);
@@ -288,6 +309,9 @@ void APMSensorsComponentController::calibrateCompassNorth(float lat, float lon, 
 
 void APMSensorsComponentController::calibrateAccel(bool doSimpleAccelCal)
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationAccel;
     if (doSimpleAccelCal) {
         _startLogCalibration();
@@ -340,6 +364,9 @@ void APMSensorsComponentController::calibrateAccel(bool doSimpleAccelCal)
 
 void APMSensorsComponentController::calibrateMotorInterference()
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationAPMCompassMot;
     _vehicle->vehicleLinkManager()->setCommunicationLostEnabled(false);
     _startLogCalibration();
@@ -351,6 +378,9 @@ void APMSensorsComponentController::calibrateMotorInterference()
 
 void APMSensorsComponentController::levelHorizon()
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationLevel;
     _vehicle->vehicleLinkManager()->setCommunicationLostEnabled(false);
     _startLogCalibration();
@@ -360,6 +390,9 @@ void APMSensorsComponentController::levelHorizon()
 
 void APMSensorsComponentController::calibratePressure()
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationAPMPressureAirspeed;
     _vehicle->vehicleLinkManager()->setCommunicationLostEnabled(false);
     _startLogCalibration();
@@ -369,6 +402,9 @@ void APMSensorsComponentController::calibratePressure()
 
 void APMSensorsComponentController::calibrateGyro()
 {
+    if (!_canStartCalibration()) {
+        return;
+    }
     _calTypeInProgress = QGCMAVLink::CalibrationGyro;
     _vehicle->vehicleLinkManager()->setCommunicationLostEnabled(false);
     _startLogCalibration();

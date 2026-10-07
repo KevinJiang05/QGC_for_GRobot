@@ -86,10 +86,9 @@ void InitialConnectStateMachine::_createStates()
     // ParameterManager handles all timeouts internally and always terminates via
     // parametersReadyChanged or initialParametersRequestFailed.
     _stateParameters = new SkippableAsyncState(
-        QStringLiteral("RequestParameters"),
-        this,
+        QStringLiteral("RequestParameters"), this,
         [this]() {
-            if (_shouldSkipForFlying()) {
+            if (_shouldSkipParametersForFlying()) {
                 // PX4 can try a lightweight hash-check cache load
                 if (vehicle()->px4Firmware()) {
                     return false;
@@ -103,8 +102,7 @@ void InitialConnectStateMachine::_createStates()
         [this]() {
             qCDebug(InitialConnectStateMachineLog) << "Skipping parameter download" << _lastSkipReason;
             vehicle()->_parameterManager->setParameterDownloadSkipped(true);
-        }
-    );
+        });
 
     // State 4: Request mission (skippable)
     // No timeout: PlanManager handles all timeouts/retries internally and always signals completion.
@@ -257,6 +255,12 @@ bool InitialConnectStateMachine::_shouldSkipForFlying() const
     return vehicle()->armed();
 }
 
+bool InitialConnectStateMachine::_shouldSkipParametersForFlying() const
+{
+    const Vehicle* const currentVehicle = vehicle();
+    return currentVehicle && _shouldSkipForFlying() && !currentVehicle->setupSafetyRestrictionsDisabled();
+}
+
 bool InitialConnectStateMachine::_shouldSkipForLinkType() const
 {
     SharedLinkInterfacePtr sharedLink = vehicle()->vehicleLinkManager()->primaryLink().lock();
@@ -388,7 +392,7 @@ void InitialConnectStateMachine::_requestParameters(SkippableAsyncState* state)
 {
     qCDebug(InitialConnectStateMachineLog) << "_stateRequestParameters";
 
-    const bool cacheOnly = _shouldSkipForFlying();
+    const bool cacheOnly = _shouldSkipParametersForFlying();
     QMetaObject::Connection cacheFailedConn;
     if (cacheOnly) {
         // If cache-only check fails (miss/timeout/non-PX4), complete the state without params

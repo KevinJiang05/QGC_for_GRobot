@@ -9,6 +9,7 @@ import QGroundControl.VehicleSetup
 import QGroundControl.FactControls
 
 ColumnLayout {
+    id: root
     spacing: ScreenTools.defaultFontPixelHeight / 2
 
     required property var joystick
@@ -23,6 +24,13 @@ ColumnLayout {
                                    ? controller.getParameterFact(-1, _functionName, false) : null
     property Fact _shiftFunction: _firmwareButtonsReady && controller.parameterExists(-1, _shiftFunctionName)
                                   ? controller.getParameterFact(-1, _shiftFunctionName, false) : null
+
+    function actionIndex(actionName) {
+        for (let i = 0; i < joystick.assignableActionTitles.length; i++) {
+            if (joystick.assignableActions.get(i).action === actionName) return i
+        }
+        return -1
+    }
 
     QGCLabel {
         Layout.preferredWidth: parent.width
@@ -42,13 +50,25 @@ ColumnLayout {
             let buttonActions = joystick.buttonActions
             for (let i = 0; i < joystick.buttonCount; i++) {
                 if (buttonActions[i] !== joystick.buttonActionNone) {
-                    assignedButtonModel.append( { "buttonIndex": i, "buttonAction": buttonActions[i], "repeat": joystick.getButtonRepeat(i) } )
+                    let actionIndex = root.actionIndex(buttonActions[i])
+                    let actionTitle = actionIndex >= 0 ? joystick.assignableActionTitles[actionIndex] : buttonActions[i]
+                    assignedButtonModel.append( { "buttonIndex": i, "buttonAction": actionTitle, "repeat": joystick.getButtonRepeat(i) } )
                 }
             }
         }
 
         Component.onCompleted: _rebuildAssignedButtonModel()
-        Connections { target: joystick; function onButtonActionsChanged() { buttonAssignmentRow._rebuildAssignedButtonModel() } }
+        Connections {
+            target: joystick
+            function onButtonActionsChanged() {
+                buttonAssignmentRow._rebuildAssignedButtonModel()
+                buttonActionCombo._findCurrentButtonAction()
+            }
+            function onAssignableActionsChanged() {
+                buttonAssignmentRow._rebuildAssignedButtonModel()
+                buttonActionCombo._findCurrentButtonAction()
+            }
+        }
 
         ListModel {
             id: assignedButtonModel
@@ -63,17 +83,20 @@ ColumnLayout {
 
         QGCComboBox {
             id: buttonActionCombo
+            objectName: "joystickQgcActionCombo"
             model: joystick.assignableActionTitles
             sizeToContents: true
 
             onActivated: (index) => {
+                let action = joystick.assignableActions.get(index)
+                if (!action) return
                 if (_buttonFunction) _buttonFunction.rawValue = 0
                 if (_shiftFunction) _shiftFunction.rawValue = 0
-                joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, textAt(index))
+                joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, action.action)
             }
 
             function _findCurrentButtonAction() {
-                let buttonActionIndex = find(joystick.buttonActions[buttonAssignmentRow.selectedButtonIndex])
+                let buttonActionIndex = root.actionIndex(joystick.buttonActions[buttonAssignmentRow.selectedButtonIndex])
                 if (buttonActionIndex < 0) {
                     buttonActionIndex = 0
                 }
@@ -114,7 +137,7 @@ ColumnLayout {
         }
         Repeater {
             model: buttonAssignmentRow._assignedButtonModel
-            QGCLabel { text: repeat ? "Repeat" : "" }
+            QGCLabel { text: repeat ? qsTr("Repeat") : "" }
         }
     }
 
@@ -122,12 +145,13 @@ ColumnLayout {
         visible: !!_buttonFunction
         QGCLabel { text: qsTr("Firmware action") }
         FactComboBox {
+            objectName: "joystickFirmwareActionCombo"
             fact: _buttonFunction
             indexModel: false
             sizeToContents: true
             onActivated: (index) => {
                 if (_buttonFunction) _buttonFunction.enumIndex = index
-                if (_buttonFunction && _buttonFunction.rawValue > 0) {
+                if (_buttonFunction && _buttonFunction.rawValue !== 0) {
                     joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, joystick.buttonActionNone)
                     buttonActionCombo._findCurrentButtonAction()
                 }
@@ -135,13 +159,14 @@ ColumnLayout {
         }
         QGCLabel { text: qsTr("Shift action"); visible: !!_shiftFunction }
         FactComboBox {
+            objectName: "joystickShiftActionCombo"
             fact: _shiftFunction
             indexModel: false
             sizeToContents: true
             visible: !!_shiftFunction
             onActivated: (index) => {
                 if (_shiftFunction) _shiftFunction.enumIndex = index
-                if (_shiftFunction && _shiftFunction.rawValue > 0) {
+                if (_shiftFunction && _shiftFunction.rawValue !== 0) {
                     joystick.setButtonAction(buttonAssignmentRow.selectedButtonIndex, joystick.buttonActionNone)
                     buttonActionCombo._findCurrentButtonAction()
                 }

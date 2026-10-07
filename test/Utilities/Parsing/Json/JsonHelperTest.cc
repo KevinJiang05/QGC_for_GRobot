@@ -163,7 +163,7 @@ void JsonHelperTest::_validateKeysStrictUnknownKey_test()
 
     QString errorString;
     QVERIFY(!JsonParsing::validateKeysStrict(obj, keyInfo, errorString));
-    QVERIFY(errorString.contains("Unknown key"));
+    QCOMPARE(errorString, QObject::tr("Unknown key: %1").arg("extra"));
     QVERIFY(errorString.contains("extra"));
 }
 

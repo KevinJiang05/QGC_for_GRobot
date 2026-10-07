@@ -153,8 +153,11 @@ void StatusTextHandlerTest::_testChunkedStatusTextMissingChunk()
     QCOMPARE(args.at(1).toInt(), static_cast<int>(MAV_SEVERITY_WARNING));
 
     const QString text = args.at(2).toString();
-    QCOMPARE(text.length(), MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + QStringLiteral(" ... ").length() + chunk2.length());
-    QVERIFY(text.contains(QStringLiteral(" ... ")));
+    QCOMPARE(text.length(),
+             MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN +
+                 StatusTextHandler::tr(" ... ", "Indicates missing chunk from chunked STATUS_TEXT").length() +
+                 chunk2.length());
+    QVERIFY(text.contains(StatusTextHandler::tr(" ... ", "Indicates missing chunk from chunked STATUS_TEXT")));
     QVERIFY(text.endsWith(QStringLiteral("TAIL")));
 }
 
@@ -173,8 +176,10 @@ void StatusTextHandlerTest::_testChunkedStatusTextTimeoutAddsEllipsis()
 
     QCOMPARE(textSpy.count(), 1);
     const QString text = textSpy.takeFirst().at(2).toString();
-    QCOMPARE(text.length(), MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + QStringLiteral(" ... ").length());
-    QVERIFY(text.endsWith(QStringLiteral(" ... ")));
+    QCOMPARE(text.length(),
+             MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN +
+                 StatusTextHandler::tr(" ... ", "Indicates missing chunk from chunked STATUS_TEXT").length());
+    QVERIFY(text.endsWith(StatusTextHandler::tr(" ... ", "Indicates missing chunk from chunked STATUS_TEXT")));
 }
 
 void StatusTextHandlerTest::_testChunkedStatusTextResetsWhenChunkIdChanges()

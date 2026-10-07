@@ -437,7 +437,7 @@ void SigningControllerTest::_testStateOn()
 void SigningControllerTest::_testStatusTextOff()
 {
     SigningController ctrl(kMgrTestChannel);
-    QCOMPARE(ctrl.statusText(), tr("Off"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("Off"));
 }
 
 void SigningControllerTest::_testStatusTextOn()
@@ -449,7 +449,7 @@ void SigningControllerTest::_testStatusTextOn()
     QVERIFY(ctrl.initSigningImmediate(kv, MAVLinkSigning::UnsignedAcceptancePolicy::Strict,
                                       QStringLiteral("named-key")));
 
-    QCOMPARE(ctrl.statusText(), tr("On"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("On"));
 }
 
 void SigningControllerTest::_testStateChangedFiresOnEnableThenCancel()
@@ -523,21 +523,21 @@ void SigningControllerTest::_testCancelOnIdleNoOp()
 void SigningControllerTest::_testStatusTextDuringPending()
 {
     SigningController ctrl(kTestChannel);
-    QCOMPARE(ctrl.statusText(), tr("Off"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("Off"));
 
     const auto key = makeKey(0x55);
     (void)ctrl.tryBeginEnable(kTestSysId, QStringLiteral("k"), key);
-    QCOMPARE(ctrl.statusText(), tr("Configuring…"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("Configuring…"));
 
     expectLogMessage("MAVLink.SigningController", QtWarningMsg, QRegularExpression("Signing operation cancelled"));
     ctrl.cancelPending();
     verifyExpectedLogMessage();
-    QCOMPARE(ctrl.statusText(), tr("Off"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("Off"));
 
     const QByteArrayView kv(reinterpret_cast<const char*>(key.data()), key.size());
     QVERIFY(ctrl.initSigningImmediate(kv, MAVLinkSigning::UnsignedAcceptancePolicy::Strict, QStringLiteral("k")));
     (void)ctrl.tryBeginDisable(kTestSysId);
-    QCOMPARE(ctrl.statusText(), tr("Disabling…"));
+    QCOMPARE(ctrl.statusText(), SigningController::tr("Disabling…"));
     expectLogMessage("MAVLink.SigningController", QtWarningMsg, QRegularExpression("Signing disable not confirmed"));
     ctrl.cancelPending();
     verifyExpectedLogMessage();

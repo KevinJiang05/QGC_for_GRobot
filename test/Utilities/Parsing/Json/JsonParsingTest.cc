@@ -66,7 +66,7 @@ void JsonParsingTest::_testValidateKeyTypesListSizeMismatch()
 
     QString errorString;
     QVERIFY(!JsonParsing::validateKeyTypes(object, {"count", "extra"}, {QJsonValue::Double}, errorString));
-    QVERIFY(errorString.contains(QStringLiteral("Mismatched key and type list sizes")));
+    QCOMPARE(errorString, QObject::tr("Mismatched key and type list sizes: keys=%1 types=%2").arg(2).arg(1));
 }
 
 void JsonParsingTest::_testValidateKeyTypesNullAcceptsDouble()

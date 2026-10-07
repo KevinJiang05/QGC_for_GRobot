@@ -5,10 +5,10 @@
 #include <QtCore/QRegularExpression>
 #include <QtCore/QScopeGuard>
 #include <QtCore/QtNumeric>
-
 #include <cmath>
 #include <limits>
 
+#include "Fact.h"
 #include "FactMetaData.h"
 #include "SettingsManager.h"
 #include "UnitsSettings.h"
@@ -361,8 +361,9 @@ void FactMetaDataTest::_verticalMetersUnitsFeetTranslation_test()
     // Changing units is a qgcRebootRequired setting, so the restart-app message
     // fires — but only when the locale-dependent default isn't already feet, so
     // it cannot be asserted deterministically with expectAppMessage()
-    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
-                     QRegularExpression(QStringLiteral("Restart application for changes to take effect")));
+    ignoreLogMessage(
+        "API.QGCApplication.AppMessage", QtDebugMsg,
+        QRegularExpression(QRegularExpression::escape(Fact::tr("Restart application for changes to take effect."))));
     vertUnitsFact->setRawValue(UnitsSettings::VerticalDistanceUnitsFeet);
 
     FactMetaData meta(FactMetaData::valueTypeDouble);
@@ -481,7 +482,8 @@ void FactMetaDataTest::_unknownKeyRejected_test()
     json.insert("type", "string");
     json.insert("bogusKey", "anything");
 
-    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg, QRegularExpression("Unknown key: bogusKey"));
+    expectLogMessage("FactSystem.FactMetaData", QtWarningMsg,
+                     QRegularExpression(QRegularExpression::escape(QObject::tr("Unknown key: %1").arg("bogusKey"))));
     FactMetaData* parsedMeta = FactMetaData::createFromJsonObject(json, {}, nullptr);
     verifyExpectedLogMessage();
 

@@ -31,7 +31,7 @@ void SysStatusSensorInfoTest::_updateSingleSensorHealthy_test()
 
     QCOMPARE(info.sensorNames().count(), 1);
     QCOMPARE(info.sensorStatus().count(), 1);
-    QCOMPARE(info.sensorStatus().at(0), QStringLiteral("Normal"));
+    QCOMPARE(info.sensorStatus().at(0), SysStatusSensorInfo::tr("Normal"));
 }
 
 void SysStatusSensorInfoTest::_updateSingleSensorUnhealthy_test()
@@ -44,7 +44,7 @@ void SysStatusSensorInfoTest::_updateSingleSensorUnhealthy_test()
 
     QCOMPARE(info.sensorNames().count(), 1);
     QCOMPARE(info.sensorStatus().count(), 1);
-    QCOMPARE(info.sensorStatus().at(0), QStringLiteral("Error"));
+    QCOMPARE(info.sensorStatus().at(0), SysStatusSensorInfo::tr("Error"));
 }
 
 void SysStatusSensorInfoTest::_updateSingleSensorDisabled_test()
@@ -57,7 +57,7 @@ void SysStatusSensorInfoTest::_updateSingleSensorDisabled_test()
 
     QCOMPARE(info.sensorNames().count(), 1);
     QCOMPARE(info.sensorStatus().count(), 1);
-    QCOMPARE(info.sensorStatus().at(0), QStringLiteral("Disabled"));
+    QCOMPARE(info.sensorStatus().at(0), SysStatusSensorInfo::tr("Disabled"));
 }
 
 void SysStatusSensorInfoTest::_sensorOrdering_test()
@@ -82,9 +82,9 @@ void SysStatusSensorInfoTest::_sensorOrdering_test()
     QCOMPARE(statuses.count(), 3);
 
     // Ordering: unhealthy first, then healthy, then disabled
-    QCOMPARE(statuses.at(0), QStringLiteral("Error"));
-    QCOMPARE(statuses.at(1), QStringLiteral("Normal"));
-    QCOMPARE(statuses.at(2), QStringLiteral("Disabled"));
+    QCOMPARE(statuses.at(0), SysStatusSensorInfo::tr("Error"));
+    QCOMPARE(statuses.at(1), SysStatusSensorInfo::tr("Normal"));
+    QCOMPARE(statuses.at(2), SysStatusSensorInfo::tr("Disabled"));
 }
 
 void SysStatusSensorInfoTest::_sensorInfoChangedSignal_test()
@@ -152,7 +152,7 @@ void SysStatusSensorInfoTest::_multipleSensors_test()
 
     // All healthy
     for (const QString &status : info.sensorStatus()) {
-        QCOMPARE(status, QStringLiteral("Normal"));
+        QCOMPARE(status, SysStatusSensorInfo::tr("Normal"));
     }
 }
 
@@ -168,7 +168,7 @@ void SysStatusSensorInfoTest::_updateExistingSensorFlipsHealth_test()
     info.update(_makeSysStatus(gyro, gyro, 0));
 
     QCOMPARE(spy.count(), 1);
-    QCOMPARE(info.sensorStatus(), QStringList({QStringLiteral("Error")}));
+    QCOMPARE(info.sensorStatus(), QStringList({SysStatusSensorInfo::tr("Error")}));
 }
 
 void SysStatusSensorInfoTest::_updateExistingSensorDisables_test()
@@ -183,7 +183,7 @@ void SysStatusSensorInfoTest::_updateExistingSensorDisables_test()
     info.update(_makeSysStatus(gyro, 0, 0));
 
     QCOMPARE(spy.count(), 1);
-    QCOMPARE(info.sensorStatus(), QStringList({QStringLiteral("Disabled")}));
+    QCOMPARE(info.sensorStatus(), QStringList({SysStatusSensorInfo::tr("Disabled")}));
 }
 
 void SysStatusSensorInfoTest::_sensorNamesOrderingMirrorsStatusOrder_test()
@@ -206,9 +206,9 @@ void SysStatusSensorInfoTest::_sensorNamesOrderingMirrorsStatusOrder_test()
         QGCMAVLink::mavSysStatusSensorToString(static_cast<MAV_SYS_STATUS_SENSOR>(mag)),
     };
     const QStringList expectedStatus = {
-        QStringLiteral("Error"),
-        QStringLiteral("Normal"),
-        QStringLiteral("Disabled"),
+        SysStatusSensorInfo::tr("Error"),
+        SysStatusSensorInfo::tr("Normal"),
+        SysStatusSensorInfo::tr("Disabled"),
     };
 
     QCOMPARE(info.sensorNames(), expectedNames);

@@ -1,5 +1,7 @@
 #include "QGCMAVLinkTest.h"
 
+#include <QtCore/QCoreApplication>
+
 #include "MAVLinkMessageType.h"
 #include "QGCMAVLink.h"
 
@@ -101,18 +103,23 @@ void QGCMAVLinkTest::_testVehicleClassGenericFallback()
 void QGCMAVLinkTest::_testVehicleClassToString()
 {
     QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassFixedWing),
-             QStringLiteral("Fixed Wing"));
+             QCoreApplication::translate("Vehicle Class", "Fixed Wing"));
     QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassMultiRotor),
-             QStringLiteral("Multi-Rotor"));
-    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassVTOL), QStringLiteral("VTOL"));
-    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassSub), QStringLiteral("Sub"));
-    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassAirship), QStringLiteral("Airship"));
+             QCoreApplication::translate("Vehicle Class", "Multi-Rotor"));
+    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassVTOL),
+             QCoreApplication::translate("Vehicle Class", "VTOL"));
+    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassSub),
+             QCoreApplication::translate("Vehicle Class", "Sub"));
+    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassAirship),
+             QCoreApplication::translate("Vehicle Class", "Airship"));
     QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassRoverBoat),
-             QStringLiteral("Rover-Boat"));
-    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassGeneric), QStringLiteral("Generic"));
+             QCoreApplication::translate("Vehicle Class", "Rover-Boat"));
+    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(QGCMAVLink::VehicleClassGeneric),
+             QCoreApplication::translate("Vehicle Class", "Generic"));
 
     const auto bogus = static_cast<QGCMAVLink::VehicleClass_t>(9999);
-    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(bogus), QStringLiteral("Unknown"));
+    QCOMPARE(QGCMAVLink::vehicleClassToUserVisibleString(bogus),
+             QCoreApplication::translate("Vehicle Class", "Unknown"));
 }
 
 void QGCMAVLinkTest::_testVehicleClassInternalString()

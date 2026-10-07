@@ -129,15 +129,6 @@
                 "detection",
                 "DeepShark"
             ]
-        },
-        {
-            "component": "ConnectionAlertSettings",
-            "sectionName": "Connection Alerts",
-            "keywords": [
-                "alert",
-                "reconnect",
-                "DeepShark"
-            ]
         }
     ],
     "imports": [

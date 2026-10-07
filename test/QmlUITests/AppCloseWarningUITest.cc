@@ -1,5 +1,6 @@
 #include "AppCloseWarningUITest.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QPointer>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QScopeGuard>
@@ -58,9 +59,9 @@ void AppCloseWarningUITest::_testCloseWarningMatrix_data()
     //   pendingWrites (P): force a vehicle parameter pending-write (requires a
     //                      connection, since pending writes belong to a vehicle).
     //   connection    (C): keep a MockLink connected.
-    //   rejectAtStep     : 1-based index into the *shown* dialog list at which to
-    //                      press No (cancel close). 0 means accept every dialog,
-    //                      which must close the app.
+    //   rejectAtStep     : -1 rejects the initial menu-exit confirmation; a positive
+    //                      value rejects that close-warning dialog (1-based).
+    //                      0 accepts every dialog and must close the app.
     //
     // Rows with P set but C clear are impossible (pending writes cannot outlive
     // their vehicle) and are therefore omitted.
@@ -69,8 +70,10 @@ void AppCloseWarningUITest::_testCloseWarningMatrix_data()
     QTest::addColumn<bool>("connection");
     QTest::addColumn<int>("rejectAtStep");
 
-    // No conditions: closing must proceed immediately with no warning dialog.
+    // Even with no close-warning conditions, the menu exit needs confirmation.
     QTest::newRow("none-acceptAll")            << false << false << false << 0;
+    QTest::newRow("none-rejectExit") << false << false << false << -1;
+    QTest::newRow("MPC-rejectExit") << true << true << true << -1;
 
     // Connection only.
     QTest::newRow("C-acceptAll")               << false << false << true  << 0;
@@ -157,17 +160,17 @@ void AppCloseWarningUITest::_testCloseWarningMatrix()
              "Failed to click Close button in tool select dropdown");
 
     // The dialogs that should appear, in their fixed presentation order.
-    QStringList expectedDialogs;
-    if (mission)       expectedDialogs << QStringLiteral("Unsaved Mission");
-    if (pendingWrites) expectedDialogs << QStringLiteral("Pending Parameter Updates");
-    if (connection)    expectedDialogs << QStringLiteral("Active Vehicle Connections");
+    QStringList expectedDialogs{QCoreApplication::translate("MainWindow", "Confirm Exit")};
+    if (mission)       expectedDialogs << QCoreApplication::translate("MainWindow", "Unsaved Mission");
+    if (pendingWrites) expectedDialogs << QCoreApplication::translate("MainWindow", "Pending Parameter Updates");
+    if (connection)    expectedDialogs << QCoreApplication::translate("MainWindow", "Active Vehicle Connections");
 
     for (int step = 0; step < expectedDialogs.size(); ++step) {
         const QString &title = expectedDialogs.at(step);
         QVERIFY2(waitForDialog(title),
                  qPrintable(QStringLiteral("Expected close-warning dialog not shown: %1").arg(title)));
 
-        const bool rejectHere = (rejectAtStep != 0) && (step == rejectAtStep - 1);
+        const bool rejectHere = (rejectAtStep == -1 && step == 0) || (rejectAtStep > 0 && step == rejectAtStep);
         if (rejectHere) {
             QVERIFY2(rejectDialog(),
                      qPrintable(QStringLiteral("Failed to reject dialog: %1").arg(title)));
@@ -216,18 +219,20 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningForDownloadedMission()
             // plan is fully downloaded by the time this body runs.
             QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
                      "Failed to click Close button in tool select dropdown");
+            QVERIFY(waitForDialog(QCoreApplication::translate("MainWindow", "Confirm Exit")));
+            QVERIFY(acceptDialog());
 
             // The active-connection check runs only after the unsaved-mission check
             // passes. Waiting for its dialog to appear proves the mission check did
             // not block — i.e. the downloaded plan was not treated as dirty.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QCoreApplication::translate("MainWindow", "Active Vehicle Connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
             // A plan that was just downloaded from the vehicle reflects exactly what is
             // on the vehicle. The user has made no edits, so the unsaved-mission warning
             // must NOT appear. Otherwise closing the app would wrongly warn about a
             // "mission edit in progress" even though nothing was edited.
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QCoreApplication::translate("MainWindow", "Unsaved Mission")),
                      "Unsaved mission warning shown for a freshly downloaded, unedited plan");
         });
 }
@@ -262,16 +267,18 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSuccessfulUpload()
 
             QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
                      "Failed to click Close button in tool select dropdown");
+            QVERIFY(waitForDialog(QCoreApplication::translate("MainWindow", "Confirm Exit")));
+            QVERIFY(acceptDialog());
 
             // The active-connection check runs only after the unsaved-mission check
             // passes. Waiting for its dialog to appear proves the mission check did
             // not block.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QCoreApplication::translate("MainWindow", "Active Vehicle Connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
             // The edits are safely on the vehicle, so closing loses nothing and the
             // unsaved-mission warning must NOT appear (issue #14537).
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QCoreApplication::translate("MainWindow", "Unsaved Mission")),
                      "Unsaved mission warning shown after a successful mission upload");
         });
 }
@@ -309,16 +316,18 @@ void AppCloseWarningUITest::_testNoUnsavedMissionWarningAfterSaveToFile()
 
             QVERIFY2(clickToolSelectDropdownButton(QStringLiteral("toolbar_viewClose")),
                      "Failed to click Close button in tool select dropdown");
+            QVERIFY(waitForDialog(QCoreApplication::translate("MainWindow", "Confirm Exit")));
+            QVERIFY(acceptDialog());
 
             // The active-connection check runs only after the unsaved-mission check
             // passes. Waiting for its dialog to appear proves the mission check did
             // not block.
-            QVERIFY2(waitForDialog(QStringLiteral("Active Vehicle Connections")),
+            QVERIFY2(waitForDialog(QCoreApplication::translate("MainWindow", "Active Vehicle Connections")),
                      "Active vehicle connection warning dialog was not shown on close");
 
             // The edits are safely on disk, so closing loses nothing and the
             // unsaved-mission warning must NOT appear.
-            QVERIFY2(!dialogVisible(QStringLiteral("Unsaved Mission")),
+            QVERIFY2(!dialogVisible(QCoreApplication::translate("MainWindow", "Unsaved Mission")),
                      "Unsaved mission warning shown after saving the plan to disk");
         });
 }

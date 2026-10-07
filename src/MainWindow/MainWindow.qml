@@ -225,6 +225,13 @@ ApplicationWindow {
     property bool _forceClose: false
     property bool suppressCriticalVehicleMessages: false
 
+    function confirmClose() {
+        _showMessageDialogWorker(mainWindow, qsTr("Confirm Exit"),
+                                qsTr("Are you sure you want to exit the application?"),
+                                Dialog.Yes | Dialog.No,
+                                function() { mainWindow.close() })
+    }
+
     function finishCloseProcess() {
         _forceClose = true
         // For some reason on the Qml side Qt doesn't automatically disconnect a signal when an object is destroyed.

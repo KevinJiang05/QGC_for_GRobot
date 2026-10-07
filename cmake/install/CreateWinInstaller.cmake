@@ -3,6 +3,12 @@
 # Windows NSIS installer creation using makensis
 # ============================================================================
 
+# The audited release entrypoint deploys and boot-tests before compression.
+if(QGC_SKIP_WINDOWS_INSTALLER)
+    message(STATUS "QGC: Deferring Windows installer creation until staging verification")
+    return()
+endif()
+
 message(STATUS "QGC: Creating Windows NSIS Installer")
 
 # ----------------------------------------------------------------------------

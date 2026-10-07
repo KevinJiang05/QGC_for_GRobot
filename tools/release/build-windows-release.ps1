@@ -1,10 +1,24 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Release')]
 param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version,
 
+    [Parameter(ParameterSetName = 'Preflight', Mandatory = $true)]
     [switch]$PreflightOnly,
+
+    [Parameter(ParameterSetName = 'Verify', Mandatory = $true)]
+    [switch]$VerifyOnly,
+
+    [Parameter(ParameterSetName = 'Verify', Mandatory = $true)]
+    [string]$AuditDirectory,
+
+    [Parameter(ParameterSetName = 'Release')]
+    [Parameter(ParameterSetName = 'Preflight')]
+    [ValidateRange(1, 32)]
+    [int]$Jobs = 8,
+
+    [Parameter(ParameterSetName = 'Release')]
     [switch]$Force
 )
 
@@ -19,7 +33,7 @@ $pythonExecutable = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $distributionDirectory = Join-Path $projectRoot ("dist\QGC_KevinJiang_v{0}" -f $Version)
 $installerName = "QGC_v{0}_KevinJiang-installer.exe" -f $Version
 $installerPath = Join-Path $distributionDirectory $installerName
-$runId = Get-Date -Format 'yyyyMMdd-HHmmss'
+$runId = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $runDirectory = Join-Path $distributionDirectory ("release-audit\{0}" -f $runId)
 $logDirectory = Join-Path $runDirectory 'steps'
 $stagingDirectory = Join-Path $buildDirectory ("release-runs\v{0}\{1}\staging" -f $Version, $runId)
@@ -27,7 +41,9 @@ $statePath = Join-Path $runDirectory 'release-state.json'
 $reportPath = Join-Path $runDirectory 'release-report.md'
 
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
-New-Item -ItemType Directory -Force -Path $stagingDirectory | Out-Null
+if (-not $VerifyOnly -and -not $PreflightOnly) {
+    New-Item -ItemType Directory -Force -Path $stagingDirectory | Out-Null
+}
 
 $script:RunStatus = 'running'
 $script:FailureMessage = $null
@@ -35,6 +51,10 @@ $script:StepNumber = 0
 $script:Steps = [System.Collections.Generic.List[object]]::new()
 $script:Artifact = $null
 $script:NsisPath = $null
+$script:Candidate = $null
+$script:SourceAudit = $null
+$script:Mode = $(if ($PreflightOnly) { 'preflight' } elseif ($VerifyOnly) { 'verification' } else { 'release' })
+$script:StepCount = $(if ($PreflightOnly -or $VerifyOnly) { 1 } else { 8 })
 
 function Write-Utf8NoBom {
     param(
@@ -48,11 +68,13 @@ function Write-Utf8NoBom {
 
 function Write-RunState {
     $state = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         application = 'QGC_KevinJiang'
         requestedVersion = $Version
         runId = $runId
-        mode = $(if ($PreflightOnly) { 'preflight' } else { 'release' })
+        mode = $script:Mode
+        compilerJobs = $Jobs
+        sourceAudit = $script:SourceAudit
         status = $script:RunStatus
         startedAt = $script:StartedAt
         updatedAt = (Get-Date).ToString('o')
@@ -65,6 +87,7 @@ function Write-RunState {
         failure = $script:FailureMessage
         steps = @($script:Steps)
         artifact = $script:Artifact
+        candidate = $script:Candidate
     }
 
     Write-Utf8NoBom -LiteralPath $statePath -Content ($state | ConvertTo-Json -Depth 8)
@@ -95,7 +118,7 @@ function Invoke-ReleaseStep {
 
     Start-Transcript -LiteralPath $logPath -Force | Out-Null
     try {
-        Write-Host ("[{0}/{1}] {2}" -f $script:StepNumber, 6, $Name)
+        Write-Host ("[{0}/{1}] {2}" -f $script:StepNumber, $script:StepCount, $Name)
         & $Action
         $record.status = 'succeeded'
     }
@@ -221,14 +244,18 @@ function Set-ReleaseVersion {
     $content = Get-Content -LiteralPath $overridesPath -Raw
     $content = Replace-Required $content 'set\(QGC_APP_VERSION_OVERRIDE "\d+\.\d+\.\d+"\)' ("set(QGC_APP_VERSION_OVERRIDE `"{0}`")" -f $Version) 'QGC_APP_VERSION_OVERRIDE'
     $content = Replace-Required $content 'set\(QGC_APP_VERSION_STR_OVERRIDE "\d+\.\d+\.\d+"\)' ("set(QGC_APP_VERSION_STR_OVERRIDE `"{0}`")" -f $Version) 'QGC_APP_VERSION_STR_OVERRIDE'
-    Write-Utf8NoBom -LiteralPath $overridesPath -Content $content
+    if ($content -ne [System.IO.File]::ReadAllText($overridesPath)) {
+        Write-Utf8NoBom -LiteralPath $overridesPath -Content $content
+    }
 
     $content = Get-Content -LiteralPath $resourcePath -Raw
     $content = Replace-Required $content '(?m)^ FILEVERSION \d+,\d+,\d+,\d+$' (" FILEVERSION {0}" -f $commaVersion) 'Windows FILEVERSION'
     $content = Replace-Required $content '(?m)^ PRODUCTVERSION \d+,\d+,\d+,\d+$' (" PRODUCTVERSION {0}" -f $commaVersion) 'Windows PRODUCTVERSION'
     $content = Replace-Required $content 'VALUE "FileVersion", "\d+\.\d+\.\d+"' ("VALUE `"FileVersion`", `"{0}`"" -f $Version) 'Windows FileVersion string'
     $content = Replace-Required $content 'VALUE "ProductVersion", "\d+\.\d+\.\d+"' ("VALUE `"ProductVersion`", `"{0}`"" -f $Version) 'Windows ProductVersion string'
-    Write-Utf8NoBom -LiteralPath $resourcePath -Content $content
+    if ($content -ne [System.IO.File]::ReadAllText($resourcePath)) {
+        Write-Utf8NoBom -LiteralPath $resourcePath -Content $content
+    }
 
     Write-Host "Version sources updated to $Version"
 }
@@ -242,6 +269,137 @@ function Get-NormalizedProductVersion {
         return "$ProductVersion.0"
     }
     return $ProductVersion
+}
+
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Assert-UpgradeContract {
+    $nsisScript = Get-Content -LiteralPath (Join-Path $projectRoot 'deploy\windows\nullsoft_installer.nsi') -Raw
+    if ($nsisScript -notmatch 'InstallDir "\$PROGRAMFILES64\\\$\{APPNAME\}"') {
+        throw 'Stable QGC_KevinJiang install directory contract is missing.'
+    }
+    if ($nsisScript -notmatch 'ExecWait "\$R0 /S -LEAVE_DATA=1') {
+        throw 'In-place upgrade and user-data preservation contract is missing.'
+    }
+    if ($nsisScript -notmatch '(?m)ExecWait "\$R0 /S -LEAVE_DATA=1[^"\r\n]*" \$0') {
+        throw 'Previous uninstaller return-code capture is missing.'
+    }
+}
+
+function Assert-StagedApplication {
+    param([switch]$RunBootTest)
+
+    $applicationPath = Join-Path $stagingDirectory 'bin\QGC_KevinJiang.exe'
+    $requiredRuntimeFiles = @(
+        'plugins\platforms\qwindows.dll',
+        'bin\Qt6Core.dll',
+        'bin\Qt6Gui.dll',
+        'bin\Qt6Qml.dll',
+        'bin\Qt6Quick.dll',
+        'bin\gstgl-1.0-0.dll',
+        'bin\gstreamer-1.0-0.dll',
+        'bin\ai_detection\run_yolo_to_qgc_auto.py',
+        'bin\ai_detection\ai_detection_core.py',
+        'bin\ai_detection\yolo_to_qgc_udp.py'
+    )
+    foreach ($relativePath in $requiredRuntimeFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $stagingDirectory $relativePath) -PathType Leaf)) {
+            throw "Required runtime file is missing: $relativePath"
+        }
+        Write-Host "Runtime OK: $relativePath"
+    }
+    $application = Get-Item -LiteralPath $applicationPath
+    if ((Get-NormalizedProductVersion $application.VersionInfo.ProductVersion) -ne "$Version.0") {
+        throw "Application product version mismatch: $($application.VersionInfo.ProductVersion)"
+    }
+    if ($RunBootTest) {
+        Invoke-StagedBootTest -ApplicationPath $applicationPath
+    }
+    return $requiredRuntimeFiles
+}
+
+function Get-ReleaseCandidate {
+    return [ordered]@{
+        installerSha256 = Get-FileSha256 -LiteralPath $installerPath
+        applicationSha256 = Get-FileSha256 -LiteralPath (Join-Path $stagingDirectory 'bin\QGC_KevinJiang.exe')
+        installerScriptSha256 = Get-FileSha256 -LiteralPath (Join-Path $projectRoot 'deploy\windows\nullsoft_installer.nsi')
+    }
+}
+
+function Restore-VerificationInputs {
+    $auditRoot = [System.IO.Path]::GetFullPath((Join-Path $distributionDirectory 'release-audit')) + '\'
+    $sourceDirectory = [System.IO.Path]::GetFullPath($AuditDirectory)
+    if (-not ($sourceDirectory + '\').StartsWith($auditRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Verification must use an audit directory for this project and requested version.'
+    }
+    $sourcePath = Join-Path $sourceDirectory 'release-state.json'
+    $source = Get-Content -LiteralPath $sourcePath -Raw | ConvertFrom-Json
+    if ($source.schemaVersion -ne 2 -or $source.mode -ne 'release' -or
+        $source.requestedVersion -ne $Version -or $source.projectRoot -ne $projectRoot -or
+        $source.buildDirectory -ne $buildDirectory -or $source.installerPath -ne $installerPath) {
+        throw 'Verification requires a matching release audit from the updated workflow.'
+    }
+    if ($source.status -notin @('failed', 'succeeded') -or $source.steps.Count -ne 8 -or
+        $source.steps[-1].name -ne 'Verify release artifact' -or
+        $source.steps[-1].status -notin @('failed', 'succeeded') -or
+        @($source.steps | Select-Object -First 7 | Where-Object { $_.status -ne 'succeeded' }).Count -ne 0 -or
+        $null -eq $source.candidate) {
+        throw 'The source release must have completed staging, boot verification and installer creation.'
+    }
+    $stagingRoot = [System.IO.Path]::GetFullPath((Join-Path $buildDirectory 'release-runs')) + '\'
+    $sourceStaging = [System.IO.Path]::GetFullPath($source.stagingDirectory)
+    if (-not ($sourceStaging + '\').StartsWith($stagingRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Source staging directory is outside the release build.'
+    }
+    $script:stagingDirectory = $sourceStaging
+    $script:Candidate = $source.candidate
+    $script:SourceAudit = $sourcePath
+    $script:NsisPath = $source.nsisPath
+    $script:Jobs = $source.compilerJobs
+}
+
+function Confirm-ReleaseArtifact {
+    $currentCandidate = Get-ReleaseCandidate
+    foreach ($field in @('installerSha256', 'applicationSha256', 'installerScriptSha256')) {
+        if ($currentCandidate[$field] -ne $script:Candidate.$field) {
+            throw "Release input changed since installer creation: $field. Rebuild the release."
+        }
+    }
+    $requiredRuntimeFiles = @(Assert-StagedApplication -RunBootTest:$VerifyOnly)
+    Assert-UpgradeContract
+    $installer = Get-Item -LiteralPath $installerPath
+    $application = Get-Item -LiteralPath (Join-Path $stagingDirectory 'bin\QGC_KevinJiang.exe')
+    if ((Get-NormalizedProductVersion $installer.VersionInfo.ProductVersion) -ne "$Version.0") {
+        throw "Installer product version mismatch: $($installer.VersionInfo.ProductVersion)"
+    }
+    $securityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
+    Import-Module -Name $securityModule -ErrorAction Stop
+    $signature = (Get-AuthenticodeSignature -LiteralPath $installerPath).Status.ToString()
+    $script:Artifact = [ordered]@{
+        installerPath = $installer.FullName
+        installerVersion = $installer.VersionInfo.ProductVersion
+        applicationVersion = $application.VersionInfo.ProductVersion
+        sizeBytes = $installer.Length
+        sha256 = $currentCandidate.installerSha256
+        signature = $signature
+        upgradeIdentity = 'QGC_KevinJiang'
+        preservesUserData = $true
+        requiredRuntimeFilesVerified = $requiredRuntimeFiles
+    }
+    Write-Host "SHA-256: $($script:Artifact.sha256)"
+    Write-Host "Signature: $signature"
 }
 
 function Write-FinalReport {
@@ -266,7 +424,9 @@ function Write-FinalReport {
         "# QGC_KevinJiang Windows release report"
         ""
         "- Run: $runId"
-        "- Mode: $(if ($PreflightOnly) { 'preflight' } else { 'release' })"
+        "- Mode: $($script:Mode)"
+        "- Compiler jobs: $Jobs"
+        "- Source audit: $($script:SourceAudit)"
         "- Requested version: $Version"
         "- Status: $($script:RunStatus)"
         "- Failure: $($script:FailureMessage)"
@@ -291,6 +451,16 @@ $script:StartedAt = (Get-Date).ToString('o')
 Write-RunState
 
 try {
+    if ($VerifyOnly) {
+        Invoke-ReleaseStep -Name 'Verify release artifact' -Action {
+            Restore-VerificationInputs
+            Confirm-ReleaseArtifact
+        }
+        $script:RunStatus = 'succeeded'
+        Write-Host "Verification completed. Report: $reportPath"
+        return
+    }
+
     Invoke-ReleaseStep -Name 'Preflight' -Action {
         $requiredFiles = @(
             'CMakeLists.txt',
@@ -317,6 +487,9 @@ try {
             throw 'Help page must display the runtime QGroundControl.qgcVersion instead of a fixed release number.'
         }
         Write-Host 'OK: Help page version is bound to QGroundControl.qgcVersion'
+        Assert-UpgradeContract
+        $securityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
+        Import-Module -Name $securityModule -ErrorAction Stop
 
         if (-not (Test-Path -LiteralPath 'D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat')) {
             throw 'Visual Studio build environment is missing.'
@@ -355,8 +528,6 @@ try {
 
     if ($PreflightOnly) {
         $script:RunStatus = 'preflight-succeeded'
-        Write-RunState
-        Write-FinalReport
         Write-Host "Preflight completed. Report: $reportPath"
         return
     }
@@ -372,6 +543,26 @@ try {
                                                (Split-Path -Parent $pythonExecutable), $previousPath
             $command = 'cmake -S "{0}" -B "{1}" -G Ninja -DCMAKE_BUILD_TYPE=Release -DQGC_DEBUG_CANDIDATE=OFF -DQGC_BUILD_TESTING=OFF -DQGC_BUILD_INSTALLER=ON -DQGC_USE_CACHE=OFF -DCPM_SOURCE_CACHE=D:/Develop/envs/qgc-cpm-cache "-DCMAKE_PREFIX_PATH={2}" "-DGStreamer_ROOT_DIR={3}" "-DPython3_EXECUTABLE={4}" "-DPython_EXECUTABLE={4}" "-DCMAKE_C_FLAGS=/DWIN32 /D_WINDOWS /nologo" "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /nologo"' -f $projectRoot, $buildDirectory, $qtRoot, $gstreamerRoot, $pythonExecutable
             Invoke-VsCommand -Command $command
+            # CMake 4.1 can decode the Chinese MSVC /showIncludes prefix incorrectly.
+            # Keep Ninja header dependency tracking consistent with the compiler output.
+            $prefixCorrected = $false
+            $prefixPattern = '(?m)^set\(CMAKE_(C|CXX)_CL_SHOWINCLUDES_PREFIX "娉ㄦ剰: 鍖呭惈鏂囦欢: *"\)(?=\r?$)'
+            foreach ($compilerFile in Get-ChildItem -LiteralPath (Join-Path $buildDirectory 'CMakeFiles') -Filter 'CMake*Compiler.cmake' -Recurse) {
+                $compilerContent = Get-Content -LiteralPath $compilerFile.FullName -Raw
+                if ($compilerContent -match $prefixPattern) {
+                    $compilerContent = $compilerContent -replace $prefixPattern, 'set(CMAKE_$1_CL_SHOWINCLUDES_PREFIX "注意: 包含文件: ")'
+                    Write-Utf8NoBom -LiteralPath $compilerFile.FullName -Content $compilerContent
+                    $prefixCorrected = $true
+                    Write-Host "Corrected MSVC include prefix: $($compilerFile.FullName)"
+                }
+            }
+            if ($prefixCorrected) {
+                $dependencyLog = Join-Path $buildDirectory '.ninja_deps'
+                if (Test-Path -LiteralPath $dependencyLog) {
+                    Move-Item -LiteralPath $dependencyLog -Destination "$dependencyLog.before-prefix-repair-$runId"
+                }
+                Invoke-VsCommand -Command $command
+            }
         }
         finally {
             $env:PATH = $previousPath
@@ -379,15 +570,25 @@ try {
     }
 
     Invoke-ReleaseStep -Name 'Build Release' -Action {
-        $command = 'cmake --build "{0}" --config Release --parallel 1' -f $buildDirectory
+        $command = 'cmake --build "{0}" --config Release --parallel {1}' -f $buildDirectory, $Jobs
         Invoke-VsCommand -Command $command
     }
 
-    Invoke-ReleaseStep -Name 'Stage dependencies and build installer' -Action {
+    Invoke-ReleaseStep -Name 'Stage dependencies' -Action {
+        # Run all deployment rules, deferring only NSIS until the staged app passes.
+        $command = 'cmake "-DCMAKE_INSTALL_PREFIX={0}" -DCMAKE_INSTALL_CONFIG_NAME=Release -DQGC_SKIP_WINDOWS_INSTALLER=ON -P "{1}\cmake_install.cmake"' -f $stagingDirectory, $buildDirectory
+        Invoke-VsCommand -Command $command
+    }
+
+    Invoke-ReleaseStep -Name 'Verify staged application' -Action {
+        Assert-StagedApplication -RunBootTest | Out-Null
+    }
+
+    Invoke-ReleaseStep -Name 'Build installer' -Action {
         $previousPath = $env:PATH
         try {
             $env:PATH = "{0};{1}" -f (Split-Path -Parent $script:NsisPath), $previousPath
-            $command = 'cmake --install "{0}" --config Release --prefix "{1}"' -f $buildDirectory, $stagingDirectory
+            $command = 'cmake --install "{0}" --config Release --prefix "{1}" --component windows-installer' -f $buildDirectory, $stagingDirectory
             Invoke-VsCommand -Command $command
         }
         finally {
@@ -404,80 +605,12 @@ try {
             throw "Expected installer was not generated: $generatedInstaller"
         }
         Copy-Item -LiteralPath $generatedInstaller -Destination $installerPath -Force:$Force
+        $script:Candidate = Get-ReleaseCandidate
         Write-Host "Installer copied to $installerPath"
     }
 
     Invoke-ReleaseStep -Name 'Verify release artifact' -Action {
-        $applicationPath = Join-Path $stagingDirectory 'bin\QGC_KevinJiang.exe'
-        $requiredRuntimeFiles = @(
-            'plugins\platforms\qwindows.dll',
-            'bin\Qt6Core.dll',
-            'bin\Qt6Gui.dll',
-            'bin\Qt6Qml.dll',
-            'bin\Qt6Quick.dll',
-            'bin\gstgl-1.0-0.dll',
-            'bin\gstreamer-1.0-0.dll',
-            'bin\ai_detection\run_yolo_to_qgc_auto.py',
-            'bin\ai_detection\ai_detection_core.py',
-            'bin\ai_detection\yolo_to_qgc_udp.py'
-        )
-        foreach ($relativePath in $requiredRuntimeFiles) {
-            $path = Join-Path $stagingDirectory $relativePath
-            if (-not (Test-Path -LiteralPath $path)) {
-                throw "Required runtime file is missing: $path"
-            }
-            Write-Host "Runtime OK: $relativePath"
-        }
-
-        $installer = Get-Item -LiteralPath $installerPath
-        $application = Get-Item -LiteralPath $applicationPath
-        $hashStream = [System.IO.File]::OpenRead($installerPath)
-        $sha256 = [System.Security.Cryptography.SHA256]::Create()
-        try {
-            $hash = ([System.BitConverter]::ToString($sha256.ComputeHash($hashStream))).Replace('-', '')
-        }
-        finally {
-            $sha256.Dispose()
-            $hashStream.Dispose()
-        }
-        $securityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
-        Import-Module -Name $securityModule -ErrorAction Stop
-        $signature = (Get-AuthenticodeSignature -LiteralPath $installerPath).Status.ToString()
-
-        Invoke-StagedBootTest -ApplicationPath $applicationPath
-
-        if ((Get-NormalizedProductVersion $installer.VersionInfo.ProductVersion) -ne "$Version.0") {
-            throw "Installer product version mismatch: $($installer.VersionInfo.ProductVersion)"
-        }
-        if ((Get-NormalizedProductVersion $application.VersionInfo.ProductVersion) -ne "$Version.0") {
-            throw "Application product version mismatch: $($application.VersionInfo.ProductVersion)"
-        }
-
-        $nsisScript = Get-Content -LiteralPath (Join-Path $projectRoot 'deploy\windows\nullsoft_installer.nsi') -Raw
-        if ($nsisScript -notmatch 'InstallDir "\$PROGRAMFILES64\\\$\{APPNAME\}"') {
-            throw 'Stable QGC_KevinJiang install directory contract is missing.'
-        }
-        if ($nsisScript -notmatch 'ExecWait "\$R0 /S -LEAVE_DATA=1') {
-            throw 'In-place upgrade and user-data preservation contract is missing.'
-        }
-        if ($nsisScript -notmatch '(?m)ExecWait "\$R0 /S -LEAVE_DATA=1[^"\r\n]*" \$0') {
-            throw 'Previous uninstaller return-code capture is missing.'
-        }
-
-        $script:Artifact = [ordered]@{
-            installerPath = $installer.FullName
-            installerVersion = $installer.VersionInfo.ProductVersion
-            applicationVersion = $application.VersionInfo.ProductVersion
-            sizeBytes = $installer.Length
-            sha256 = $hash
-            signature = $signature
-            upgradeIdentity = 'QGC_KevinJiang'
-            preservesUserData = $true
-            requiredRuntimeFilesVerified = $requiredRuntimeFiles
-        }
-
-        Write-Host "SHA-256: $hash"
-        Write-Host "Signature: $signature"
+        Confirm-ReleaseArtifact
     }
 
     $script:RunStatus = 'succeeded'

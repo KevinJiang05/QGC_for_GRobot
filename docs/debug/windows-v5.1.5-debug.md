@@ -35,6 +35,32 @@ Set-Location D:\Develop\QGC_for_GRobot
 
 ## 依赖与构建
 
+日常修改后，在项目根目录运行增量编译入口：
+
+```powershell
+.\tools\debug\build-windows-debug.ps1
+```
+
+默认同时运行 8 个编译任务；可用 `-Jobs 12` 或 `-Jobs 16` 比较耗时与内存，
+出现内存压力或资源生成竞争时降到 `-Jobs 4` 或 `-Jobs 1`。
+现有 Ninja 链接任务池仍最多同时运行 2 个任务。
+此入口复用已配置的 Debug 构建目录，不部署、不生成安装包、不更改版本或安装依赖。
+构建前关闭从此构建目录运行的 Debug 程序；入口会提前检测对应进程，避免最后
+链接时出现 `LNK1168`（无法写入正在运行的 EXE）。
+并行度提高后的实际耗时和稳定性须在后续允许编译时测量。
+同一构建目录应由一个终端或对话执行构建；同时启动多个 Ninja 进程可能占用
+构建日志，导致重生成阶段出现 `failed recompaction: Permission denied`。
+遇到此错误先确认其他构建是否结束，保留缓存后重试。
+
+运行静态检查时，在当前 PowerShell 会话复用项目已有工具缓存，避免重复下载：
+
+```powershell
+$env:PRE_COMMIT_HOME = Join-Path $PWD 'build-v5.1.5-deps/pre-commit'
+$env:PIP_CACHE_DIR = Join-Path $PWD 'build-v5.1.5-deps/pip-cache'
+$env:UV_CACHE_DIR = Join-Path $PWD 'build-v5.1.5-deps/uv-cache'
+.venv/Scripts/pre-commit.exe run --files tools/release/build-windows-release.ps1
+```
+
 | 用途 | 位置 |
 | --- | --- |
 | Qt 6.11.1 MSVC 2022 x64 | `D:\Develop\envs\Qt\6.11.1\msvc2022_64` |

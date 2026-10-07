@@ -228,8 +228,10 @@ elseif(WIN32)
         set(QGC_WINDOWS_INSTALL_HEADER_PATH \"${QGC_WINDOWS_INSTALL_HEADER_PATH}\")
         set(QGC_WINDOWS_OUT \"${_win_installer_out}\")
         set(QGC_WINDOWS_INSTALLER_SCRIPT \"${CMAKE_SOURCE_DIR}/deploy/windows/nullsoft_installer.nsi\")
-    ")
-    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateWinInstaller.cmake")
+    "
+        COMPONENT windows-installer
+    )
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateWinInstaller.cmake" COMPONENT windows-installer)
 
 # ----------------------------------------------------------------------------
 # macOS Installation, Code Signing & DMG Creation

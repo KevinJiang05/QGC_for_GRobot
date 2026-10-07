@@ -105,60 +105,39 @@ ToolIndicatorPage {
                 }
             }
 
-            ColumnLayout {
-                id: versionColumnLayout
+            QGCLabel {
+                id: versionLabel
+                objectName: "toolbar_version"
                 Layout.fillWidth: true
                 Layout.columnSpan: 2
-                spacing: 0
+                horizontalAlignment: Text.AlignHCenter
+                text: "Kevin " + QGroundControl.qgcVersion.split(" ")[0]
+                      + (QGroundControl.qgcVersion.indexOf(" Debug") >= 0 ? " Debug" : "")
+                font.pointSize: ScreenTools.smallFontPointSize
+                wrapMode: QGCLabel.WordWrap
 
-                QGCLabel {
-                    id: versionLabel
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("%1 Version").arg(QGroundControl.appName)
-                    font.pointSize: ScreenTools.smallFontPointSize
-                    wrapMode: QGCLabel.WordWrap
-                }
+                QGCMouseArea {
+                    anchors.fill: parent
+                    enabled: QGroundControl.qgcDailyBuild
 
-                QGCLabel {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: QGroundControl.qgcVersion
-                    font.pointSize: ScreenTools.smallFontPointSize
-                    wrapMode: QGCLabel.WrapAnywhere
-                }
-
-                QGCLabel {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: QGroundControl.qgcAppDate
-                    font.pointSize: ScreenTools.smallFontPointSize
-                    wrapMode: QGCLabel.WrapAnywhere
-                    visible: QGroundControl.qgcDailyBuild
-
-                    QGCMouseArea {
-                        anchors.topMargin: -(parent.y - versionLabel.y)
-                        anchors.fill: parent
-
-                        onClicked: (mouse) => {
-                            if (mouse.modifiers & Qt.ControlModifier) {
-                                QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
-                                showTouchAreasNotification.open()
-                            } else if (ScreenTools.isMobile || mouse.modifiers & Qt.ShiftModifier) {
-                                mainWindow.closeIndicatorDrawer()
-                                if (!QGroundControl.corePlugin.showAdvancedUI) {
-                                    advancedModeOnConfirmation.open()
-                                } else {
-                                    advancedModeOffConfirmation.open()
-                                }
-                            }
-                        }
-
-                        // This allows you to change this on mobile
-                        onPressAndHold: {
+                    onClicked: (mouse) => {
+                        if (mouse.modifiers & Qt.ControlModifier) {
                             QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
                             showTouchAreasNotification.open()
+                        } else if (ScreenTools.isMobile || mouse.modifiers & Qt.ShiftModifier) {
+                            mainWindow.closeIndicatorDrawer()
+                            if (!QGroundControl.corePlugin.showAdvancedUI) {
+                                advancedModeOnConfirmation.open()
+                            } else {
+                                advancedModeOffConfirmation.open()
+                            }
                         }
+                    }
+
+                    // This allows you to change this on mobile
+                    onPressAndHold: {
+                        QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
+                        showTouchAreasNotification.open()
                     }
                 }
             }

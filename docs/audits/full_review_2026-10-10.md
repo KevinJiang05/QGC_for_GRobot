@@ -5,28 +5,34 @@
 没有编译、没有运行测试**。
 
 所有条目的证据等级均为"读码推断"，除非另有说明。条目交 Codex 二次复核后再决定是否修改。
-Codex 复核会话：待建立。按 2026-10-10 的决定，等推进器部分审完、整轮清单齐全后再一次性交复核。
+Codex 复核会话：`01a12672-65cf-7d60-b8c1-6e27a1c1d488`（2026-10-10 启动，整轮清单一次性交复核）。
+提示词与输出保留在 `.tmp/codex/full-review-20261010/`。
 
 ## 覆盖范围
 
+第一版清单在只读完高风险部分时就写成了"整轮完成"，这是不准确的。下表是补读之后的实际状态。
+
 | 范围 | 状态 |
 | --- | --- |
-| `src/` 相对 v5.1.5 的 70 个文件差异 | 全部已读；其中 `MockLink` 三个文件只读了增删行 |
-| 视频链路：`gstqgcqvideosink.cc`、`QGCQVideoSinkController.cc`、`GstVideoReceiver.cc`、`GstD3D11VideoBuffer.cc`、`HwBuffers.cc` 补丁 | 已读 |
-| `custom/src`：`DeepSharkVideoController`、`DeepSharkConnectionMonitor`、`DeepSharkPlugin`、`AIDetectionReceiver`、`AIDetectionManager`、`DeepSharkVideoSettings` | 整文件已读 |
-| `custom/src` QML：`FlyViewCustomLayer`、`FourVideoPanel`、`VideoTile`、`DeepSharkStatusPanel` | 整文件已读 |
-| `ThrusterDirectControlController.cc/.h` | 整文件已读 |
-| `ThrusterMappingTool.qml`（1904 行） | 整文件已读 |
-| 推进器相关测试（两个文件约 1300 行） | 只看了用例清单和驱动方式，未逐个读断言 |
-| `MockLink` 相对 v5.1.5 的差异 | 已读增删行（未读上下文） |
-| `DeepSharkAuvController`、`AuvMissionPanel.qml` | 只确认控制器不发送任何 MAVLink 指令；其余未读（演示功能） |
-| `Attitude3DPanel.qml`、`AIDetectionVideoOverlay.qml`、`ConnectionAlertBanner.qml`、`ConnectionAlertSettings.qml` | 整文件已读 |
-| `Attitude3DViewState.qml` | 整文件已读 |
-| `AIDetectionSettings.qml`、`ThrusterMappingExportController` | 未读（演示功能的设置页；CSV 写文件） |
-| `test/DeepShark/` | 查了全部文件的跳过条件和断言形态；`DeepSharkConnectionMonitorTest.cc` 整文件已读，其余未逐个读用例 |
-| 发布脚本、NSIS、CI 工作流 | 读了 2.0.0 发布记录、安装器关键行、`build-windows-release.ps1` 前 300 行和其余部分的步骤结构；CI 工作流未读 |
-| `tools/ai_detection` Python | 只确认启动脚本不派生子进程 |
-| 翻译 | 只查了与卡顿线索相关的条目 |
+| `src/` 相对 v5.1.5 的 70 个文件差异 | 全部已读；`MockLink` 三个文件只读了增删行 |
+| 视频链路补丁（sink、sink 控制器、接收器、D3D11 缓冲、`HwBuffers`） | 已读 |
+| `custom/src` 全部 C++（9 组 `.cc/.h`） | 整文件已读 |
+| `custom/src` QML：`FlyViewCustomLayer`、`FourVideoPanel`、`VideoTile`、`DeepSharkStatusPanel`、`ThrusterMappingTool`、`Attitude3DPanel`、`Attitude3DViewState`、`AIDetectionVideoOverlay`、`ConnectionAlertBanner`、`ConnectionAlertSettings` | 整文件已读 |
+| `AuvMissionPanel.qml`（897 行）、`AIDetectionSettings.qml`（267 行） | 只检索了载具访问、指令、定时器和文件操作，未逐行读（演示功能界面） |
+| `test/DeepShark/` 11 个测试 | 9 个整文件已读；`Attitude3DPanelTest`、`DeepSharkVideoResizeTest` 读了用例清单、方向约定和全部断言行 |
+| 升级时改过的上游测试（17 个有删改的文件） | 逐个读了差异 |
+| 上游测试里的纯新增用例（`JoystickTest`、`InitialConnectTest`、`AppSettingsTest`、`GStreamer*Test`、`FlyViewCameraCaptureUITest` 等） | `JoystickControlTest` 读了后两个用例；其余只看了用例名，未读 |
+| 构建与安装：根 `CMakeLists.txt`、`cmake/install`、NSIS、`custom/cmake`、`custom/CMakeLists.txt` 的差异 | 已读 |
+| `tools/release/build-windows-release.ps1` | 整文件已读 |
+| `tools/release/test-windows-release.ps1`（371 行） | 未读 |
+| `.github/workflows/kevin-windows-debug.yml` 及远端运行记录 | 已读、已查 |
+| `tools/ai_detection`：`run_yolo_to_qgc_auto.py` | 读了前 200 行 |
+| `tools/ai_detection` 其余三个脚本和测试 | 未读（演示功能） |
+| 翻译 | 统计了完成度，机械检查了全部已完成条目的占位符；未做语义抽查 |
+| 修复记录里的声明 | 抽查了 7 条，见"声明核对" |
+| 启停脚本、`software/`、`Ultralytics/`、通用无人机功能 | 按约定不审 |
+
+方法上原计划的三步里：逐文件台账以上表代替，没有单独生成；用测试坐实疑点没有做（本轮约定只审不改，新增用例属于改动）；声明核对做了抽查。
 
 ## 现场症状：切换操控模式时画面偶发卡顿
 
@@ -57,7 +63,7 @@ GUI 线程被任何事情占住多久，全部视频就停多久。这一点官�
 
 严重度：S0 可能导致非预期的执行器动作或失控；S1 现场会崩溃、卡死或功能失效；
 S2 行为错误或有现场影响但有绕过办法；S3 维护和升级成本。
-没有发现 S0。S1 有一条，在推进器直测功能里。
+没有发现 S0。S1 有一条，在推进器直测功能里。除 F23 来自远端运行记录外，其余均为读码推断。
 
 ### S1（推进器 PWM 直测）
 
@@ -77,6 +83,9 @@ S2 行为错误或有现场影响但有绕过办法；S3 维护和升级成本�
 后果：链路抖动恰好落在测试窗口内时，推进器会按测试 PWM 一直转，直到有人发现并手动恢复。
 建议：进入"需要人工恢复"且曾发出过测试 PWM 时，持续按固定间隔尽力发送回中；链路恢复后自动执行恢复流程。
 前提（未实机核实）：ArduPilot 对功能为 Disabled 的输出会保持最后一次 `DO_SET_SERVO` 的值，没有超时。
+
+测试侧的情况：`ThrusterMappingIntegrationTest::_missingNeutralAckKeepsQmlRecoveryJournal` 断言回中回执丢失时总共只发出 2 条 `DO_SET_SERVO`，
+等于把"回中只发一次"固化成了预期行为；"正在输出时心跳中断"没有任何用例覆盖。
 
 ### S2
 
@@ -108,7 +117,9 @@ watchdog 和预警都不会触发。sink 自己有 `frames-delivered` 计数（G
 `JoystickComponentButtons.qml:111-112`。包括重新选一次 `No Action`。
 现在三列并排显示，用户很容易以为它们互相独立。这是对飞控参数的直接写入，
 开启"禁用安全限制"后在解锁状态下也会发生。升级前的旧代码（已注释掉的那段）有同样的互斥逻辑，
-但旧界面是单个下拉框，不存在这个误解。可以用 MockLink 写一个用例坐实。
+但旧界面是单个下拉框，不存在这个误解。
+`JoystickControlTest::_firmwareButtonOwnership` 断言了"选择一个真实的地面站动作会清零固件功能"，说明互斥本身是有意的；
+重选 `No Action` 的情况没有用例覆盖。
 
 **F05 开启"禁用安全限制"后，手柄配置页里按按键会真实执行其动作。**
 `Joystick.cc:800`、`Joystick.cc:986`。审计记录写明这是有意的（配置期间继续发送控制）。
@@ -133,6 +144,13 @@ QGC 在载具已解锁时连接会跳过参数下载（`InitialConnectStateMachi
 需要用 MockLink 验证。
 
 **F08 模式播报在 GUI 线程执行。** 见上一节，待实验确认。
+
+**F23 远端 CI 从建立至今没有成功过一次，从未编译或运行过任何测试。（已核实）**
+`Kevin Windows Debug` 工作流在 `KevinJiang05/QGC_for_GRobot` 上共 8 次运行，全部失败，
+包括 2.0.0 的提交 `d736dd1fe` 和今天的 `bead00b7c`。每次都停在"Build setup"里的 Qt 安装：
+`aqt` 报 `Failed to locate XML data for Qt version '6.11.1'`，后面的配置、编译、测试步骤全部跳过。
+也就是说目前没有任何自动门禁在起作用，所有"测试通过"的结论都只来自本机。
+10-06 的修复记录写的是"新工作流尚未推送和远端执行"，之后没有人回头看过结果。
 
 **T03 恢复记录只在打开这个工具时才看得到。**
 恢复记录存在 `DeepSharkServoOutputMapping` 设置组里，全仓库只有 `ThrusterMappingTool.qml` 读它。
@@ -178,7 +196,8 @@ QGC 在直测中途崩溃，或者载具断开后关掉了工具，那一路输�
 `QGCFileHelper.cc` 忽略空白后仍有 +60/−40，实际功能改动约 9 行；
 `QGClibarchive.cc`、`TCPLink.cc`、`Joystick.h`、`JoystickConfigController.cc` 的 include 重排，
 `Vehicle.cc` 三个单行函数被展开，`CommLinks.SettingsUI.json` 和 `Video.SettingsUI.json`
-的 `keywords` 数组被展开成多行。这些都会在下次合并上游时制造冲突，建议还原。
+的 `keywords` 数组被展开成多行。上游测试也一样：`PX4ParameterMetaDataTest.cc`（+78/−61）、`QGCMAVLinkTest.cc`（+68/−61）
+的差异绝大部分是指针写法和对齐的重排。这些都会在下次合并上游时制造冲突，建议还原。
 
 **F11 默认链路删不掉。**
 `LinkManager.cc:444`。每次启动只要找不到同名或同端点的 TCP 配置就重新创建
@@ -219,6 +238,25 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 `QGCCameraManager.cc:125`。修的是真实的释放后访问，可以回馈上游。
 副作用是相机管理器每重建一次就多留一组上下文直到载具销毁，数量有界。
 
+**F24 CI 的测试清单是写死的 11 个类名。**
+`kevin-windows-debug.yml` 用正则只跑这 11 个。之后新增的 `JoystickControlTest`（覆盖解锁状态下的手柄控制）、
+`ThrusterMappingIntegrationTest`、`InitialConnectTest`、`DeepSharkUILayoutTest`、`Attitude3DPanelTest`、`GStreamerTest` 都不在里面。
+即使修好 F23，新增测试也不会自动进入 CI。
+
+**F25 发布流程不运行任何测试。**
+`build-windows-release.ps1:544` 以 `-DQGC_BUILD_TESTING=OFF` 配置 Release。产物的门禁只有文件存在、版本号一致和一次启动自检。
+Release 与 Debug 的行为差异（断言、时序）没有任何测试覆盖。
+
+**F26 测试产物和设置残留。**
+`ThrusterMappingIntegrationTest` 用 `__FILE__` 反推源码树，把截图写进 `.tmp/codex/output-tool-preview`；
+`DeepSharkUILayoutTest`、`DeepSharkVideoResizeTest` 把截图写进当前目录；
+`_unknownUidRecordsStayInSession`、`_desktopDialogTabs` 往测试用的设置里写了键没有清理。
+另外 `PlatformTest` 在 Windows 上断言 `QT_FORCE_STDERR_LOGGING` 未设置，而本机查看测试输出恰恰需要设置它，带着这个环境变量跑会失败。
+
+**F27 AI 检测对每路相机另开一条 RTSP 连接。**
+`run_yolo_to_qgc_auto.py` 用 `cv2.VideoCapture` 自己拉流，不看通道的启用开关，也不看传输方式设置。
+开启 AI 后脐带缆上的视频流量和相机的会话数都会翻倍。演示功能，记录备查。
+
 **F22 发布脚本绑定单台机器。**
 `build-windows-release.ps1:29-32`、`:156` 写死了 Qt、GStreamer、VS 工具链和构建目录的绝对路径。
 换机器或升级依赖版本时要改脚本。脚本里的"覆盖升级契约"是对安装器脚本文本的正则检查，不是实际安装测试，发布记录对此有如实说明。
@@ -240,6 +278,27 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 - **视频测试的跳过是编译期条件**，CMake 已为相关用例设置启用 GStreamer 的环境变量，不是空跑。
 - **断联监测的测试**用注入时间逐步驱动状态机，断言的是行为而不是文本，质量可以。
 - **告警横幅、告警设置页、AI 叠加层**：没有发现问题。
+- **升级时改过的 17 个上游测试**：没有发现断言被削弱。改动是三类：把写死的英文期望换成翻译后的字符串（中文环境下才能通过）、
+  把空断言换成真断言（`BluetoothWorkerTest` 原来是 `QVERIFY2(true, ...)`）、跟随有意的行为变更（`onPipelineRestart` 不再重置缓存）。
+- **定制测试的质量**：以真实协议往返和注入时间为主，断言的是行为。推进器集成测试对回执保留、参数拒绝、备份回读、
+  功能保存的互锁都有覆盖。缺的是 F01、F04 的 `No Action`、T01 的心跳中断这几条路径。
+- **AUV 控制器**（整文件已读）：只读写本地设置和解析任务文件，不向机器人发任何指令。
+- **翻译**：中文源码译文已完成 2838 条（升级前 2181 条），JSON 译文 1524 条；全部已完成条目的占位符与原文一致，没有空译文。
+  仍有 1327 + 360 条未翻译，主要是通用无人机功能。
+
+## 声明核对
+
+从 10-06、10-07 的修复记录里抽了 7 条"已修复"回代码核对：
+
+| 声明 | 结果 |
+| --- | --- |
+| 停止脚本加入新版 Debug 程序名 | 属实，`StopDeepSharkQGC.cmd:26` |
+| 安装规则恢复 AI 工具目录 | 属实，`cmake/install/Install.cmake:22-27`（连测试目录一起装进去了） |
+| 安装器捕获旧卸载程序返回码 | 属实，`nullsoft_installer.nsi:97` |
+| 独立 YOLO 入口识别新 Debug 配置 | 属实；未指定配置时优先读 Debug 配置而不是正式版配置 |
+| 当前手柄选择与逐车辆启用状态的旧键迁移 | 属实，`JoystickManagerSettings.cc` |
+| 拍摄按钮横向布局、旧 `MNT_` 参数回退 | 属实 |
+| main 的 Windows Debug 工作流"YAML 检查通过，远端未运行" | 写的时候属实；之后远端每次都失败，见 F23 |
 
 ## 审查做不到、需要实机确认的
 
@@ -257,5 +316,5 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 
 ## 下一轮
 
-- 未读部分：`AIDetectionSettings.qml`、`ThrusterMappingExportController`、发布脚本后半、CI 工作流、测试用例逐个核对。这些都不涉及控制输出。
+- 仍未逐行读的：`AuvMissionPanel.qml`、`AIDetectionSettings.qml`、`tools/ai_detection` 的三个脚本、`test-windows-release.ps1`、上游测试里的纯新增用例。
 - 对 F04、F07、T01 用 MockLink 写失败用例坐实（需要编译）。

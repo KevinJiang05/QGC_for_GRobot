@@ -28,11 +28,14 @@ Item {
 
     function openDeepSharkThrusterMappingTool() {
         var component = Qt.createComponent("qrc:/Custom/qml/QGroundControl/Controls/DeepSharkThrusterMappingTool.qml")
-        if (component.status === Component.Ready) {
-            component.createObject(mainWindow).open()
-        } else {
-            QGroundControl.showMessageDialog(_root, qsTr("DeepShark"), component.errorString())
+        var dialog = component.status === Component.Ready ? component.createObject(mainWindow) : null
+        if (!dialog) {
+            console.warn("Output testing tool could not be loaded:", component.errorString())
+            QGroundControl.showMessageDialog(_root, qsTr("输出测试与接线记录"),
+                                             qsTr("输出测试工具加载失败，请重启软件后重试。详细原因已记录到应用日志。"))
+            return
         }
+        dialog.open()
     }
 
     Timer {
@@ -90,7 +93,7 @@ Item {
         }
         QGCMenuSeparator { }
         QGCMenuItem {
-            text: qsTr("推进器映射向导")
+            text: qsTr("输出测试与接线记录")
             onTriggered: openDeepSharkThrusterMappingTool()
         }
         QGCMenuSeparator { visible: _showRCToParam }

@@ -11,6 +11,14 @@ private slots:
     void _rejectedTestCommandRestoresWithoutTesting();
     void _commandAndRestoreTimeoutRequireRecovery();
     void _abortRestoresBeforeOutputStarts();
+    void _noResponseSendsNeutralBeforeRestoringDisabled();
+    void _abortWaitsForPendingCommandResult();
+    void _recoveryConfirmsNeutralBeforeParameterRestore();
+    void _abortDuringRecoverySettlingStillConfirmsNeutral();
+    void _elapsedTestWaitsForAckWithoutRestartingDuration();
+    void _parameterFailureKeepsRecoveryRequired();
+    void _inProgressDoesNotCompleteCommand();
+    void _originalBackupPrecedesFunctionWrite();
     void _rejectsInvalidSessionInputs();
     void _qmlAdapterLoads();
 };

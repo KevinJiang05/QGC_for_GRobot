@@ -1798,7 +1798,35 @@ void MockLink::_handleParamSet(const mavlink_message_t &msg)
     }
 
     // Normal success path
-    _setParamFloatUnionIntoMap(componentId, paramId, request.param_value);
+    mavlink_param_union_t storedValue{};
+    storedValue.param_float = request.param_value;
+    // ArduPilot casts integer parameters to a numeric float on the wire,
+    // whereas the mock's storage helper expects the bytewise union encoding.
+    if (_firmwareType == MAV_AUTOPILOT_ARDUPILOTMEGA) {
+        switch (static_cast<MAV_PARAM_TYPE>(request.param_type)) {
+            case MAV_PARAM_TYPE_UINT32:
+                storedValue.param_uint32 = static_cast<uint32_t>(request.param_value);
+                break;
+            case MAV_PARAM_TYPE_INT32:
+                storedValue.param_int32 = static_cast<int32_t>(request.param_value);
+                break;
+            case MAV_PARAM_TYPE_UINT16:
+                storedValue.param_uint16 = static_cast<uint16_t>(request.param_value);
+                break;
+            case MAV_PARAM_TYPE_INT16:
+                storedValue.param_int16 = static_cast<int16_t>(request.param_value);
+                break;
+            case MAV_PARAM_TYPE_UINT8:
+                storedValue.param_uint8 = static_cast<uint8_t>(request.param_value);
+                break;
+            case MAV_PARAM_TYPE_INT8:
+                storedValue.param_int8 = static_cast<int8_t>(request.param_value);
+                break;
+            default:
+                break;
+        }
+    }
+    _setParamFloatUnionIntoMap(componentId, paramId, storedValue.param_float);
 
     mavlink_message_t responseMsg;
     mavlink_msg_param_value_pack_chan(

@@ -18,11 +18,11 @@ import DeepShark
 
 QGCPopupDialog {
     id:             root
-    title:          qsTr("SERVO 输出扫描向导")
+    title:          qsTr("输出测试与接线记录")
     buttons:        Dialog.Close
 
     readonly property var currentActiveVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    readonly property var activeVehicle:         paramController.vehicle
+    readonly property var activeVehicle:         directControl.vehicle
     readonly property bool vehicleContextMatches: activeVehicle !== null
                                                           && !activeVehicle.isOfflineEditingVehicle
                                                           && currentActiveVehicle === activeVehicle
@@ -35,8 +35,43 @@ QGCPopupDialog {
     property int    runningOutput:      -1
     property int    runningMotorTarget: -1
     property int    motorTestPulsesRemaining: 0
-    property bool   directServoMode:    false
-    property bool   servoJogMode:       false
+    // A single selection owns all test paths: Motor Test, direct PWM, servo jog.
+    property int    testMode:           0
+    readonly property bool directServoMode: testMode === 1
+    readonly property bool servoJogMode: testMode === 2
+    readonly property bool vehicleReady: vehicleContextMatches
+                                                && activeVehicle.parameterManager.parametersReady
+                                                && !activeVehicle.vehicleLinkManager.communicationLost
+    readonly property bool testPathAvailable: vehicleReady
+                                                && !directControl.busy && !mappingSettings.recoveryPending
+                                                && !disarmRequested && !disarmUnconfirmed && !armingRequested
+                                                && !armCommandPending && runningOutput === -1
+                                                && !activeVehicle.parameterManager.pendingWrites
+    readonly property bool canPrepareMotorTest: testEnabled && testMode === 0 && testPathAvailable && cooldownRemaining === 0
+    readonly property bool canStartMotorTest: canPrepareMotorTest && activeVehicle.armed
+    readonly property bool canStartDirectTest: testEnabled && testMode !== 0 && testPathAvailable && !activeVehicle.armed
+    readonly property bool canRecordMappings: vehicleContextMatches && mappingStorageValid
+    readonly property bool canConfigureServoFunctions: testPathAvailable && directControl.stateName === "idle"
+                                                           && !testEnabled && !testSessionOwned && !activeVehicle.armed
+    property var functionSaveConfirmation: null
+    property string functionSaveStatusText: ""
+    readonly property string currentVehicleUid: activeVehicle && Number(activeVehicle.vehicleUID) > 0
+                                                        ? activeVehicle.vehicleUIDStr : ""
+    readonly property string mappingScopeText: recordVehicleUid.length > 0
+                                                        ? qsTr("接线记录按载具 UID %1 单独保存").arg(recordVehicleUid)
+                                                        : currentVehicleUid.length > 0
+                                                          ? qsTr("本次接线记录保留在当前会话；该载具已有记录，请先导出再重新打开")
+                                                          : qsTr("载具未上报 UID；接线记录仅保存在当前会话")
+    property string recordVehicleUid: ""
+    property int recordVehicleId: -1
+    property var recordPorts: []
+    property var recordPositions: []
+    property bool recordsDirty: false
+    property bool mappingStorageValid: true
+    property bool legacyMappingsAvailable: false
+    property bool legacyImportConfirmation: false
+    property bool clearMappingsConfirmation: false
+    property bool testSessionOwned: false
     property string directServoOperation: "thruster"
     readonly property int directServoOutput: directControl.output
     readonly property int directServoPendingOutput: directControl.pendingOutput
@@ -53,10 +88,13 @@ QGCPopupDialog {
     property bool   closeAfterSafeShutdown: false
     property int    cooldownRemaining:  0
     property bool   armingRequested:    false
+    property bool   armCommandPending:  false
+    property bool   stopAfterArming:    false
+    property bool   disarmAckConfirmed: false
+    property bool   disarmUnconfirmed:  false
     property string testStatusText:     ""
     property string directServoStatusText: ""
     readonly property int motorTestCommand: 209
-    readonly property int setServoCommand: 183
     readonly property int armDisarmCommand: 400
     readonly property int autopilotComponentId: 1
     property var    appSettings:        QGroundControl.settingsManager.appSettings
@@ -75,40 +113,22 @@ QGCPopupDialog {
 
     signal mappingsUpdated()
 
-    ParameterEditorController {
-        id: paramController
-    }
-
     ThrusterMappingExportController {
         id: exportController
     }
 
     ThrusterDirectControlController {
         id: directControl
-
-        onFunctionWriteRequested: (value) => {
-            if (root.directServoFact === null) {
-                directControl.reportParameterUnavailable(qsTr("参数对象不可用"))
-                return
-            }
-            root.directServoFact.rawValue = value
-        }
-
-        onParameterCheckRequested: {
-            if (root.directServoFact === null || root.activeVehicle === null) {
-                directControl.reportParameterUnavailable(qsTr("载具连接或参数对象不可用"))
-                return
-            }
-            directControl.observeParameterState(Number(root.directServoFact.rawValue),
-                                                 root.activeVehicle.parameterManager.pendingWrites)
-        }
-
-        onServoPwmRequested: (output, pwm) => root.sendDirectServoPwm(output, pwm)
+        objectName: "thrusterDirectControl"
 
         onStateChanged: {
             switch (directControl.stateName) {
+            case "waitingBackup":
+                root.directServoStatusText = qsTr("正在从飞控回读 SERVO%1 原功能；确认后才会开始测试。")
+                        .arg(directControl.pendingOutput)
+                break
             case "disableSettling":
-                root.directServoStatusText = qsTr("%1 已确认 Disabled，准备发送测试 PWM。")
+                root.directServoStatusText = qsTr("%1 已确认 Disabled，准备发送 PWM。")
                         .arg(root.directServoFact ? root.directServoFact.name : root.servoParamName(mappingSettings.recoveryOutput))
                 break
             case "waitingTestAck":
@@ -122,7 +142,7 @@ QGCPopupDialog {
                         .arg(root.directServoTestPwm)
                 break
             case "waitingNeutralAck":
-                root.directServoStatusText = qsTr("正在将 SERVO%1 回中到 TRIM=%2，等待飞控确认。")
+                root.directServoStatusText = qsTr("正在将 SERVO%1 回中到 %2 PWM，等待飞控确认。")
                         .arg(directControl.output)
                         .arg(root.directServoNeutralPwm)
                 break
@@ -148,10 +168,51 @@ QGCPopupDialog {
             root.closeAfterSafeShutdown = false
             root.directServoStatusText = qsTr("恢复尚未确认：%1。请保持飞控上锁并使用“恢复异常通道”。").arg(reason)
         }
+
+        onOriginalFunctionConfirmed: (output, originalFunction) => {
+            root.saveRecoveryJournal(output, originalFunction)
+            // Flush the backup before the controller writes Disabled.
+            mappingSettings.sync()
+        }
+
+        onTestRejected: (reason) => {
+            root.clearRecoveryJournal()
+            root.directServoFact = null
+            root.directServoStatusText = qsTr("测试未开始：%1；未修改飞控参数。").arg(reason)
+            root.testSessionOwned = false
+            if (root.closeAfterSafeShutdown) {
+                root.requestSafeDisarm(true, qsTr("测试准备已取消"))
+            }
+        }
+
+        onFunctionSaveFinished: (output, success, message) => {
+            root.functionSaveStatusText = success
+                    ? message
+                    : qsTr("SERVO%1 保存未确认：%2。请检查连接及飞控实际参数后重试。").arg(output).arg(message)
+            if (root.closeAfterSafeShutdown) {
+                root.beginSafeShutdown(true, qsTr("参数保存已结束"))
+            }
+        }
+
+        onVehicleChanged: {
+            if (root.activeVehicle === null && root.recordVehicleId >= 0) {
+                root.directServoFact = null
+                root.armCommandPending = false
+                root.armingRequested = false
+                root.disarmRequested = false
+                root.stopAfterArming = false
+                root.testSessionOwned = false
+                root.disarmUnconfirmed = false
+                root.closeAfterSafeShutdown = false
+                root.beginSafeShutdown(false, qsTr("载具连接已断开"))
+                root.testStatusText = qsTr("连接已断开；请重新连接并检查实际输出和上锁状态。")
+            }
+        }
     }
 
     Settings {
         id:         mappingSettings
+        objectName: "thrusterMappingSettings"
         category:   "DeepSharkServoOutputMapping"
 
         property int    testPercent:    5
@@ -161,6 +222,7 @@ QGCPopupDialog {
         property int    directServoSeconds: 1
         property int    servoJogPwm:    1200
         property int    servoJogSeconds: 1
+        property string vehicleMappings: "{}"
 
         // Recovery is scoped to one vehicle/output. Obsolete whole-vehicle
         // backup settings are intentionally not loaded or restored.
@@ -170,6 +232,8 @@ QGCPopupDialog {
         property int    recoveryOutput: -1
         property int    recoveryFunction: -1
         property string recoveryTimestamp: ""
+        property int    recoveryNeutralPwm: 1500
+        property string recoveryOperation: "thruster"
 
         property string port1Name:      ""
         property string port2Name:      ""
@@ -206,13 +270,23 @@ QGCPopupDialog {
         property int    servo16Position: 0
     }
 
+    Component.onCompleted: {
+        if (mappingSettings.directServoPwm < 1000 || mappingSettings.directServoPwm > 2200) {
+            mappingSettings.directServoPwm = 1550
+            root.testStatusText = qsTr("旧 PWM 设置超出 1000–2200 范围，已重置为 1550；测试前请确认目标值。")
+        }
+        directControl.bindVehicle(root.currentActiveVehicle)
+        root.recordVehicleId = root.activeVehicle ? root.activeVehicle.id : -1
+        root.loadMappings()
+    }
+
     onRejected: {
         if (root.directServoBusy()
                 || root.disarmRequested
                 || root.runningOutput !== -1
-                || root.testEnabled) {
+                || root.testEnabled || root.testSessionOwned || root.armingRequested || root.armCommandPending) {
             preventClose = true
-            root.beginSafeShutdown(true, qsTr("用户请求关闭向导"))
+            root.beginSafeShutdown(true, qsTr("用户请求关闭输出测试工具"))
         }
     }
 
@@ -228,9 +302,13 @@ QGCPopupDialog {
             return
         }
 
-        root.beginSafeShutdown(false, qsTr("活动载具已切换"))
+        if (root.testSessionOwned || root.directServoBusy() || root.runningOutput !== -1) {
+            root.beginSafeShutdown(false, qsTr("活动载具已切换"))
+        } else {
+            root.testEnabled = false
+        }
         if (!root.directServoBusy() && root.activeVehicle) {
-            root.directServoStatusText = qsTr("活动载具与向导锁定载具不一致，测试功能已停用。")
+            root.directServoStatusText = qsTr("活动载具与工具锁定载具不一致，测试功能已停用。")
         }
     }
 
@@ -246,38 +324,159 @@ QGCPopupDialog {
         return "SERVO" + outputNumber + "_" + suffix
     }
 
+    function servoFunctionFact(outputNumber) {
+        if (!root.activeVehicle || !root.activeVehicle.parameterManager.parametersReady
+                || !directControl.parameterExists(-1, root.servoParamName(outputNumber))) {
+            return null
+        }
+        return directControl.getParameterFact(-1, root.servoParamName(outputNumber), false)
+    }
+
+    function functionEnumIndex(fact, value) {
+        if (!fact || value === undefined) {
+            return -1
+        }
+        for (var index = 0; index < fact.enumValues.length; index++) {
+            if (Number(fact.enumValues[index]) === Number(value)) {
+                return index
+            }
+        }
+        return -1
+    }
+
+    function functionValueText(fact, value) {
+        var index = root.functionEnumIndex(fact, value)
+        return index >= 0 ? fact.enumStrings[index] + " (" + value + ")" : String(value)
+    }
+
+    function requestServoFunctionSave(outputNumber, newValue) {
+        var fact = root.servoFunctionFact(outputNumber)
+        if (!root.canConfigureServoFunctions || root.functionSaveConfirmation || !fact || fact.readOnly
+                || root.functionEnumIndex(fact, newValue) < 0) {
+            root.functionSaveStatusText = qsTr("当前不能保存功能：请保持载具连接并上锁，关闭测试，先处理待恢复通道。")
+            return
+        }
+        root.functionSaveConfirmation = functionSaveConfirmationFactory.open({
+            outputNumber: outputNumber,
+            originalValue: Number(fact.rawValue),
+            targetValue: Number(newValue),
+            originalText: root.functionValueText(fact, Number(fact.rawValue)),
+            targetText: root.functionValueText(fact, Number(newValue)),
+            vehicleText: root.sessionVehicleText,
+            boundVehicle: root.activeVehicle,
+            rebootRequired: fact.vehicleRebootRequired
+        })
+        if (!root.functionSaveConfirmation) {
+            root.functionSaveStatusText = qsTr("确认窗口创建失败，未向飞控写入参数。")
+        }
+    }
+
+    function confirmServoFunctionSave(outputNumber, expectedOriginal, newValue, boundVehicle) {
+        if (!root.canConfigureServoFunctions || root.activeVehicle !== boundVehicle
+                || !root.functionSaveConfirmation) {
+            root.functionSaveStatusText = qsTr("载具或测试状态已变化，未向飞控写入参数。请重新确认。")
+            return
+        }
+        if (directControl.beginFunctionSave(outputNumber, expectedOriginal, newValue)) {
+            root.functionSaveStatusText = qsTr("正在回读 SERVO%1 原功能；确认一致后保存，并再次回读校验。")
+                    .arg(outputNumber)
+        } else {
+            root.functionSaveStatusText = directControl.failureReason
+        }
+    }
+
+    QGCPopupDialogFactory {
+        id: functionSaveConfirmationFactory
+        dialogComponent: functionSaveConfirmationComponent
+    }
+
+    Component {
+        id: functionSaveConfirmationComponent
+
+        QGCPopupDialog {
+            id: confirmationDialog
+            objectName: "outputFunctionSaveConfirmation"
+            title: qsTr("确认保存 SERVO 功能")
+            buttons: Dialog.Save | Dialog.Cancel
+            required property int outputNumber
+            required property int originalValue
+            required property int targetValue
+            required property string originalText
+            required property string targetText
+            required property string vehicleText
+            required property var boundVehicle
+            required property bool rebootRequired
+            readonly property var functionFact: root.servoFunctionFact(outputNumber)
+            acceptButtonEnabled: root.canConfigureServoFunctions && root.activeVehicle === boundVehicle
+                                     && functionFact && Number(functionFact.rawValue) === originalValue
+
+            onAccepted: root.confirmServoFunctionSave(outputNumber, originalValue, targetValue, boundVehicle)
+            onClosed: root.functionSaveConfirmation = null
+
+            ColumnLayout {
+                width: Math.min(confirmationDialog.maxContentAvailableWidth, ScreenTools.defaultFontPixelWidth * 62)
+                spacing: ScreenTools.defaultFontPixelHeight * 0.6
+
+                QGCLabel { text: confirmationDialog.vehicleText }
+                QGCLabel { text: root.servoParamName(confirmationDialog.outputNumber); font.bold: true }
+                QGCLabel { text: qsTr("当前参数值：%1").arg(confirmationDialog.originalText) }
+                QGCLabel { text: qsTr("修改为：%1").arg(confirmationDialog.targetText) }
+                QGCLabel {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: qsTr("点击保存后会修改飞控的输出功能配置。请确认输出口与接线用途一致。")
+                }
+                QGCLabel {
+                    Layout.fillWidth: true
+                    visible: confirmationDialog.rebootRequired
+                    wrapMode: Text.WordWrap
+                    color: confirmationDialog._qgcPal.warningText
+                    text: qsTr("此参数需要重启飞控后生效。")
+                }
+                QGCLabel {
+                    Layout.fillWidth: true
+                    visible: !confirmationDialog.acceptButtonEnabled
+                    wrapMode: Text.WordWrap
+                    color: confirmationDialog._qgcPal.warningText
+                    text: qsTr("载具、参数或测试状态已变化，请取消后重新确认。")
+                }
+            }
+        }
+    }
+
     function servoFunctionText(outputNumber) {
+        if (!root.activeVehicle || !root.activeVehicle.parameterManager.parametersReady) {
+            return qsTr("参数不可用")
+        }
         var paramName = servoParamName(outputNumber)
-        if (!paramController.parameterExists(-1, paramName)) {
+        if (!directControl.parameterExists(-1, paramName)) {
             return qsTr("参数缺失")
         }
 
-        var fact = paramController.getParameterFact(-1, paramName, false)
+        var fact = directControl.getParameterFact(-1, paramName, false)
+        if (!fact) {
+            return qsTr("参数不可用")
+        }
         var text = fact.enumOrValueString
         return text && text.length > 0 ? text : fact.rawValue.toString()
     }
 
     function servoFunctionValue(outputNumber) {
+        if (!root.activeVehicle || !root.activeVehicle.parameterManager.parametersReady) {
+            return null
+        }
         var paramName = servoParamName(outputNumber)
-        if (!paramController.parameterExists(-1, paramName)) {
+        if (!directControl.parameterExists(-1, paramName)) {
             return null
         }
 
-        return paramController.getParameterFact(-1, paramName, false).rawValue
-    }
-
-    function setServoFunctionValue(outputNumber, value) {
-        var paramName = servoParamName(outputNumber)
-        if (!paramController.parameterExists(-1, paramName)) {
-            return false
-        }
-
-        paramController.getParameterFact(-1, paramName, false).rawValue = value
-        return true
+        var fact = directControl.getParameterFact(-1, paramName, false)
+        return fact ? fact.rawValue : null
     }
 
     function motorNumberFromServoFunction(outputNumber) {
-        var rawValue = Number(root.servoFunctionValue(outputNumber))
+        var functionValue = root.servoFunctionValue(outputNumber)
+        var rawValue = functionValue === null ? NaN : Number(functionValue)
         if (!isNaN(rawValue)) {
             if (rawValue >= 33 && rawValue <= 40) {
                 return rawValue - 32
@@ -308,99 +507,148 @@ QGCPopupDialog {
         return motorNumber
     }
 
-    function portName(outputNumber) {
-        switch (outputNumber) {
-        case 1: return mappingSettings.port1Name
-        case 2: return mappingSettings.port2Name
-        case 3: return mappingSettings.port3Name
-        case 4: return mappingSettings.port4Name
-        case 5: return mappingSettings.port5Name
-        case 6: return mappingSettings.port6Name
-        case 7: return mappingSettings.port7Name
-        case 8: return mappingSettings.port8Name
-        case 9: return mappingSettings.port9Name
-        case 10: return mappingSettings.port10Name
-        case 11: return mappingSettings.port11Name
-        case 12: return mappingSettings.port12Name
-        case 13: return mappingSettings.port13Name
-        case 14: return mappingSettings.port14Name
-        case 15: return mappingSettings.port15Name
-        case 16: return mappingSettings.port16Name
-        default: return ""
+    function storedMappings() {
+        try {
+            var records = JSON.parse(mappingSettings.vehicleMappings)
+            if (!records || typeof records !== "object" || Array.isArray(records)) {
+                throw new Error("Invalid mapping records")
+            }
+            root.mappingStorageValid = true
+            return records
+        } catch (error) {
+            root.mappingStorageValid = false
+            root.testStatusText = qsTr("接线记录无法读取，已停用编辑以保留原记录。")
+            console.warn("Output wiring records:", error)
+            return null
         }
+    }
+
+    function loadMappings() {
+        var records = root.storedMappings()
+        if (records === null) {
+            return
+        }
+        var uid = root.currentVehicleUid
+        // A late UID must never silently replace existing records with session edits.
+        if (root.recordVehicleUid.length === 0 && root.recordsDirty && records[uid]) {
+            root.testStatusText = qsTr("已识别载具 UID，但已有接线记录。本次记录仍保留在当前会话，可先导出，再重新打开查看已有记录。")
+            return
+        }
+        root.recordVehicleUid = uid
+        if (root.recordsDirty) {
+            root.saveMappings()
+            return
+        }
+        var record = uid.length > 0 ? records[uid] : null
+        var ports = []
+        var positions = []
+        root.legacyMappingsAvailable = false
+        for (var output = 1; output <= 16; output++) {
+            ports.push(record && Array.isArray(record.ports) && typeof record.ports[output - 1] === "string"
+                       ? record.ports[output - 1] : "")
+            var index = record && Array.isArray(record.positions) ? Number(record.positions[output - 1]) : 0
+            positions.push(Number.isInteger(index) && index >= 0 && index < root.positionNames.length ? index : 0)
+            if (mappingSettings["port" + output + "Name"].length > 0
+                    || mappingSettings["servo" + output + "Position"] !== 0) {
+                root.legacyMappingsAvailable = true
+            }
+        }
+        root.recordPorts = ports
+        root.recordPositions = positions
+        root.mappingsUpdated()
+    }
+
+    function saveMappings() {
+        root.recordsDirty = true
+        if (root.recordVehicleUid.length === 0) {
+            return
+        }
+        var records = root.storedMappings()
+        if (records === null) {
+            return
+        }
+        records[root.recordVehicleUid] = { ports: root.recordPorts, positions: root.recordPositions }
+        mappingSettings.vehicleMappings = JSON.stringify(records)
+    }
+
+    function portName(outputNumber) {
+        return root.recordPorts[outputNumber - 1] || ""
     }
 
     function setPortName(outputNumber, name) {
-        switch (outputNumber) {
-        case 1: mappingSettings.port1Name = name; break
-        case 2: mappingSettings.port2Name = name; break
-        case 3: mappingSettings.port3Name = name; break
-        case 4: mappingSettings.port4Name = name; break
-        case 5: mappingSettings.port5Name = name; break
-        case 6: mappingSettings.port6Name = name; break
-        case 7: mappingSettings.port7Name = name; break
-        case 8: mappingSettings.port8Name = name; break
-        case 9: mappingSettings.port9Name = name; break
-        case 10: mappingSettings.port10Name = name; break
-        case 11: mappingSettings.port11Name = name; break
-        case 12: mappingSettings.port12Name = name; break
-        case 13: mappingSettings.port13Name = name; break
-        case 14: mappingSettings.port14Name = name; break
-        case 15: mappingSettings.port15Name = name; break
-        case 16: mappingSettings.port16Name = name; break
+        if (!root.canRecordMappings || outputNumber < 1 || outputNumber > 16) {
+            return
         }
-        mappingsUpdated()
+        var ports = root.recordPorts.slice()
+        ports[outputNumber - 1] = name
+        root.recordPorts = ports
+        root.saveMappings()
+        root.mappingsUpdated()
     }
 
     function positionIndex(outputNumber) {
-        switch (outputNumber) {
-        case 1: return mappingSettings.servo1Position
-        case 2: return mappingSettings.servo2Position
-        case 3: return mappingSettings.servo3Position
-        case 4: return mappingSettings.servo4Position
-        case 5: return mappingSettings.servo5Position
-        case 6: return mappingSettings.servo6Position
-        case 7: return mappingSettings.servo7Position
-        case 8: return mappingSettings.servo8Position
-        case 9: return mappingSettings.servo9Position
-        case 10: return mappingSettings.servo10Position
-        case 11: return mappingSettings.servo11Position
-        case 12: return mappingSettings.servo12Position
-        case 13: return mappingSettings.servo13Position
-        case 14: return mappingSettings.servo14Position
-        case 15: return mappingSettings.servo15Position
-        case 16: return mappingSettings.servo16Position
-        default: return 0
-        }
+        return root.recordPositions[outputNumber - 1] || 0
     }
 
     function setPositionIndex(outputNumber, index) {
-        switch (outputNumber) {
-        case 1: mappingSettings.servo1Position = index; break
-        case 2: mappingSettings.servo2Position = index; break
-        case 3: mappingSettings.servo3Position = index; break
-        case 4: mappingSettings.servo4Position = index; break
-        case 5: mappingSettings.servo5Position = index; break
-        case 6: mappingSettings.servo6Position = index; break
-        case 7: mappingSettings.servo7Position = index; break
-        case 8: mappingSettings.servo8Position = index; break
-        case 9: mappingSettings.servo9Position = index; break
-        case 10: mappingSettings.servo10Position = index; break
-        case 11: mappingSettings.servo11Position = index; break
-        case 12: mappingSettings.servo12Position = index; break
-        case 13: mappingSettings.servo13Position = index; break
-        case 14: mappingSettings.servo14Position = index; break
-        case 15: mappingSettings.servo15Position = index; break
-        case 16: mappingSettings.servo16Position = index; break
+        if (!root.canRecordMappings || outputNumber < 1 || outputNumber > 16
+                || !Number.isInteger(index) || index < 0 || index >= root.positionNames.length) {
+            return
         }
-        mappingsUpdated()
+        var positions = root.recordPositions.slice()
+        positions[outputNumber - 1] = index
+        root.recordPositions = positions
+        root.saveMappings()
+        root.mappingsUpdated()
+    }
+
+    function importLegacyMappings() {
+        if (!root.canRecordMappings || !root.legacyMappingsAvailable) {
+            return
+        }
+        if (!root.legacyImportConfirmation) {
+            root.legacyImportConfirmation = true
+            mappingConfirmTimer.restart()
+            root.testStatusText = qsTr("旧记录未区分载具。再次点击导入，将替换本会话的接线记录；请先确认它属于当前载具。")
+            return
+        }
+        var ports = []
+        var positions = []
+        for (var output = 1; output <= 16; output++) {
+            ports.push(mappingSettings["port" + output + "Name"])
+            var index = mappingSettings["servo" + output + "Position"]
+            positions.push(index >= 0 && index < root.positionNames.length ? index : 0)
+        }
+        root.recordPorts = ports
+        root.recordPositions = positions
+        root.saveMappings()
+        root.legacyImportConfirmation = false
+        root.mappingsUpdated()
+        root.testStatusText = qsTr("已导入旧接线记录，未修改飞控配置。")
     }
 
     function clearMappings() {
-        for (var output = 1; output <= 16; output++) {
-            setPortName(output, "")
-            setPositionIndex(output, 0)
+        if (!root.canRecordMappings) {
+            return
         }
+        if (!root.clearMappingsConfirmation) {
+            root.clearMappingsConfirmation = true
+            mappingConfirmTimer.restart()
+            root.testStatusText = qsTr("再次点击清空，将清除当前载具的接线记录。")
+            return
+        }
+        var ports = []
+        var positions = []
+        for (var output = 1; output <= 16; output++) {
+            ports.push("")
+            positions.push(0)
+        }
+        root.recordPorts = ports
+        root.recordPositions = positions
+        root.saveMappings()
+        root.clearMappingsConfirmation = false
+        root.mappingsUpdated()
+        root.testStatusText = qsTr("已清空当前载具的接线记录，未修改飞控配置。")
     }
 
     function csvEscape(value) {
@@ -423,7 +671,9 @@ QGCPopupDialog {
 
     function exportCsvText() {
         var lines = []
-        lines.push(root.csvLine(["DeepShark Thruster Mapping Export"]))
+        lines.push(root.csvLine(["DeepShark Output Test and Wiring Records"]))
+        lines.push(root.csvLine(["Vehicle ID", root.recordVehicleId]))
+        lines.push(root.csvLine(["Vehicle UID", root.recordVehicleUid.length > 0 ? root.recordVehicleUid : "Not reported / session only"]))
         lines.push(root.csvLine(["Export Time", new Date().toLocaleString()]))
         lines.push(root.csvLine(["Motor Test Mode", mappingSettings.useServoFunctionForMotorTest ? "SERVO_FUNCTION mapping" : "Test number"]))
         lines.push(root.csvLine(["Thruster Direct SERVO PWM", mappingSettings.directServoPwm]))
@@ -493,6 +743,8 @@ QGCPopupDialog {
                 : ""
         mappingSettings.recoveryOutput = outputNumber
         mappingSettings.recoveryFunction = originalFunction
+        mappingSettings.recoveryNeutralPwm = root.directServoNeutralPwm
+        mappingSettings.recoveryOperation = root.directServoOperation
         mappingSettings.recoveryTimestamp = new Date().toLocaleString()
         mappingSettings.recoveryPending = true
         root.recoveryVehicleObject = root.activeVehicle
@@ -507,7 +759,10 @@ QGCPopupDialog {
         mappingSettings.recoveryOutput = -1
         mappingSettings.recoveryFunction = -1
         mappingSettings.recoveryTimestamp = ""
+        mappingSettings.recoveryNeutralPwm = 1500
+        mappingSettings.recoveryOperation = "thruster"
         root.recoveryVehicleObject = null
+        mappingSettings.sync()
     }
 
     function directServoBusy() {
@@ -516,24 +771,22 @@ QGCPopupDialog {
 
     function directServoStateText() {
         switch (root.directServoState) {
+        case "waitingBackup": return qsTr("回读原功能")
         case "waitingDisable": return qsTr("等待禁用确认")
         case "disableSettling": return qsTr("准备输出")
         case "waitingTestAck": return qsTr("等待测试回执")
         case "testing": return qsTr("正在输出")
         case "waitingNeutralAck": return qsTr("等待回中回执")
         case "waitingRestore": return qsTr("正在恢复参数")
+        case "savingFunction": return qsTr("保存并回读功能")
         case "recoveryNeeded": return qsTr("需要人工恢复")
         default: return qsTr("空闲")
         }
     }
 
     function recoveryJournalCanBeDiscarded() {
-        if (!mappingSettings.recoveryPending || !root.recoveryMatchesSession()) {
-            return true
-        }
-
-        var fact = paramController.getParameterFact(-1, root.servoParamName(mappingSettings.recoveryOutput), false)
-        return fact !== null && Number(fact.rawValue) !== 0
+        // A cached function value cannot prove that a previous PWM was neutralized.
+        return !root.recoveryMatchesSession()
     }
 
     function directServoOperationText() {
@@ -541,59 +794,34 @@ QGCPopupDialog {
     }
 
     function startDirectServoTest(outputNumber) {
-        root.directServoMode = true
-        root.startPhysicalServoTest(outputNumber, false)
+        if (root.testMode === 1) {
+            root.startPhysicalServoTest(outputNumber, false)
+        }
     }
 
     function startServoJogTest(outputNumber) {
-        root.servoJogMode = true
-        root.startPhysicalServoTest(outputNumber, true)
+        if (root.testMode === 2) {
+            root.startPhysicalServoTest(outputNumber, true)
+        }
     }
 
     function startPhysicalServoTest(outputNumber, servoJog) {
+        if (!root.canStartDirectTest || root.testMode !== (servoJog ? 2 : 1)) {
+            root.directServoStatusText = qsTr("无法开始：请启用对应测试模式、保持载具在线且上锁，并先完成正在执行的测试或恢复。")
+            return
+        }
+
         root.directServoOperation = servoJog ? "servo" : "thruster"
         root.directServoTestPwm = servoJog ? mappingSettings.servoJogPwm : mappingSettings.directServoPwm
         root.directServoTestSeconds = servoJog ? mappingSettings.servoJogSeconds : mappingSettings.directServoSeconds
         root.directServoNeutralPwm = 1500
-
-        if (root.disarmRequested) {
-            root.directServoStatusText = qsTr("正在等待飞控确认上锁，暂不能开始%1。").arg(root.directServoOperationText())
+        if (root.directServoTestPwm < (servoJog ? 800 : 1000) || root.directServoTestPwm > 2200
+                || root.directServoTestSeconds < 1 || root.directServoTestSeconds > 5) {
+            root.directServoStatusText = qsTr("PWM 或测试时长超出允许范围，请先调整。")
             return
         }
 
-        if (!root.vehicleContextMatches) {
-            root.directServoStatusText = qsTr("当前活动载具与向导锁定载具不一致。请关闭并重新打开向导。")
-            return
-        }
-
-        if (root.directServoBusy()) {
-            root.directServoStatusText = qsTr("上一项直接输出仍在处理，请等待恢复完成。")
-            return
-        }
-
-        if (root.runningOutput !== -1) {
-            root.directServoStatusText = qsTr("Motor Test 正在执行中，暂不能直接测试 SERVO。")
-            return
-        }
-
-        if (root.activeVehicle.armed) {
-            root.directServoStatusText = qsTr("直接 SERVO 输出要求飞控上锁。请先上锁再测试。")
-            return
-        }
-
-        if (root.activeVehicle.parameterManager.pendingWrites) {
-            root.directServoStatusText = qsTr("飞控仍有参数写入任务，请等待完成后再开始直接输出。")
-            return
-        }
-
-        if (mappingSettings.recoveryPending) {
-            root.directServoStatusText = root.recoveryMatchesSession()
-                    ? qsTr("存在未确认恢复的 SERVO%1，请先处理恢复记录。").arg(mappingSettings.recoveryOutput)
-                    : qsTr("存在另一台载具的未完成恢复记录，请先连接对应载具处理，或明确忽略该记录。")
-            return
-        }
-
-        var fact = paramController.getParameterFact(-1, root.servoParamName(outputNumber), false)
+        var fact = directControl.getParameterFact(-1, root.servoParamName(outputNumber), false)
         if (!fact) {
             root.directServoStatusText = qsTr("缺少 %1，无法开始%2。")
                     .arg(root.servoParamName(outputNumber))
@@ -603,7 +831,7 @@ QGCPopupDialog {
 
         if (servoJog) {
             var trimParamName = root.servoTrimParamName(outputNumber)
-            var trimFact = paramController.getParameterFact(-1, trimParamName, false)
+            var trimFact = directControl.getParameterFact(-1, trimParamName, false)
             var trimPwm = trimFact ? Number(trimFact.rawValue) : NaN
             if (isNaN(trimPwm) || trimPwm < 800 || trimPwm > 2200) {
                 root.directServoStatusText = qsTr("%1 缺失或无效，无法保证点动后安全回中。").arg(trimParamName)
@@ -612,11 +840,11 @@ QGCPopupDialog {
 
             var minParamName = root.servoLimitParamName(outputNumber, "MIN")
             var maxParamName = root.servoLimitParamName(outputNumber, "MAX")
-            var minFact = paramController.getParameterFact(-1, minParamName, false)
-            var maxFact = paramController.getParameterFact(-1, maxParamName, false)
+            var minFact = directControl.getParameterFact(-1, minParamName, false)
+            var maxFact = directControl.getParameterFact(-1, maxParamName, false)
             var minPwm = minFact ? Number(minFact.rawValue) : NaN
             var maxPwm = maxFact ? Number(maxFact.rawValue) : NaN
-            if (isNaN(minPwm) || isNaN(maxPwm) || minPwm > maxPwm) {
+            if (!isFinite(minPwm) || !isFinite(maxPwm) || minPwm > maxPwm || trimPwm < minPwm || trimPwm > maxPwm) {
                 root.directServoStatusText = qsTr("%1/%2 缺失或无效，无法安全限制点动范围。")
                         .arg(minParamName)
                         .arg(maxParamName)
@@ -634,17 +862,16 @@ QGCPopupDialog {
         }
 
         var originalFunction = Number(fact.rawValue)
-        if (isNaN(originalFunction)) {
+        if (!Number.isInteger(originalFunction) || originalFunction < 0) {
             root.directServoStatusText = qsTr("%1 当前值无效，无法安全备份。").arg(root.servoParamName(outputNumber))
             return
         }
 
+        root.testSessionOwned = true
         root.directServoFact = fact
-        root.saveRecoveryJournal(outputNumber, originalFunction)
-        root.directServoStatusText = qsTr("%1：已备份 %2=%3，正在等待飞控确认 Disabled。")
+        root.directServoStatusText = qsTr("%1：正在从飞控确认 %2 原功能。")
                 .arg(root.directServoOperationText())
                 .arg(root.servoParamName(outputNumber))
-                .arg(originalFunction)
         if (!directControl.beginTest(outputNumber,
                                      originalFunction,
                                      root.directServoTestPwm,
@@ -656,21 +883,14 @@ QGCPopupDialog {
         }
     }
 
-    function sendDirectServoPwm(outputNumber, pwm) {
-        if (!root.activeVehicle) {
-            return
-        }
-
-        root.activeVehicle.sendCommand(root.autopilotComponentId, root.setServoCommand, false, outputNumber, pwm)
-    }
-
     function recoverPendingServoFunction() {
         if (!mappingSettings.recoveryPending) {
             root.directServoStatusText = qsTr("没有待恢复记录。")
             return
         }
 
-        if (!root.vehicleContextMatches || !root.recoveryMatchesSession()) {
+        if (!root.vehicleReady || !root.recoveryMatchesSession() || root.directServoBusy() || root.runningOutput !== -1
+                || root.armingRequested || root.disarmRequested || root.disarmUnconfirmed) {
             root.directServoStatusText = qsTr("恢复记录与当前载具不匹配，已拒绝写入。")
             return
         }
@@ -685,34 +905,28 @@ QGCPopupDialog {
             return
         }
 
-        var fact = paramController.getParameterFact(-1, root.servoParamName(mappingSettings.recoveryOutput), false)
+        var fact = directControl.getParameterFact(-1, root.servoParamName(mappingSettings.recoveryOutput), false)
         if (!fact) {
             root.directServoStatusText = qsTr("缺少恢复记录对应的参数，无法恢复。")
             return
         }
 
         var currentFunction = Number(fact.rawValue)
-        if (currentFunction === mappingSettings.recoveryFunction) {
-            var restoredOutput = mappingSettings.recoveryOutput
-            root.clearRecoveryJournal()
-            directControl.reset()
-            root.directServoFact = null
-            root.directServoStatusText = qsTr("SERVO%1 已经是原值，恢复记录已清除。").arg(restoredOutput)
-            return
-        }
-
-        if (currentFunction !== 0) {
+        if (currentFunction !== 0 && currentFunction !== mappingSettings.recoveryFunction) {
             root.directServoStatusText = qsTr("SERVO%1 当前值为 %2，不是 Disabled，也不是记录原值；为避免覆盖新配置，已拒绝恢复。")
                     .arg(mappingSettings.recoveryOutput)
                     .arg(currentFunction)
             return
         }
 
+        root.directServoOperation = mappingSettings.recoveryOperation
+        root.directServoNeutralPwm = mappingSettings.recoveryNeutralPwm
+        root.testSessionOwned = true
         root.directServoFact = fact
         root.directServoStatusText = qsTr("正在恢复异常通道 SERVO%1。").arg(mappingSettings.recoveryOutput)
         if (!directControl.beginRecovery(mappingSettings.recoveryOutput,
                                          mappingSettings.recoveryFunction,
-                                         qsTr("人工恢复"))) {
+                                         qsTr("人工恢复"), root.directServoNeutralPwm)) {
             root.directServoFact = null
             root.directServoStatusText = qsTr("恢复状态初始化失败，未修改飞控参数。")
         }
@@ -724,7 +938,7 @@ QGCPopupDialog {
         }
 
         if (!root.recoveryJournalCanBeDiscarded()) {
-            root.directServoStatusText = qsTr("当前匹配载具的异常通道仍为 Disabled，不能忽略记录；请先执行恢复。")
+            root.directServoStatusText = qsTr("当前载具存在未确认的输出恢复，不能忽略记录；请先执行恢复并确认回中。")
             return
         }
 
@@ -753,20 +967,9 @@ QGCPopupDialog {
         directControl.finishTest()
     }
 
-    function handleDirectCommandResult(ackResult) {
-        directControl.handleCommandResult(ackResult)
-    }
-
     function testOutput(outputNumber) {
-        if (root.disarmRequested || !root.vehicleContextMatches || root.runningOutput !== -1 || root.cooldownRemaining > 0) {
-            if (!root.vehicleContextMatches) {
-                root.testStatusText = qsTr("当前活动载具与向导锁定载具不一致。请关闭并重新打开向导。")
-            }
-            return
-        }
-
-        if (!root.activeVehicle.armed) {
-            root.testStatusText = qsTr("飞控当前已上锁。请先点击“准备下一次测试”，解锁并等待冷却结束。")
+        if (!root.canStartMotorTest) {
+            root.testStatusText = qsTr("无法开始 Motor Test：请启用测试、准备解锁，并等待当前测试、恢复及冷却完成。")
             return
         }
 
@@ -775,6 +978,7 @@ QGCPopupDialog {
             return
         }
 
+        root.testSessionOwned = true
         root.runningOutput = outputNumber
         root.runningMotorTarget = motorTarget
         root.motorTestPulsesRemaining = Math.max(1, Math.ceil(mappingSettings.testSeconds * 1000 / motorTestPulseTimer.interval))
@@ -788,7 +992,7 @@ QGCPopupDialog {
     }
 
     function sendMotorTestPulse() {
-        if (!root.activeVehicle || !root.vehicleContextMatches || root.runningOutput === -1) {
+        if (!root.vehicleReady || root.runningOutput === -1 || root.directServoBusy() || mappingSettings.recoveryPending) {
             motorTestPulseTimer.stop()
             if (root.runningOutput !== -1) {
                 root.finishMotorPulse(true)
@@ -837,6 +1041,22 @@ QGCPopupDialog {
     function beginSafeShutdown(closeAfter, reason) {
         root.closeAfterSafeShutdown = root.closeAfterSafeShutdown || closeAfter
         root.testEnabled = false
+
+        if (directControl.functionSaveBusy) {
+            root.functionSaveStatusText = qsTr("正在等待参数保存结果，完成后再结束。")
+            directControl.abort(reason)
+            return
+        }
+
+        if (root.armCommandPending) {
+            root.stopAfterArming = true
+            root.testStatusText = qsTr("正在等待解锁请求结束，随后将请求上锁。")
+            return
+        }
+        if (root.armingRequested) {
+            root.requestSafeDisarm(root.closeAfterSafeShutdown, reason, true)
+            return
+        }
         root.armingRequested = false
 
         if (root.directServoBusy()) {
@@ -850,10 +1070,15 @@ QGCPopupDialog {
             return
         }
 
-        root.requestSafeDisarm(root.closeAfterSafeShutdown, reason)
+        if (root.testSessionOwned) {
+            root.requestSafeDisarm(root.closeAfterSafeShutdown, reason)
+        } else if (root.closeAfterSafeShutdown) {
+            root.closeAfterSafeShutdown = false
+            root.close()
+        }
     }
 
-    function requestSafeDisarm(closeAfter, reason) {
+    function requestSafeDisarm(closeAfter, reason, forceCommand) {
         root.closeAfterSafeShutdown = root.closeAfterSafeShutdown || closeAfter
         root.testEnabled = false
         root.armingRequested = false
@@ -861,11 +1086,11 @@ QGCPopupDialog {
         if (!root.activeVehicle) {
             root.disarmRequested = false
             root.closeAfterSafeShutdown = false
-            root.testStatusText = qsTr("载具连接已丢失，无法确认上锁；向导保持打开。")
+            root.testStatusText = qsTr("载具连接已丢失，无法确认上锁；工具保持打开。")
             return
         }
 
-        if (!root.activeVehicle.armed) {
+        if (!root.activeVehicle.armed && !forceCommand && !root.disarmUnconfirmed) {
             root.completeSafeShutdown()
             return
         }
@@ -875,16 +1100,31 @@ QGCPopupDialog {
         }
 
         root.disarmRequested = true
+        root.disarmAckConfirmed = false
+        root.disarmUnconfirmed = true
         root.testStatusText = qsTr("%1，正在请求飞控上锁。").arg(reason)
         safeDisarmTimeout.restart()
         root.activeVehicle.armed = false
     }
 
     function completeSafeShutdown() {
+        if (root.armCommandPending) {
+            root.closeAfterSafeShutdown = false
+            return
+        }
         safeDisarmTimeout.stop()
         root.disarmRequested = false
         root.armingRequested = false
+        root.stopAfterArming = false
+        root.disarmAckConfirmed = false
+        root.disarmUnconfirmed = false
         root.testEnabled = false
+        if (root.directServoBusy() || mappingSettings.recoveryPending) {
+            root.closeAfterSafeShutdown = false
+            root.testStatusText = qsTr("飞控已确认上锁，输出恢复尚未完成；请处理恢复记录。")
+            return
+        }
+        root.testSessionOwned = false
         root.runningOutput = -1
         root.runningMotorTarget = -1
         root.motorTestPulsesRemaining = 0
@@ -899,24 +1139,12 @@ QGCPopupDialog {
     }
 
     function prepareForNextTest() {
-        if (root.disarmRequested) {
-            root.testStatusText = qsTr("正在等待飞控确认上锁，请稍候。")
+        if (!root.canPrepareMotorTest) {
+            root.testStatusText = qsTr("无法准备 Motor Test：请启用该模式、保持载具在线，并先完成当前测试或恢复。")
             return
         }
 
-        if (!root.vehicleContextMatches) {
-            root.testStatusText = qsTr("当前活动载具与向导锁定载具不一致，无法准备测试。请重新打开向导。")
-            return
-        }
-
-        root.testEnabled = true
-        if (motorTestPulseTimer.running) {
-            motorTestPulseTimer.stop()
-        }
-        root.runningOutput = -1
-        root.runningMotorTarget = -1
-        root.motorTestPulsesRemaining = 0
-
+        root.testSessionOwned = true
         if (root.activeVehicle.armed) {
             root.armingRequested = false
             root.testStatusText = root.cooldownRemaining > 0 ?
@@ -926,8 +1154,19 @@ QGCPopupDialog {
         }
 
         root.armingRequested = true
+        root.armCommandPending = true
+        root.stopAfterArming = false
         root.testStatusText = qsTr("正在请求解锁。解锁成功后会等待冷却，再允许点动。")
         root.activeVehicle.armed = true
+    }
+
+    function completeArming() {
+        if (root.armCommandPending || !root.activeVehicle || !root.activeVehicle.armed) {
+            return
+        }
+        root.armingRequested = false
+        root.startCooldown(11)
+        root.testStatusText = qsTr("已解锁。请等待冷却倒计时结束后再点动。")
     }
 
     function startCooldown(seconds) {
@@ -949,14 +1188,14 @@ QGCPopupDialog {
         interval:   5000
         repeat:     false
         onTriggered: {
-            if (root.activeVehicle && !root.activeVehicle.armed) {
+            if (root.disarmAckConfirmed && root.activeVehicle && !root.activeVehicle.armed) {
                 root.completeSafeShutdown()
                 return
             }
 
             root.disarmRequested = false
             root.closeAfterSafeShutdown = false
-            root.testStatusText = qsTr("未确认飞控上锁，向导保持打开。请在主界面手动上锁并确认后再关闭。")
+            root.testStatusText = qsTr("未确认飞控上锁，工具保持打开。请在主界面手动上锁并确认后再关闭。")
         }
     }
 
@@ -978,11 +1217,12 @@ QGCPopupDialog {
 
             if (root.cooldownRemaining <= 0) {
                 root.cooldownRemaining = 0
-                root.runningOutput = -1
-                root.runningMotorTarget = -1
-                root.testStatusText = root.activeVehicle && !root.activeVehicle.armed ?
-                            qsTr("冷却结束。飞控当前已上锁，点击“准备下一次测试”。") :
-                            qsTr("可以继续测试下一路输出。")
+                if (root.testEnabled && root.testMode === 0 && !root.disarmRequested
+                        && !root.armingRequested && !root.directServoBusy() && !mappingSettings.recoveryPending) {
+                    root.testStatusText = root.activeVehicle && !root.activeVehicle.armed ?
+                                qsTr("冷却结束。飞控当前已上锁，点击“准备下一次测试”。") :
+                                qsTr("可以继续测试下一路输出。")
+                }
                 stop()
             }
         }
@@ -996,27 +1236,36 @@ QGCPopupDialog {
                 return
             }
 
-            if (command === root.armDisarmCommand && (root.armingRequested || root.disarmRequested)) {
-                if (ackResult !== 0) {
-                    if (root.disarmRequested) {
+            if (command === root.armDisarmCommand && (root.armCommandPending || root.disarmRequested)) {
+                if (root.armCommandPending) {
+                    root.armCommandPending = false
+                    if (root.stopAfterArming) {
+                        root.stopAfterArming = false
+                        // Even a lost ARM ACK can mean the vehicle accepted it.
+                        // Send DISARM after that queue entry has reached its terminal result.
+                        root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("结束解锁准备"), true)
+                    } else if (ackResult !== 0 || failureCode !== 0) {
+                        root.armingRequested = false
+                        root.testEnabled = false
+                        root.testStatusText = qsTr("未确认解锁成功。请检查安全开关、模式和故障信息。")
+                        if (failureCode !== 0) {
+                            root.requestSafeDisarm(false, qsTr("解锁结果不明确"), true)
+                        }
+                    } else {
+                        root.completeArming()
+                    }
+                } else if (root.disarmRequested) {
+                    if (ackResult !== 0 || failureCode !== 0) {
                         safeDisarmTimeout.stop()
                         root.disarmRequested = false
                         root.closeAfterSafeShutdown = false
-                        root.testStatusText = qsTr("飞控拒绝上锁，向导保持打开。请在主界面手动上锁并检查故障信息。")
+                        root.testStatusText = qsTr("未确认上锁指令成功，窗口保持打开。请在主界面手动上锁并检查故障信息。")
                     } else {
-                        root.armingRequested = false
-                        root.testStatusText = qsTr("飞控拒绝解锁。请检查安全开关、模式和故障信息。")
+                        root.disarmAckConfirmed = true
+                        if (!root.activeVehicle.armed) {
+                            root.completeSafeShutdown()
+                        }
                     }
-                }
-                return
-            }
-
-            if (command === root.setServoCommand) {
-                if (targetComponent !== root.autopilotComponentId) {
-                    return
-                }
-                if (root.directServoState === "waitingTestAck" || root.directServoState === "waitingNeutralAck") {
-                    root.handleDirectCommandResult(ackResult)
                 }
                 return
             }
@@ -1035,6 +1284,13 @@ QGCPopupDialog {
 
         function onArmedChanged(armed) {
             if (!armed && root.disarmRequested) {
+                if (root.disarmAckConfirmed) {
+                    root.completeSafeShutdown()
+                }
+                return
+            }
+
+            if (!armed && root.disarmUnconfirmed && !root.armCommandPending) {
                 root.completeSafeShutdown()
                 return
             }
@@ -1045,19 +1301,19 @@ QGCPopupDialog {
 
             if (armed) {
                 if (root.armingRequested) {
-                    root.armingRequested = false
-                    root.testEnabled = true
-                    root.runningOutput = -1
-                    root.runningMotorTarget = -1
-                    root.startCooldown(11)
-                    root.testStatusText = qsTr("已解锁。请等待冷却倒计时结束后再点动。")
-                } else if (root.testEnabled && root.cooldownRemaining === 0) {
+                    root.completeArming()
+                } else if (root.testEnabled && root.testMode === 0 && root.cooldownRemaining === 0) {
                     root.testStatusText = qsTr("已解锁，可以点动一路输出。")
+                } else if (root.testMode !== 0) {
+                    root.testEnabled = false
+                    root.testStatusText = qsTr("直接输出测试要求飞控上锁，测试已停用。")
                 }
                 return
             }
 
-            root.armingRequested = false
+            if (!root.armCommandPending) {
+                root.armingRequested = false
+            }
             if (motorTestPulseTimer.running) {
                 motorTestPulseTimer.stop()
             }
@@ -1070,6 +1326,9 @@ QGCPopupDialog {
         }
 
         function onVehicleUIDChanged() {
+            if (root.recordVehicleUid.length === 0 && root.currentVehicleUid.length > 0) {
+                root.loadMappings()
+            }
             if (mappingSettings.recoveryPending
                     && root.recoveryVehicleObject === root.activeVehicle
                     && mappingSettings.recoveryVehicleUid.length === 0
@@ -1079,9 +1338,27 @@ QGCPopupDialog {
         }
     }
 
+    Connections {
+        target: root.activeVehicle ? root.activeVehicle.vehicleLinkManager : null
+        function onCommunicationLostChanged(communicationLost) {
+            if (communicationLost && root.testSessionOwned) {
+                root.beginSafeShutdown(false, qsTr("飞控心跳中断"))
+            }
+        }
+    }
+
+    Timer {
+        id: mappingConfirmTimer
+        interval: 5000
+        onTriggered: {
+            root.legacyImportConfirmation = false
+            root.clearMappingsConfirmation = false
+        }
+    }
+
     QGCFileDialog {
         id:             exportFileDialog
-        title:          qsTr("导出推进器映射")
+        title:          qsTr("导出接线记录")
         folder:         root.appSettings ? root.appSettings.parameterSavePath : ""
         nameFilters:    [ qsTr("CSV 文件 (*.csv)"), qsTr("所有文件 (*)") ]
         defaultSuffix:  "csv"
@@ -1093,58 +1370,104 @@ QGCPopupDialog {
     }
 
     ColumnLayout {
-        width:      Math.min(mainWindow.width * 0.92, ScreenTools.defaultFontPixelWidth * 128)
-        spacing:    ScreenTools.defaultFontPixelHeight * 0.55
+        id:         toolLayout
+        width:      Math.min(root.maxContentAvailableWidth, ScreenTools.defaultFontPixelWidth * 112)
+        height:     root.maxContentAvailableHeight
+        spacing:    ScreenTools.defaultFontPixelHeight * 0.45
 
-        QGCLabel {
-            Layout.fillWidth:   true
-            elide:              Text.ElideRight
-            color:              root._qgcPal.warningText
-            text:               qsTr("逐路点动输出并记录接口/线束和推进器位置。功能列只读 SERVOx_FUNCTION；测试前请固定机器人并清空推进器周边。")
+        readonly property bool settingsEditable: root.vehicleReady
+                                                    && !root.directServoBusy()
+                                                    && root.runningOutput === -1
+                                                    && !root.armingRequested && !root.disarmRequested
+                                                    && !root.disarmUnconfirmed
+                                                    && !mappingSettings.recoveryPending
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing:         ScreenTools.defaultFontPixelWidth
+
+            QGCLabel {
+                Layout.fillWidth: true
+                elide:            Text.ElideRight
+                text:             qsTr("已锁定：%1").arg(root.sessionVehicleText)
+                color:            root.vehicleContextMatches ? root._qgcPal.text : root._qgcPal.warningText
+            }
+
+            QGCLabel {
+                text:  root.vehicleReady ? qsTr("通信就绪") : qsTr("等待载具就绪")
+                color: root.vehicleReady ? root._qgcPal.text : root._qgcPal.warningText
+            }
+
+            QGCLabel {
+                visible: root.activeVehicle !== null
+                text:    root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁")
+                color:   root.activeVehicle && root.activeVehicle.armed ? root._qgcPal.warningText : root._qgcPal.text
+            }
+
+            QGCButton {
+                objectName: "outputSafeEnd"
+                text:       root.disarmRequested ? qsTr("正在上锁") : qsTr("安全结束")
+                enabled:    !root.disarmRequested
+                                && (root.testEnabled || root.testSessionOwned || root.armingRequested
+                                    || root.runningOutput !== -1 || root.directServoBusy())
+                onClicked:  root.beginSafeShutdown(false, qsTr("用户结束测试"))
+            }
         }
 
         QGCLabel {
-            Layout.fillWidth:   true
-            elide:              Text.ElideRight
-            text:               qsTr("本向导已锁定：%1").arg(root.sessionVehicleText)
-            color:              root.vehicleContextMatches ? root._qgcPal.text : root._qgcPal.warningText
+            Layout.fillWidth: true
+            wrapMode:         Text.WordWrap
+            color:            root._qgcPal.warningText
+            text:             qsTr("接线记录保存接口与实际位置。快速修改飞控功能时，请先上锁并关闭测试，选择新功能后点击“保存”再次确认。测试前固定机器人并清空推进器周边。")
         }
 
         RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth
+            Layout.fillWidth: true
+            spacing:         ScreenTools.defaultFontPixelWidth
+            visible:         toolTabs.currentIndex !== 0 || root.testEnabled || root.testSessionOwned
+                                 || root.armingRequested || root.armCommandPending || root.disarmRequested
+                                 || root.runningOutput !== -1 || root.directServoBusy()
 
             QGCCheckBox {
                 id:         enableTestCheck
                 text:       qsTr("启用测试")
                 checked:    root.testEnabled
-                enabled:    root.vehicleContextMatches && !root.disarmRequested
+                enabled:    root.vehicleReady && !root.disarmRequested && !root.armingRequested
+                                && !root.functionSaveConfirmation && (checked || root.testPathAvailable)
                 onClicked: {
-                    if (!root.vehicleContextMatches) {
+                    if (!root.vehicleReady) {
                         root.testEnabled = false
-                        checked = false
-                        root.testStatusText = qsTr("活动载具与向导锁定载具不一致，请重新打开向导。")
+                        root.testStatusText = qsTr("载具未就绪，测试功能已停用。")
                         return
                     }
                     root.testEnabled = checked
                     if (checked) {
-                        root.testStatusText = qsTr("启用后先等待冷却倒计时，再点击点动。")
-                        root.startCooldown(11)
+                        if (root.testMode === 0) {
+                            root.testStatusText = qsTr("先等待冷却，再准备并点动一路电机。")
+                            root.startCooldown(11)
+                        } else {
+                            root.testStatusText = qsTr("保持飞控上锁，可以测试一路物理输出。")
+                        }
                     } else {
                         root.beginSafeShutdown(false, qsTr("测试已停用"))
                     }
                 }
             }
 
-            QGCLabel {
-                text:   root.vehicleContextMatches ? qsTr("载具匹配") : qsTr("载具不匹配")
-                color:  root.vehicleContextMatches ? root._qgcPal.text : root._qgcPal.warningText
-            }
+            QGCLabel { text: qsTr("测试模式") }
 
-            QGCLabel {
-                visible: root.activeVehicle !== null
-                text:    root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁")
-                color:   root.activeVehicle && root.activeVehicle.armed ? root._qgcPal.text : root._qgcPal.warningText
+            QGCComboBox {
+                id:                     testModeCombo
+                objectName:             "outputTestMode"
+                Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 30
+                model:                  [ qsTr("电机点动 (Motor Test)"), qsTr("高级：推进器 PWM 直测"), qsTr("舵机点动") ]
+                currentIndex:           root.testMode
+                enabled:                toolLayout.settingsEditable && root.cooldownRemaining === 0
+                                            && root.activeVehicle && !root.activeVehicle.armed
+                onActivated: (index) => {
+                    root.testMode = index
+                    toolTabs.currentIndex = index === 1 ? 2 : 1
+                }
             }
 
             QGCLabel {
@@ -1153,334 +1476,401 @@ QGCPopupDialog {
                 color:   root._qgcPal.warningText
             }
 
+            Item { Layout.fillWidth: true }
+
             QGCButton {
-                text:       root.disarmRequested ? qsTr("正在上锁") : qsTr("安全结束")
-                enabled:    root.vehicleContextMatches
-                                && !root.disarmRequested
-                                && (root.testEnabled
-                                    || root.runningOutput !== -1
-                                    || (root.activeVehicle && root.activeVehicle.armed)
-                                    || root.directServoBusy())
-                onClicked:  root.beginSafeShutdown(false, qsTr("用户结束测试"))
+                objectName: "outputPrepareTest"
+                visible:    root.testMode === 0 && toolTabs.currentIndex !== 0
+                text:       root.armingRequested ? qsTr("正在解锁")
+                                                : (root.activeVehicle && root.activeVehicle.armed ? qsTr("已准备") : qsTr("准备电机测试"))
+                enabled:    root.canPrepareMotorTest
+                onClicked:  root.prepareForNextTest()
+            }
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            visible:          root.testStatusText.length > 0
+            wrapMode:         Text.WordWrap
+            text:             root.testStatusText
+            color:            root.cooldownRemaining > 0 || root.disarmRequested ? root._qgcPal.warningText : root._qgcPal.text
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            visible:          root.directServoStatusText.length > 0
+            wrapMode:         Text.WordWrap
+            text:             root.directServoStatusText
+            color:            root._qgcPal.warningText
+        }
+
+        QGCLabel {
+            objectName: "outputFunctionSaveStatus"
+            Layout.fillWidth: true
+            visible: root.functionSaveStatusText.length > 0
+            wrapMode: Text.WordWrap
+            text: root.functionSaveStatusText
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible:          mappingSettings.recoveryPending
+            spacing:          ScreenTools.defaultFontPixelWidth
+
+            QGCLabel {
+                Layout.fillWidth: true
+                wrapMode:         Text.WordWrap
+                text:             qsTr("待恢复：载具 %1，SERVO%2，原值 %3，记录于 %4")
+                                          .arg(mappingSettings.recoveryVehicleUid.length > 0
+                                                   ? mappingSettings.recoveryVehicleUid : mappingSettings.recoveryVehicleId)
+                                          .arg(mappingSettings.recoveryOutput)
+                                          .arg(mappingSettings.recoveryFunction)
+                                          .arg(mappingSettings.recoveryTimestamp)
+                color:            root._qgcPal.warningText
             }
 
             QGCButton {
-                text:    root.activeVehicle && root.activeVehicle.armed ?
-                             (root.cooldownRemaining > 0 ? qsTr("冷却中") : qsTr("已准备")) :
-                             qsTr("准备下一次测试")
-                enabled: root.vehicleContextMatches
-                            && root.runningOutput === -1
-                            && root.cooldownRemaining === 0
-                            && !root.armingRequested
-                            && !root.disarmRequested
-                onClicked: root.prepareForNextTest()
+                objectName: "outputRecovery"
+                text:       qsTr("恢复异常通道")
+                enabled:    root.vehicleReady && root.recoveryMatchesSession()
+                                && root.activeVehicle && !root.activeVehicle.armed && !root.directServoBusy()
+                                && !root.disarmRequested && !root.disarmUnconfirmed && !root.armingRequested
+                onClicked:  root.recoverPendingServoFunction()
             }
 
-            QGCLabel { text: qsTr("功率") }
+            QGCButton {
+                text:       root.recoveryDiscardConfirmation ? qsTr("确认忽略记录") : qsTr("忽略旧记录")
+                enabled:    !root.directServoBusy() && root.recoveryJournalCanBeDiscarded()
+                onClicked:  root.discardRecoveryJournal()
+            }
+        }
+
+        QGCTabBar {
+            id:                 toolTabs
+            objectName:         "outputToolTabs"
+            Layout.fillWidth:   true
+
+            QGCTabButton { text: qsTr("接线记录") }
+            QGCTabButton { text: qsTr("单路测试") }
+            QGCTabButton { text: qsTr("高级输出测试") }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible:          toolTabs.currentIndex === 0
+            spacing:          ScreenTools.defaultFontPixelWidth
+
+            QGCLabel {
+                Layout.fillWidth: true
+                wrapMode:         Text.WordWrap
+                text:             root.mappingScopeText
+                color:            root.recordVehicleUid.length > 0 ? root._qgcPal.text : root._qgcPal.warningText
+            }
+
+            QGCButton {
+                visible:   root.legacyMappingsAvailable
+                text:      root.legacyImportConfirmation ? qsTr("确认导入旧记录") : qsTr("导入旧记录")
+                enabled:   root.canRecordMappings
+                onClicked: root.importLegacyMappings()
+            }
+
+            QGCButton {
+                text:      root.clearMappingsConfirmation ? qsTr("确认清空记录") : qsTr("清空当前记录")
+                enabled:   root.canRecordMappings
+                onClicked: root.clearMappings()
+            }
+
+            QGCButton {
+                text:      qsTr("导出 CSV")
+                onClicked: exportFileDialog.openForSave()
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible:          toolTabs.currentIndex !== 0
+            spacing:          ScreenTools.defaultFontPixelWidth
+
+            QGCLabel {
+                visible: root.testMode === 0
+                text:    qsTr("功率")
+            }
 
             SpinBox {
-                from:           1
-                to:             15
-                value:          mappingSettings.testPercent
-                editable:       true
+                visible:         root.testMode === 0
+                from:            1
+                to:              15
+                value:           mappingSettings.testPercent
+                editable:        true
+                enabled:         toolLayout.settingsEditable
                 onValueModified: mappingSettings.testPercent = value
             }
 
-            QGCLabel { text: qsTr("%") }
+            QGCLabel {
+                visible: root.testMode === 0
+                text:    qsTr("%")
+            }
+
+            QGCLabel {
+                visible: root.testMode !== 0
+                text:    qsTr("目标 PWM")
+            }
+
+            SpinBox {
+                visible: root.testMode !== 0
+                from:    root.directServoMode ? 1000 : 800
+                to:      2200
+                value:   root.directServoMode ? mappingSettings.directServoPwm : mappingSettings.servoJogPwm
+                editable: true
+                enabled:  toolLayout.settingsEditable
+                onValueModified: {
+                    if (root.directServoMode) {
+                        mappingSettings.directServoPwm = value
+                    } else {
+                        mappingSettings.servoJogPwm = value
+                    }
+                }
+            }
 
             QGCLabel { text: qsTr("时长") }
 
             SpinBox {
-                from:           1
-                to:             5
-                value:          mappingSettings.testSeconds
-                editable:       true
-                onValueModified: mappingSettings.testSeconds = value
+                from:     1
+                to:       5
+                value:    root.testMode === 0 ? mappingSettings.testSeconds
+                                             : (root.directServoMode ? mappingSettings.directServoSeconds : mappingSettings.servoJogSeconds)
+                editable: true
+                enabled:  toolLayout.settingsEditable
+                onValueModified: {
+                    if (root.testMode === 0) {
+                        mappingSettings.testSeconds = value
+                    } else if (root.directServoMode) {
+                        mappingSettings.directServoSeconds = value
+                    } else {
+                        mappingSettings.servoJogSeconds = value
+                    }
+                }
             }
 
             QGCLabel { text: qsTr("秒") }
+
+            QGCLabel {
+                Layout.fillWidth: true
+                text:             root.testMode === 0 ? qsTr("按飞控电机测试路径点动")
+                                                      : qsTr("状态：%1；测试期间保持上锁").arg(root.directServoStateText())
+                color:            root.testMode !== 0 && root.directServoState !== "idle" ? root._qgcPal.warningText : root._qgcPal.text
+                elide:            Text.ElideRight
+            }
         }
 
         RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth
+            Layout.fillWidth: true
+            visible:          toolTabs.currentIndex === 2 && root.testMode === 0
+            spacing:          ScreenTools.defaultFontPixelWidth
 
-            QGCLabel {
-                text: qsTr("Motor Test 发送方式")
-            }
+            QGCLabel { text: qsTr("Motor Test 发送方式") }
 
             QGCRadioButton {
-                text:    qsTr("按测试编号")
-                checked: !mappingSettings.useServoFunctionForMotorTest
-                enabled: root.runningOutput === -1 && root.cooldownRemaining === 0 && !root.disarmRequested
+                text:      qsTr("按测试编号")
+                checked:   !mappingSettings.useServoFunctionForMotorTest
+                enabled:   toolLayout.settingsEditable && root.cooldownRemaining === 0
                 onClicked: mappingSettings.useServoFunctionForMotorTest = false
             }
 
             QGCRadioButton {
-                text:    qsTr("按SERVO_FUNCTION映射")
-                checked: mappingSettings.useServoFunctionForMotorTest
-                enabled: root.runningOutput === -1 && root.cooldownRemaining === 0 && !root.disarmRequested
+                text:      qsTr("按 SERVO_FUNCTION 映射")
+                checked:   mappingSettings.useServoFunctionForMotorTest
+                enabled:   toolLayout.settingsEditable && root.cooldownRemaining === 0
                 onClicked: mappingSettings.useServoFunctionForMotorTest = true
             }
 
+            Item { Layout.fillWidth: true }
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            visible:          toolTabs.currentIndex !== 0
+            wrapMode:         Text.WordWrap
+            color:            root._qgcPal.warningText
+            text:             root.testMode === 0
+                                  ? (mappingSettings.useServoFunctionForMotorTest
+                                         ? qsTr("读取每行 SERVOx_FUNCTION 中的 MotorN，并发送 Motor Test N；测试编号与物理输出口可能不同。")
+                                         : qsTr("第 N 行发送 Motor Test N。该编号由飞控定义，不一定等于物理 SERVO N；发送方式可在高级输出测试中切换。"))
+                                  : (root.directServoMode
+                                         ? (toolTabs.currentIndex === 2
+                                                ? qsTr("PWM 直测按物理 SERVO 口发送 1000–2200 PWM，临时禁用该通道功能；结束回到 1500，并确认恢复原功能。")
+                                                : qsTr("推进器 PWM 直测只在“高级输出测试”页执行，请切换页签；日常测试可选择电机点动或舵机点动。"))
+                                         : qsTr("舵机点动按物理 SERVO 口发送 800–2200 PWM，临时禁用该通道功能；结束回到 SERVOx_TRIM，并确认恢复原功能。"))
+        }
+
+        QGCLabel {
+            Layout.fillWidth: true
+            visible:          toolTabs.currentIndex !== 0 && root.testMode !== 0
+            wrapMode:         Text.WordWrap
+            color:            root._qgcPal.warningText
+            text:             qsTr("直接输出的时长由地面站计时；通信中断时可能无法回中，请准备独立的断电停止手段。")
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing:         ScreenTools.defaultFontPixelWidth
+
             QGCLabel {
-                Layout.fillWidth: true
-                elide:            Text.ElideRight
-                text:             mappingSettings.useServoFunctionForMotorTest ?
-                                      qsTr("点 SERVOx 时读取 SERVOx_FUNCTION；若为 MotorN，则发送 Motor Test N。") :
-                                      qsTr("点第 N 行时直接发送 Motor Test N。")
-                color:            root._qgcPal.text
+                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12
+                text:                  qsTr("物理输出口")
+                font.bold:             true
+            }
+
+            QGCLabel {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 32
+                text:                  qsTr("功能参数 / 快速修改")
+                font.bold:             true
+            }
+
+            QGCLabel {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 15
+                visible:               toolTabs.currentIndex !== 0
+                text:                  qsTr("当前模式测试")
+                font.bold:             true
+            }
+
+            QGCLabel {
+                Layout.fillWidth:      true
+                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 24
+                text:                  qsTr("主板接口 / 线束")
+                font.bold:             true
+            }
+
+            QGCLabel {
+                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 25
+                text:                  qsTr("实际位置")
+                font.bold:             true
             }
         }
 
-        ColumnLayout {
+        QGCFlickable {
+            id:                 outputList
             Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelHeight * 0.5
+            Layout.fillHeight:  true
+            Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 3
+            indicatorColor:     root._qgcPal.text
+            contentWidth:       width
+            contentHeight:      outputRows.implicitHeight
+            flickableDirection: Flickable.VerticalFlick
 
-            RowLayout {
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth
+            ColumnLayout {
+                id:         outputRows
+                width:      outputList.width
+                spacing:    ScreenTools.defaultFontPixelHeight * 0.3
 
-                QGCCheckBox {
-                    text:       qsTr("高级：直接 SERVO 输出（推进器 PWM）")
-                    checked:    root.directServoMode
-                    enabled:    root.vehicleContextMatches
-                                    && root.runningOutput === -1
-                                    && !root.directServoBusy()
-                                    && !root.disarmRequested
-                    onClicked:  root.directServoMode = checked
-                }
-
-                QGCLabel {
-                    visible: root.directServoMode
-                    text:    qsTr("PWM")
-                }
-
-                SpinBox {
-                    visible:        root.directServoMode
-                    from:           1000
-                    to:             3000
-                    value:          mappingSettings.directServoPwm
-                    editable:       true
-                    onValueModified: mappingSettings.directServoPwm = value
-                }
-
-                QGCLabel {
-                    visible: root.directServoMode
-                    text:    qsTr("时长")
-                }
-
-                SpinBox {
-                    visible:        root.directServoMode
-                    from:           1
-                    to:             5
-                    value:          mappingSettings.directServoSeconds
-                    editable:       true
-                    onValueModified: mappingSettings.directServoSeconds = value
-                }
-
-                QGCLabel {
-                    visible: root.directServoMode
-                    text:    qsTr("秒")
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCCheckBox {
-                    text:       qsTr("舵机点动设置")
-                    checked:    root.servoJogMode
-                    enabled:    root.vehicleContextMatches
-                                    && root.runningOutput === -1
-                                    && !root.directServoBusy()
-                                    && !root.disarmRequested
-                    onClicked:  root.servoJogMode = checked
-                }
-
-                QGCLabel {
-                    visible: root.servoJogMode
-                    text:    qsTr("PWM")
-                }
-
-                SpinBox {
-                    visible:        root.servoJogMode
-                    from:           800
-                    to:             2200
-                    value:          mappingSettings.servoJogPwm
-                    editable:       true
-                    onValueModified: mappingSettings.servoJogPwm = value
-                }
-
-                QGCLabel {
-                    visible: root.servoJogMode
-                    text:    qsTr("时长")
-                }
-
-                SpinBox {
-                    visible:        root.servoJogMode
-                    from:           1
-                    to:             5
-                    value:          mappingSettings.servoJogSeconds
-                    editable:       true
-                    onValueModified: mappingSettings.servoJogSeconds = value
-                }
-
-                QGCLabel {
-                    visible: root.servoJogMode
-                    text:    qsTr("秒；结束后回到该通道 TRIM")
-                }
-
-                QGCLabel {
-                    visible: root.directServoMode || root.servoJogMode
-                    text:    qsTr("状态：%1").arg(root.directServoStateText())
-                    color:   root.directServoState === "idle" ? root._qgcPal.text : root._qgcPal.warningText
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth:   true
-                visible:            (root.directServoMode || root.servoJogMode) && mappingSettings.recoveryPending
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCLabel {
-                    Layout.fillWidth: true
-                    elide:            Text.ElideRight
-                    text:             qsTr("待恢复：载具 %1，SERVO%2，原值 %3，记录于 %4")
-                                              .arg(mappingSettings.recoveryVehicleUid.length > 0
-                                                       ? mappingSettings.recoveryVehicleUid
-                                                       : mappingSettings.recoveryVehicleId)
-                                              .arg(mappingSettings.recoveryOutput)
-                                              .arg(mappingSettings.recoveryFunction)
-                                              .arg(mappingSettings.recoveryTimestamp)
-                    color:            root._qgcPal.warningText
-                }
-
-                QGCButton {
-                    text:       qsTr("恢复异常通道")
-                    enabled:    root.vehicleContextMatches
-                                    && root.recoveryMatchesSession()
-                                    && !root.activeVehicle.armed
-                                    && !root.directServoBusy()
-                    onClicked:  root.recoverPendingServoFunction()
-                }
-
-                QGCButton {
-                    text:       root.recoveryDiscardConfirmation ? qsTr("确认忽略记录") : qsTr("忽略旧记录")
-                    enabled:    !root.directServoBusy() && root.recoveryJournalCanBeDiscarded()
-                    onClicked:  root.discardRecoveryJournal()
-                }
-            }
-
-        }
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            visible:            root.directServoMode
-            elide:              Text.ElideRight
-            color:              root._qgcPal.warningText
-            text:               qsTr("推进器 PWM 直测按物理 SERVO 口发送设定 PWM，不等待 Motor Test 冷却，也不按 SERVO_FUNCTION 映射；结束后回到 1500 PWM。")
-        }
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            visible:            root.servoJogMode
-            elide:              Text.ElideRight
-            color:              root._qgcPal.warningText
-            text:               qsTr("舵机点动按物理 SERVO 口发送独立 PWM，结束后回到该通道 SERVOx_TRIM。两种直发都会临时禁用并恢复被占用通道。")
-        }
-
-        GridLayout {
-            Layout.fillWidth:   true
-            columns:            7
-            columnSpacing:      ScreenTools.defaultFontPixelWidth
-            rowSpacing:         ScreenTools.defaultFontPixelHeight * 0.45
-
-            QGCLabel { text: qsTr("SERVO/输出"); font.bold: true }
-            QGCLabel { text: qsTr("当前功能"); font.bold: true }
-            QGCLabel { text: qsTr("Motor Test"); font.bold: true }
-            QGCLabel { text: qsTr("推进器直发PWM"); font.bold: true }
-            QGCLabel { text: qsTr("舵机点动"); font.bold: true }
-            QGCLabel { text: qsTr("主板接口/线束"); font.bold: true }
-            QGCLabel { text: qsTr("实际推进器位置"); font.bold: true }
-
-            Repeater {
-                model: 16
-
-                Item {
-                    id: rowItem
-
-                    required property int index
-
-                    Layout.fillWidth:   true
-                    Layout.columnSpan:  7
-                    implicitHeight:     rowLayout.implicitHeight
-
-                    readonly property int outputNumber: index + 1
+                Repeater {
+                    model: 16
 
                     RowLayout {
-                        id:             rowLayout
-                        anchors.left:   parent.left
-                        anchors.right:  parent.right
-                        spacing:        ScreenTools.defaultFontPixelWidth
+                        id:                 rowItem
+                        required property int index
+                        readonly property int outputNumber: index + 1
+                        readonly property int motorTestTarget: mappingSettings.useServoFunctionForMotorTest
+                                                                   ? root.motorNumberFromServoFunction(outputNumber) : outputNumber
+                        readonly property var functionFact: root.servoFunctionFact(outputNumber)
+                        property var stagedFunction: undefined
+                        property bool functionUnconfirmed: false
+                        Layout.fillWidth:   true
+                        spacing:            ScreenTools.defaultFontPixelWidth
 
                         QGCLabel {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 13
-                            text:                   qsTr("SERVO%1").arg(rowItem.outputNumber)
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12
+                            text:                  qsTr("SERVO%1").arg(rowItem.outputNumber)
                         }
 
-                        QGCLabel {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 16
-                            text:                   root.servoFunctionText(rowItem.outputNumber)
-                            color:                  text === qsTr("Disabled") || text === qsTr("参数缺失") ? root._qgcPal.warningText : root._qgcPal.text
-                            elide:                  Text.ElideRight
+                        RowLayout {
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 32
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                            QGCLabel {
+                                objectName: "outputFunction" + rowItem.outputNumber
+                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10
+                                text: root.servoFunctionText(rowItem.outputNumber)
+                                          + (rowItem.functionUnconfirmed ? qsTr("（未确认）") : "")
+                                color: rowItem.functionUnconfirmed || text === qsTr("Disabled")
+                                           || text === qsTr("参数缺失") || text === qsTr("参数不可用")
+                                           ? root._qgcPal.warningText : root._qgcPal.text
+                                elide: Text.ElideRight
+                            }
+
+                            QGCComboBox {
+                                id: functionChoice
+                                objectName: "outputFunctionChoice" + rowItem.outputNumber
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 15
+                                sizeToContents: true
+                                model: rowItem.functionFact ? rowItem.functionFact.enumStrings : []
+                                currentIndex: root.functionEnumIndex(rowItem.functionFact, rowItem.stagedFunction)
+                                alternateText: rowItem.stagedFunction === undefined ? qsTr("选择新功能") : ""
+                                enabled: root.canConfigureServoFunctions && !root.functionSaveConfirmation
+                                             && rowItem.functionFact && !rowItem.functionFact.readOnly && count > 0
+                                onActivated: (index) => {
+                                    if (enabled && index >= 0 && index < rowItem.functionFact.enumValues.length) {
+                                        rowItem.stagedFunction = Number(rowItem.functionFact.enumValues[index])
+                                    }
+                                }
+                            }
+
+                            QGCButton {
+                                objectName: "outputFunctionSave" + rowItem.outputNumber
+                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6
+                                text: qsTr("保存")
+                                enabled: functionChoice.enabled && rowItem.stagedFunction !== undefined
+                                onClicked: root.requestServoFunctionSave(rowItem.outputNumber, rowItem.stagedFunction)
+                            }
+
+                            Connections {
+                                target: directControl
+                                function onFunctionSaveFinished(output, success, message) {
+                                    if (output === rowItem.outputNumber) {
+                                        rowItem.functionUnconfirmed = !success
+                                        if (success) {
+                                            rowItem.stagedFunction = undefined
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         QGCButton {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 11
-                            text:                   root.cooldownRemaining > 0 ? qsTr("冷却") : (root.runningOutput === rowItem.outputNumber ? qsTr("测试中") : qsTr("点动"))
-                            enabled:                root.testEnabled
-                                                        && root.runningOutput === -1
-                                                        && root.cooldownRemaining === 0
-                                                        && root.vehicleContextMatches
-                                                        && root.activeVehicle.armed
-                                                        && !root.disarmRequested
-                            onClicked:              root.testOutput(rowItem.outputNumber)
-                        }
-
-                        QGCButton {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 11
-                            text:                   root.directServoOperation === "thruster"
-                                                        && (root.directServoOutput === rowItem.outputNumber || root.directServoPendingOutput === rowItem.outputNumber)
-                                                        ? qsTr("直发中") : qsTr("直发PWM")
-                            enabled:                root.directServoMode
-                                                        && root.vehicleContextMatches
-                                                        && root.runningOutput === -1
-                                                        && !root.directServoBusy()
-                                                        && !mappingSettings.recoveryPending
-                                                        && !root.disarmRequested
-                            onClicked:              root.startDirectServoTest(rowItem.outputNumber)
-                        }
-
-                        QGCButton {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 11
-                            text:                   root.directServoOutput === rowItem.outputNumber || root.directServoPendingOutput === rowItem.outputNumber ? qsTr("点动中") : qsTr("点动舵机")
-                            enabled:                root.servoJogMode
-                                                        && root.vehicleContextMatches
-                                                        && root.runningOutput === -1
-                                                        && !root.directServoBusy()
-                                                        && !mappingSettings.recoveryPending
-                                                        && !root.disarmRequested
-                            onClicked:              root.startServoJogTest(rowItem.outputNumber)
+                            objectName:            "outputTestAction" + rowItem.outputNumber
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 15
+                            visible:               toolTabs.currentIndex !== 0
+                            text:                  root.testMode === 0
+                                                       ? (root.runningOutput === rowItem.outputNumber ? qsTr("测试中")
+                                                                                                       : (root.cooldownRemaining > 0 ? qsTr("冷却")
+                                                                                                                                    : (rowItem.motorTestTarget > 0 ? qsTr("点动 Motor%1").arg(rowItem.motorTestTarget)
+                                                                                                                                                                  : qsTr("无电机映射"))))
+                                                       : (root.directServoOutput === rowItem.outputNumber || root.directServoPendingOutput === rowItem.outputNumber
+                                                              ? qsTr("测试中") : (root.directServoMode ? qsTr("直发 PWM") : qsTr("点动舵机")))
+                            enabled:               root.testMode === 0 ? root.canStartMotorTest && rowItem.motorTestTarget > 0
+                                                                      : (root.canStartDirectTest && (!root.directServoMode || toolTabs.currentIndex === 2))
+                            onClicked: {
+                                if (root.testMode === 0) {
+                                    root.testOutput(rowItem.outputNumber)
+                                } else if (root.directServoMode) {
+                                    root.startDirectServoTest(rowItem.outputNumber)
+                                } else {
+                                    root.startServoJogTest(rowItem.outputNumber)
+                                }
+                            }
                         }
 
                         QGCTextField {
-                            id:                     portField
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 20
-                            placeholderText:        qsTr("如 MAIN1 / J3-1")
-                            text:                   root.portName(rowItem.outputNumber)
-                            onEditingFinished:      root.setPortName(rowItem.outputNumber, text)
+                            id:                    portField
+                            objectName:            "outputRecordPort" + rowItem.outputNumber
+                            Layout.fillWidth:      true
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 24
+                            placeholderText:       qsTr("如 MAIN1 / J3-1")
+                            text:                  root.portName(rowItem.outputNumber)
+                            enabled:               root.canRecordMappings
+                            onEditingFinished:     root.setPortName(rowItem.outputNumber, text)
 
                             Connections {
                                 target: root
@@ -1491,10 +1881,12 @@ QGCPopupDialog {
                         }
 
                         QGCComboBox {
-                            id:                     positionCombo
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 22
-                            model:                  root.positionNames
-                            currentIndex:           root.positionIndex(rowItem.outputNumber)
+                            id:                    positionCombo
+                            objectName:            "outputRecordPosition" + rowItem.outputNumber
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 25
+                            model:                 root.positionNames
+                            currentIndex:          root.positionIndex(rowItem.outputNumber)
+                            enabled:               root.canRecordMappings
                             onActivated: (index) => root.setPositionIndex(rowItem.outputNumber, index)
 
                             Connections {
@@ -1506,57 +1898,6 @@ QGCPopupDialog {
                         }
                     }
                 }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth:       true
-            Layout.preferredHeight: 1
-            color:                  root._qgcPal.windowShadeLight
-        }
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            visible:            root.testStatusText.length > 0
-            wrapMode:           Text.WordWrap
-            text:               root.testStatusText
-            color:              root.cooldownRemaining > 0 ? root._qgcPal.warningText : root._qgcPal.text
-        }
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            visible:            (root.directServoMode || root.servoJogMode) && root.directServoStatusText.length > 0
-            wrapMode:           Text.WordWrap
-            text:               root.directServoStatusText
-            color:              root._qgcPal.warningText
-        }
-
-        ColumnLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelHeight * 0.5
-
-            RowLayout {
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth
-
-                QGCButton {
-                    text:       qsTr("清空记录")
-                    onClicked:  root.clearMappings()
-                }
-
-                QGCButton {
-                    text:       qsTr("导出CSV")
-                    onClicked:  exportFileDialog.openForSave()
-                }
-
-                Item { Layout.fillWidth: true }
-            }
-
-            QGCLabel {
-                Layout.fillWidth:   true
-                wrapMode:           Text.WordWrap
-                text:       qsTr("Motor Test、推进器直发 PWM 和舵机点动是三条独立测试路径。推进器直发结束回到 1500 PWM；舵机点动结束回到 SERVOx_TRIM。两种直发确认参数恢复后才结束。")
-                color:      root._qgcPal.text
             }
         }
     }

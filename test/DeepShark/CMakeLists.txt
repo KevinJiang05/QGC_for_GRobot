@@ -16,6 +16,8 @@ target_sources(
             DeepSharkVideoResizeTest.h
             ThrusterDirectControlControllerTest.cc
             ThrusterDirectControlControllerTest.h
+            ThrusterMappingIntegrationTest.cc
+            ThrusterMappingIntegrationTest.h
             APMGimbalCompatibilityTest.cc
             APMGimbalCompatibilityTest.h
 )
@@ -43,6 +45,8 @@ add_qgc_test(DeepSharkConnectionMonitorTest LABELS Unit DeepShark)
 add_qgc_test(DeepSharkVideoControllerTest LABELS Unit DeepShark ENV_MODIFICATION "QGC_TEST_ENABLE_GSTREAMER=set:1")
 
 add_qgc_test(ThrusterDirectControlControllerTest LABELS Unit DeepShark)
+
+add_qgc_test(ThrusterMappingIntegrationTest LABELS Integration DeepShark)
 
 add_qgc_test(APMGimbalCompatibilityTest LABELS Unit DeepShark)
 

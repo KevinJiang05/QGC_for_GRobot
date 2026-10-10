@@ -45,10 +45,13 @@ QGCCorePlugin *DeepSharkPlugin::instance()
 
 void DeepSharkPlugin::init()
 {
-    static DeepSharkAuvController auvController;
-    static DeepSharkVideoSettings videoSettings;
-    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkAuvController", &auvController);
-    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", &videoSettings);
+    // Owned by the plugin so they are destroyed with the application instead of after it.
+    if (!_auvController) {
+        _auvController = new DeepSharkAuvController(this);
+        _videoSettings = new DeepSharkVideoSettings(this);
+    }
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkAuvController", _auvController);
+    qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkVideoSettings", _videoSettings);
     auto *connectionMonitor = DeepSharkConnectionMonitor::instance();
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkConnectionMonitor", connectionMonitor);
     connectionMonitor->start();

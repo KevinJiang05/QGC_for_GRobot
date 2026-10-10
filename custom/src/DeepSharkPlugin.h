@@ -14,6 +14,8 @@
 
 class AIDetectionManager;
 class AIDetectionReceiver;
+class DeepSharkAuvController;
+class DeepSharkVideoSettings;
 class QQmlApplicationEngine;
 
 class DeepSharkOverrideInterceptor;
@@ -51,6 +53,8 @@ private:
     DeepSharkOverrideInterceptor *_selector = nullptr;
     QPointer<AIDetectionManager> _aiDetectionManager;
     QPointer<AIDetectionReceiver> _aiDetectionReceiver;
+    DeepSharkAuvController *_auvController = nullptr;
+    DeepSharkVideoSettings *_videoSettings = nullptr;
 };
 
 class DeepSharkOverrideInterceptor : public QQmlAbstractUrlInterceptor

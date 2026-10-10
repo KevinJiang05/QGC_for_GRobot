@@ -1,8 +1,8 @@
-# 2.0.0 全量审查清单（第一轮，只读）
+# 2.0.0 全量审查清单（只读）
 
-日期：2026-10-10。审查对象为 `main` 的 `d736dd1fe`，基线为官方 `v5.1.5` 标签，
+日期：2026-10-10。审查对象为 `main` 的 `d736dd1fe`；推进器部分审的是其后的 `f8c7584d6`，基线为官方 `v5.1.5` 标签，
 升级前行为对照 `db9c91596`。本轮只读代码、差异和已有审计记录，**没有修改代码、
-没有编译、没有运行测试**（工作区同时有 Codex 在改推进器映射）。
+没有编译、没有运行测试**。
 
 所有条目的证据等级均为"读码推断"，除非另有说明。条目交 Codex 二次复核后再决定是否修改。
 Codex 复核会话：待建立。按 2026-10-10 的决定，等推进器部分审完、整轮清单齐全后再一次性交复核。
@@ -11,16 +11,20 @@ Codex 复核会话：待建立。按 2026-10-10 的决定，等推进器部分�
 
 | 范围 | 状态 |
 | --- | --- |
-| `src/` 相对 v5.1.5 的 70 个文件差异 | 已读 67 个；`MockLink.cc/.h`、`MockLinkWorker.cc` 未读（测试设施，且工作区有未提交改动） |
+| `src/` 相对 v5.1.5 的 70 个文件差异 | 全部已读；其中 `MockLink` 三个文件只读了增删行 |
 | 视频链路：`gstqgcqvideosink.cc`、`QGCQVideoSinkController.cc`、`GstVideoReceiver.cc`、`GstD3D11VideoBuffer.cc`、`HwBuffers.cc` 补丁 | 已读 |
 | `custom/src`：`DeepSharkVideoController`、`DeepSharkConnectionMonitor`、`DeepSharkPlugin`、`AIDetectionReceiver`、`AIDetectionManager`、`DeepSharkVideoSettings` | 整文件已读 |
 | `custom/src` QML：`FlyViewCustomLayer`、`FourVideoPanel`、`VideoTile`、`DeepSharkStatusPanel` | 整文件已读 |
-| 推进器直控与映射（`ThrusterDirectControlController`、`ThrusterMappingTool.qml`、相关测试） | **未审**，Codex 正在修改，等通知 |
+| `ThrusterDirectControlController.cc/.h` | 整文件已读 |
+| `ThrusterMappingTool.qml`（1904 行） | 整文件已读 |
+| 推进器相关测试（两个文件约 1300 行） | 只看了用例清单和驱动方式，未逐个读断言 |
+| `MockLink` 相对 v5.1.5 的差异 | 已读增删行（未读上下文） |
 | `DeepSharkAuvController`、`AuvMissionPanel.qml` | 只确认控制器不发送任何 MAVLink 指令；其余未读（演示功能） |
 | `Attitude3DPanel.qml`、`AIDetectionVideoOverlay.qml`、`ConnectionAlertBanner.qml`、`ConnectionAlertSettings.qml` | 整文件已读 |
-| `AIDetectionSettings.qml`、`Attitude3DViewState.qml`、`ThrusterMappingExportController` | 未读 |
+| `Attitude3DViewState.qml` | 整文件已读 |
+| `AIDetectionSettings.qml`、`ThrusterMappingExportController` | 未读（演示功能的设置页；CSV 写文件） |
 | `test/DeepShark/` | 查了全部文件的跳过条件和断言形态；`DeepSharkConnectionMonitorTest.cc` 整文件已读，其余未逐个读用例 |
-| 发布脚本、NSIS、CI 工作流 | 读了 2.0.0 发布记录、安装器关键行和发布脚本的步骤与断言结构，未逐行审 |
+| 发布脚本、NSIS、CI 工作流 | 读了 2.0.0 发布记录、安装器关键行、`build-windows-release.ps1` 前 300 行和其余部分的步骤结构；CI 工作流未读 |
 | `tools/ai_detection` Python | 只确认启动脚本不派生子进程 |
 | 翻译 | 只查了与卡顿线索相关的条目 |
 
@@ -52,9 +56,34 @@ GUI 线程被任何事情占住多久，全部视频就停多久。这一点官�
 ## 发现
 
 严重度：S0 可能导致非预期的执行器动作或失控；S1 现场会崩溃、卡死或功能失效；
-S2 行为错误或有现场影响但有绕过办法；S3 维护和升级成本。本轮没有发现 S0、S1。
+S2 行为错误或有现场影响但有绕过办法；S3 维护和升级成本。
+没有发现 S0。S1 有一条，在推进器直测功能里。
+
+### S1（推进器 PWM 直测）
+
+先说明这个功能的性质：它在飞控**上锁**状态下把某一路输出改成 Disabled，再用 `DO_SET_SERVO` 直接给 PWM。
+这条路径绕过了 ArduSub 的解锁和失控保护，停转完全依赖 QGC 随后发出的回中指令。
+已有的保护是到位的：只允许上锁时开始、时长上限 5 秒、默认 1550、开始前回读原功能并先落盘恢复记录、
+解锁即中止、回中确认后才恢复功能参数。界面上也已写明"直接输出的时长由地面站计时；通信中断时可能无法回中，
+请准备独立的断电停止手段"（`ThrusterMappingTool.qml:1711`）。所以这里不是没人意识到的隐患，而是已声明的限制里还能由软件收窄的部分。
+
+**T01 回中指令只发一次；心跳中断后不再尝试回中，链路恢复也不会自动恢复。**
+- `DO_SET_SERVO` 在 QGC 的指令队列里不重试，回执超时 1.2 秒（`MavCommandQueue.cc:197`、`:331`）。
+  回中指令的回执没收到，就直接进入"需要人工恢复"（`ThrusterDirectControlController.cc:504-510`、`:669-670`），不会再发第二次。
+- 心跳中断时，`_vehicleUnavailable()`（`:586-598`，由 `:66-70` 触发）直接转入"需要人工恢复"并停掉全部定时器，
+  包括测试时长定时器。此时如果测试 PWM 已经发出，没有任何代码再尝试回中。
+- 链路恢复后没有自动动作，必须由人点"恢复异常通道"。
+
+后果：链路抖动恰好落在测试窗口内时，推进器会按测试 PWM 一直转，直到有人发现并手动恢复。
+建议：进入"需要人工恢复"且曾发出过测试 PWM 时，持续按固定间隔尽力发送回中；链路恢复后自动执行恢复流程。
+前提（未实机核实）：ArduPilot 对功能为 Disabled 的输出会保持最后一次 `DO_SET_SERVO` 的值，没有超时。
 
 ### S2
+
+**T02 整个直测没有飞控侧的超时。**
+QGC 进程崩溃、被关闭或电脑休眠时，结果同 T01，而且这种情况下 QGC 自己无法补救。界面已明示这一限制。
+可评估改用带飞控侧自动回位的指令（例如 `MAV_CMD_DO_REPEAT_SERVO`，由飞控在设定时间后回到 trim），
+这需要对照 ArduSub 版本确认其对 Disabled 输出的行为，属于设计层面的决定。
 
 **F01 视频自动重连 6 次后永久放弃。**
 `VideoTile.qml:42` 的 `maxAutoRetries: 6`，退避序列为 2.5、5、10、20、30、30 秒
@@ -105,6 +134,17 @@ QGC 在载具已解锁时连接会跳过参数下载（`InitialConnectStateMachi
 
 **F08 模式播报在 GUI 线程执行。** 见上一节，待实验确认。
 
+**T03 恢复记录只在打开这个工具时才看得到。**
+恢复记录存在 `DeepSharkServoOutputMapping` 设置组里，全仓库只有 `ThrusterMappingTool.qml` 读它。
+QGC 在直测中途崩溃，或者载具断开后关掉了工具，那一路输出会留在 Disabled。
+重启后主界面没有任何提示，下次下水那个推进器不工作，操作者不知道原因。
+建议启动时或连上载具时检查这条记录并弹出提示。
+
+**T04 飞控不上报 UID 时，QGC 重启后无法用工具恢复。**
+`ThrusterMappingTool.qml:722-737`。重启后只能靠 UID 匹配恢复记录；UID 为空时判定为不匹配，
+工具拒绝恢复，并允许"忽略记录"。这时只能去参数页手动改回 `SERVOn_FUNCTION`。
+需要确认你们的飞控是否上报 UID（工具标题栏会显示"UID 未上报"）。
+
 **F21 默认常开的 3D 姿态预览以显示器刷新率持续重绘。**
 右侧预览默认是 3D 姿态（`FlyViewCustomLayer.qml:46`）。`Attitude3DPanel.qml:83-93` 的帧动画只要有深度或姿态数据就一直运行，
 每帧更新水面相位，迫使整个 3D 场景每帧重画；场景开了高质量多重采样和阴影（`Attitude3DPanel.qml:165-166`、`:182`）。
@@ -112,6 +152,21 @@ QGC 在载具已解锁时连接会跳过参数下载（`InitialConnectStateMachi
 验证方法：把右侧预览切到"RTSP 1"，对比任务管理器里的 GPU 占用。
 
 ### S3
+
+**T05 控制器依赖参数管理器的内部信号。**
+`ThrusterDirectControlController.cc:78-126` 连接的是 `_paramSetSuccess`、`_paramSetFailure`、
+`_paramRequestReadSuccess`、`_paramRequestReadFailure`，都是带下划线前缀的内部信号。上游改名或改语义时这里会静默失效或编译失败。
+
+**T06 `requestRestore` 和 `reportParameterUnavailable` 对界面层公开，且不检查是否已回中。**
+`ThrusterDirectControlController.cc:552-584`。目前 QML 没有调用它们，所以不是现存缺陷；
+但在"正在输出"状态调用 `requestRestore` 会跳过回中直接写回功能参数。建议改为私有或加状态检查。
+
+**T07 入口对所有载具类型可见，MockLink 补丁未登记。**
+参数页的"输出测试与接线记录"菜单项没有按载具类型限制（`ParameterEditor.qml`）。
+`MockLink.cc` 对 ArduPilot 整型 `PARAM_SET` 的存储方式改动属于上游测试设施，
+对其他使用 ArduPilot 模拟飞控的上游用例有没有影响，我没有跑全量测试核实。
+升级时 `MockLink` 还把工作对象从独立线程改成了与链路同线程，并把断言换成了防御性返回；
+这些都改变了上游测试设施的行为，同样没有登记。
 
 **F09 上游补丁登记表已失效。**
 `upstream_patch_inventory_2026-09-02.md` 没有任何 v5.1.5 或 10-06 之后的内容，
@@ -164,11 +219,18 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 `QGCCameraManager.cc:125`。修的是真实的释放后访问，可以回馈上游。
 副作用是相机管理器每重建一次就多留一组上下文直到载具销毁，数量有界。
 
+**F22 发布脚本绑定单台机器。**
+`build-windows-release.ps1:29-32`、`:156` 写死了 Qt、GStreamer、VS 工具链和构建目录的绝对路径。
+换机器或升级依赖版本时要改脚本。脚本里的"覆盖升级契约"是对安装器脚本文本的正则检查，不是实际安装测试，发布记录对此有如实说明。
+
 **F20 诊断信息显示完整 RTSP 地址。**
 `DeepSharkStatusPanel.qml:365` 和接收器日志会带出地址里的用户名密码。截图或发日志时注意。
 
 ## 读下来确认没问题的部分
 
+- **推进器控制器的状态机**：先回读再禁用、恢复记录先落盘再写参数、用令牌丢弃过期回执、中止时等待在途指令结束、
+  功能保存前后各回读一次并拒绝过期值、解锁即中止。这些顺序都对，是这轮读到的代码里最严谨的一块。
+- **Motor Test 模式**：QGC 指令队列对 `DO_MOTOR_TEST` 允许重复发送，50 毫秒的连续指令不会被判重复而中断。
 - **视频 sink 的帧合并**（`gstqgcqvideosink.cc`）：锁顺序、绑定失效、帧释放都在锁外，逻辑自洽。
 - **AI 检测接收**（`AIDetectionReceiver.cc`）：只绑定本机回环，报文大小、数量、来源、时间戳、数值范围都有上限检查。
 - **手柄旧配置迁移的油门语义**：新旧代码对"中位为零 / 负推力"的处理公式一致
@@ -183,7 +245,8 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 
 按风险排序：
 
-1. 推进器直控与映射（待 Codex 改完后先审再测）。
+1. 推进器直测：测试进行中拔掉网线再插回，观察推进器是否停转、界面如何提示（T01）；
+   并确认 Disabled 输出在收不到新指令时是否保持 PWM（T01、T02 的前提）。
 2. 切换模式卡顿的静音对比实验。
 3. 三路视频连续运行一小时以上，记录 GPU 专用内存和进程内存曲线（F06）。
 4. 拔掉一路相机三分钟再插回，看是否自动恢复（F01）。
@@ -194,6 +257,5 @@ Python 侧注册的信号处理（`run_yolo_to_qgc_auto.py:126-128`）收不到�
 
 ## 下一轮
 
-- 推进器直控与映射，等通知。
-- 未读部分：MockLink 补丁（与推进器改动一起审）、`AIDetectionSettings.qml`、`Attitude3DViewState.qml`、发布脚本逐行、其余测试用例逐个核对。
-- 对 F04、F07 用 MockLink 写失败用例坐实（需要编译，等 Codex 停手）。
+- 未读部分：`AIDetectionSettings.qml`、`ThrusterMappingExportController`、发布脚本后半、CI 工作流、测试用例逐个核对。这些都不涉及控制输出。
+- 对 F04、F07、T01 用 MockLink 写失败用例坐实（需要编译）。

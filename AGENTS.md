@@ -6,6 +6,16 @@
 - Codex 主要负责监督发布过程：检查 `release-state.json`、各步骤日志和最终 `release-report.md`，确认版本、依赖、安装包哈希及覆盖升级契约。
 - 若脚本不可用或执行失败，先参考 `docs/releases/windows-release-runbook.md` 和对应步骤日志定位原因；确有必要时再采用手工命令，并说明与标准流程的差异。
 - 最终报告未显示成功或关键校验未通过时，应明确提示风险，不建议分发该安装包。
+
+## 复核触发项
+
+改动碰到以下内容时，不论大小都交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）。依据是 `docs/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
+
+- 向载具下发执行器或解锁类指令的路径：推进器输出直测与回中（`custom/src/ThrusterDirectControlController.*`、`custom/src/DeepShark/ThrusterMappingTool.qml`）、解锁、上锁与急停入口、手柄到控制量的映射。
+- 放宽或绕过安全限制的开关和判断："禁用安全限制"（`disableSetupSafetyRestrictions`、`ArmedSetupOverrideCapability`），以及 ArduSub 解锁检查和失联保护相关的参数页。
+- 断联预警及其依赖的 `Vehicle` 信号（`DeepSharkConnectionMonitor`、`connectionCloseRequested`、数据到达信号）。
+- Windows 安装器的覆盖升级和旧版本卸载处理。
+
 # AGENTS.md
 
 Instructions for AI coding agents (Codex, Claude Code, etc.) working on QGroundControl.

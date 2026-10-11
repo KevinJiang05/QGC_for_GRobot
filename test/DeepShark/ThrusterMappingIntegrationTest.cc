@@ -2,7 +2,6 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
-#include <QtCore/QFileInfo>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QPointer>
@@ -19,12 +18,16 @@
 #include <QtTest/QSignalSpy>
 #include <memory>
 
+#include "AppSettings.h"
 #include "ColoredSvgImageProvider.h"
 #include "Fact.h"
+#include "LinkManager.h"
 #include "MAVLinkProtocol.h"
+#include "MavlinkSettings.h"
 #include "ParameterManager.h"
 #include "QGCCorePlugin.h"
 #include "QGCImageProvider.h"
+#include "SettingsManager.h"
 #include "ThrusterDirectControlController.h"
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
@@ -632,6 +635,190 @@ void ThrusterMappingIntegrationTest::_backupReadFailureDoesNotCreateRecoveryJour
     _mockLink->setParamRequestReadFailureMode(MockLink::FailParamRequestReadNone);
 }
 
+void ThrusterMappingIntegrationTest::_unfinishedRecoveryIsAnnouncedOnConnect()
+{
+    // A run that died mid-test leaves only this record behind; the tool is not open after a restart.
+    {
+        QSettings journal;
+        journal.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+        journal.setValue(QStringLiteral("recoveryPending"), true);
+        journal.setValue(QStringLiteral("recoveryOutput"), 3);
+        journal.setValue(QStringLiteral("recoveryFunction"), 35);
+        journal.setValue(QStringLiteral("recoveryTimestamp"), QStringLiteral("2026-10-11 09:00"));
+    }
+    // An armed vehicle that skips the parameter download never becomes parameter-ready, and neither
+    // does one whose first parameter request fails. The record is local, so the notice must not wait.
+    auto* const skipSetting = SettingsManager::instance()->mavlinkSettings()->noInitialDownloadWhenFlying();
+    const QVariant previousSkip = skipSetting->rawValue();
+    const auto restoreSkip = qScopeGuard([&]() { skipSetting->setRawValue(previousSkip); });
+    skipSetting->setRawValue(true);
+    expectAppMessage(QRegularExpression(QStringLiteral("SERVO3")));
+    LinkManager::instance()->setConnectionsAllowed();
+    auto* const config = new MockConfiguration(QStringLiteral("ArmedConnectRecoveryNotice"));
+    config->setFirmwareType(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    config->setVehicleType(MAV_TYPE_SUBMARINE);
+    config->setStartArmed(true);
+    config->setDynamic(true);
+    auto linkConfig = LinkManager::instance()->addConfiguration(config);
+    QVERIFY(LinkManager::instance()->createConnectedLink(linkConfig));
+    _mockLink = qobject_cast<MockLink*>(linkConfig->link());
+    QVERIFY(_mockLink);
+    connect(_mockLink, &QObject::destroyed, this, [this]() { _mockLink = nullptr; });
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle(), 10000);
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QTRY_VERIFY_WITH_TIMEOUT(_vehicle->isInitialConnectComplete(), 15000);
+    verifyExpectedLogMessage();
+    QVERIFY(!_vehicle->parameterManager()->parametersReady());
+
+    {
+        QSettings journal;
+        journal.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+        journal.setValue(QStringLiteral("recoveryPending"), false);
+    }
+    QCOMPARE(ThrusterDirectControlController::pendingRecoveryNotice(), QString());
+}
+
+void ThrusterMappingIntegrationTest::_recoveryJournalIsStoredBeforeDisable()
+{
+    // A separate QSettings sees only what the tool has handed to the store, not what still sits in the
+    // Settings property cache. This checks the order of the hand-over, not that the file reached the disk.
+    const auto storedJournal = [] {
+        QSettings store;
+        store.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+        return QVariantList{store.value(QStringLiteral("recoveryPending"), false).toBool(),
+                            store.value(QStringLiteral("recoveryOutput"), -1).toInt(),
+                            store.value(QStringLiteral("recoveryFunction"), -1).toInt()};
+    };
+    QVariantList atDisable;
+    QVariantList afterRecovery;
+
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    MappingDialogFixture fixture;
+    QVERIFY2(fixture.dialog, qPrintable(fixture.error));
+    QVERIFY(freshMockTraffic(_mockLink, _vehicle));
+    auto* controller = fixture.controller();
+    QVERIFY(controller);
+    controller->setTimingsForTest(1, 2000, 1000);
+    fixture.dialog->setProperty("testMode", 1);
+    fixture.dialog->setProperty("testEnabled", true);
+    QVERIFY(fixture.dialog->property("canStartDirectTest").toBool());
+    connect(controller, &ThrusterDirectControlController::functionWriteRequested, this,
+            [&atDisable, storedJournal](int value) {
+                if (value == 0 && atDisable.isEmpty()) {
+                    atDisable = storedJournal();
+                }
+            });
+    // The tool's own handler is connected first, so it has already cleared the record here.
+    connect(controller, &ThrusterDirectControlController::recoveryCompleted, this,
+            [&afterRecovery, storedJournal]() { afterRecovery = storedJournal(); });
+
+    expectAppMessage(rebootNotice());
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "startDirectServoTest", Q_ARG(QVariant, QVariant(1))));
+    QTRY_VERIFY2_WITH_TIMEOUT(!afterRecovery.isEmpty(), qPrintable(controllerDiagnostics(controller, _mockLink)), 15000);
+    verifyExpectedLogMessage();
+    QCOMPARE(atDisable, (QVariantList{true, 1, 33}));
+    QCOMPARE(afterRecovery.first().toBool(), false);
+}
+
+void ThrusterMappingIntegrationTest::_recordWithoutSerialNumberNeedsManualConfirmation()
+{
+    auto* const allowManual = SettingsManager::instance()->appSettings()->allowManualOutputRecovery();
+    const QVariant previousAllow = allowManual->rawValue();
+    const auto restoreAllow = qScopeGuard([&]() { allowManual->setRawValue(previousAllow); });
+    allowManual->setRawValue(true);
+
+    // The flight controller reports no serial number, and an earlier run left SERVO1 disabled.
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    QCOMPARE(_vehicle->vehicleUID(), quint64(0));
+    Fact* const function = _vehicle->parameterManager()->getParameter(-1, QStringLiteral("SERVO1_FUNCTION"));
+    QVERIFY(function);
+    expectAppMessage(rebootNotice());
+    function->setRawValue(0);
+    QTRY_COMPARE_WITH_TIMEOUT(
+        _mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0, 5000);
+    verifyExpectedLogMessage();
+    {
+        QSettings journal;
+        journal.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+        journal.setValue(QStringLiteral("recoveryPending"), true);
+        journal.setValue(QStringLiteral("recoveryVehicleId"), _vehicle->id());
+        journal.setValue(QStringLiteral("recoveryVehicleUid"), QString());
+        journal.setValue(QStringLiteral("recoveryOutput"), 1);
+        journal.setValue(QStringLiteral("recoveryFunction"), 33);
+        journal.setValue(QStringLiteral("recoveryTimestamp"), QStringLiteral("2026-10-11 09:00"));
+        journal.setValue(QStringLiteral("recoveryNeutralPwm"), 1500);
+        journal.setValue(QStringLiteral("recoveryOperation"), QStringLiteral("thruster"));
+    }
+
+    MappingDialogFixture fixture;
+    QVERIFY2(fixture.dialog, qPrintable(fixture.error));
+    QVERIFY(freshMockTraffic(_mockLink, _vehicle));
+    auto* controller = fixture.controller();
+    auto* settings = fixture.settings();
+    QVERIFY(controller && settings);
+    controller->setTimingsForTest(1, 2000, 1000);
+    QVERIFY(settings->property("recoveryPending").toBool());
+    QObject* recover = dialogItem(fixture.dialog.get(), QStringLiteral("outputRecovery"));
+    QVERIFY(recover);
+
+    // Nothing can prove that the record belongs to this vehicle, so the tool refuses on its own...
+    QVERIFY(!recover->property("enabled").toBool());
+
+    // ...and with the setting off there is no way around that.
+    allowManual->setRawValue(false);
+    QVERIFY(!fixture.dialog->property("recoveryManualConfirmAvailable").toBool());
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(!recover->property("enabled").toBool());
+
+    // With it on, the operator has to confirm twice before the recovery is offered.
+    allowManual->setRawValue(true);
+    QVERIFY(fixture.dialog->property("recoveryManualConfirmAvailable").toBool());
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(!recover->property("enabled").toBool());
+    QVERIFY(fixture.dialog->property("directServoStatusText").toString().contains(QStringLiteral("2026-10-11 09:00")));
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(recover->property("enabled").toBool());
+
+    // Switching the setting off afterwards withdraws the permission, not only the offer. The operator's
+    // statement that the record belongs to this vehicle stands, so the record cannot be discarded either.
+    allowManual->setRawValue(false);
+    QVERIFY(!recover->property("enabled").toBool());
+    _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "recoverPendingServoFunction"));
+    QCOMPARE(controller->state(), ThrusterDirectControlController::Idle);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0);
+    QVERIFY(settings->property("recoveryPending").toBool());
+    QVariant discardable;
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "recoveryJournalCanBeDiscarded",
+                                      Q_RETURN_ARG(QVariant, discardable)));
+    QVERIFY(!discardable.toBool());
+    allowManual->setRawValue(true);
+    QVERIFY(recover->property("enabled").toBool());
+
+    // A change of the active vehicle withdraws the confirmation itself: it was given for one session with
+    // one vehicle in front of the operator.
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "revokeManualRecoveryConfirmation"));
+    QVERIFY(!recover->property("enabled").toBool());
+    QVERIFY(fixture.dialog->property("recoveryManualConfirmAvailable").toBool());
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(recover->property("enabled").toBool());
+
+    // The recovery itself is the normal one: neutral first, then the original function.
+    _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "recoverPendingServoFunction"));
+    QTRY_VERIFY2_WITH_TIMEOUT(controller->state() == ThrusterDirectControlController::Idle,
+                              qPrintable(controllerDiagnostics(controller, _mockLink)), 5000);
+    // A recovery knows nothing about earlier PWM commands, so it asks for neutral twice.
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 2);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+    QVERIFY(!settings->property("recoveryPending").toBool());
+}
+
 void ThrusterMappingIntegrationTest::_wiringRecordsAreScopedToVehicleUid()
 {
     const auto recordPort = [](QObject* dialog, const QString& text) {
@@ -768,17 +955,12 @@ void ThrusterMappingIntegrationTest::_functionSaveReadsBackAndRejectsStaleValues
     QCOMPARE(confirmation->property("targetValue").toInt(), 34);
     QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 0);
     if (outcome == 0) {
-        QDir projectRoot(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath());
-        QVERIFY(projectRoot.cdUp());
-        QVERIFY(projectRoot.cdUp());
-        const QString previews = projectRoot.filePath(QStringLiteral(".tmp/codex/output-tool-preview"));
-        QVERIFY(QDir().mkpath(previews));
         QSignalSpy frames(fixture.window.get(), &QQuickWindow::frameSwapped);
         fixture.window->requestUpdate();
         QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 3000);
         const QImage image = fixture.window->grabWindow();
         QVERIFY(!image.isNull());
-        QVERIFY(image.save(QDir(previews).filePath(QStringLiteral("function-confirmation.png"))));
+        QVERIFY(image.save(QDir::current().filePath(QStringLiteral("output-tool-function-confirmation.png"))));
         QObject* cancel = dialogItem(confirmation, QStringLiteral("popupDialog_rejectButton"));
         QVERIFY(cancel && cancel->property("enabled").toBool());
         QVERIFY(QMetaObject::invokeMethod(cancel, "clicked"));
@@ -826,7 +1008,10 @@ void ThrusterMappingIntegrationTest::_functionSaveReadsBackAndRejectsStaleValues
     QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 2000);
     const int expected = outcome == 0 ? 34 : (outcome == 1 ? 35 : 33);
     QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), expected);
-    QCOMPARE(function->rawValue().toInt(), expected);
+    // After a rejected write the parameter manager reads the value back in a state machine of its own,
+    // which may not have started yet when the one above has finished. Until then the ground value is
+    // still the optimistic one.
+    QTRY_COMPARE_WITH_TIMEOUT(function->rawValue().toInt(), expected, 5000);
     if (outcome == 0) {
         QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 1);
         QVERIFY(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_REQUEST_READ) >= 2);
@@ -986,11 +1171,6 @@ void ThrusterMappingIntegrationTest::_desktopDialogTabs()
     QVERIFY(!testAction->isVisible());
     QVERIFY(!fixture.dialog->property("testEnabled").toBool());
 
-    QDir projectRoot(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath());
-    QVERIFY(projectRoot.cdUp());
-    QVERIFY(projectRoot.cdUp());
-    const QString previews = projectRoot.filePath(QStringLiteral(".tmp/codex/output-tool-preview"));
-    QVERIFY(QDir().mkpath(previews));
     const QStringList names{QStringLiteral("records"), QStringLiteral("motor-test"), QStringLiteral("advanced")};
     QSignalSpy frames(fixture.window.get(), &QQuickWindow::frameSwapped);
     for (int index = 0; index < names.size(); ++index) {
@@ -1001,7 +1181,7 @@ void ThrusterMappingIntegrationTest::_desktopDialogTabs()
         QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 3000);
         const QImage image = fixture.window->grabWindow();
         QVERIFY(!image.isNull());
-        QVERIFY(image.save(QDir(previews).filePath(names.at(index) + QStringLiteral(".png"))));
+        QVERIFY(image.save(QDir::current().filePath(QStringLiteral("output-tool-%1.png").arg(names.at(index)))));
     }
     QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_COMPONENT_ARM_DISARM), 0);
     QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_MOTOR_TEST), 0);

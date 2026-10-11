@@ -1,5 +1,6 @@
 #include "ThrusterDirectControlController.h"
 
+#include <QtCore/QSettings>
 #include <QtCore/QtMath>
 #include <cmath>
 #include <limits>
@@ -405,7 +406,7 @@ void ThrusterDirectControlController::_parameterConfirmed(double rawValue)
     _stopParameterWait();
     if (_state == WaitingDisable) {
         if (_stopRequested && !_recovering) {
-            requestRestore(_failureReason);
+            _requestRestore(_failureReason);
         } else {
             _setState(DisableSettling);
             _settleTimer.start(_settleMs);
@@ -495,7 +496,7 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
                 _setState(Testing);
             }
         } else if (failureCode == Vehicle::MavCmdResultCommandResultOnly) {
-            requestRestore(tr("飞控拒绝测试 PWM 指令"));
+            _requestRestore(tr("飞控拒绝测试 PWM 指令"));
         } else {
             _requireRecovery(tr("PWM 指令结果不明确，未确认回中"));
         }
@@ -503,7 +504,7 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
     }
     if (_state == WaitingNeutralAck) {
         if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
-            requestRestore(QString());
+            _requestRestore(QString());
         } else {
             _requireRecovery(tr("PWM 回中未确认，请保持上锁后恢复异常通道"));
         }
@@ -534,7 +535,7 @@ void ThrusterDirectControlController::abort(const QString& reason)
     if (_state == Testing) {
         _beginNeutral();
     } else if (_state == DisableSettling && !_recovering) {
-        requestRestore(reason);
+        _requestRestore(reason);
     }
     // A pending PARAM_SET or SET_SERVO must resolve before sending another
     // command of the same kind. The completion path honors _stopRequested.
@@ -549,7 +550,7 @@ void ThrusterDirectControlController::finishTest()
     }
 }
 
-void ThrusterDirectControlController::requestRestore(const QString& reason)
+void ThrusterDirectControlController::_requestRestore(const QString& reason)
 {
     if (_state == SavingFunction) {
         abort(reason);
@@ -576,12 +577,30 @@ void ThrusterDirectControlController::requestRestore(const QString& reason)
     _writeFunction(_originalFunction);
 }
 
+QString ThrusterDirectControlController::pendingRecoveryNotice()
+{
+    // The record is written by the Settings object of ThrusterMappingTool.qml under these keys.
+    QSettings journal;
+    journal.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+    if (!journal.value(QStringLiteral("recoveryPending"), false).toBool()) {
+        return QString();
+    }
+    return tr("检测到未完成的输出测试记录：SERVO%1，原功能 %2，记录于 %3。"
+              "如果现在没有输出测试在进行，这一路可能仍处于禁用状态。请先核对记录是否属于当前连接的机器人，"
+              "再在参数页的工具菜单打开“输出测试与接线记录”，用“恢复异常通道”恢复；恢复前不要下水。")
+        .arg(journal.value(QStringLiteral("recoveryOutput"), -1).toInt())
+        .arg(journal.value(QStringLiteral("recoveryFunction"), -1).toInt())
+        .arg(journal.value(QStringLiteral("recoveryTimestamp")).toString());
+}
+
+#ifdef QGC_UNITTEST_BUILD
 void ThrusterDirectControlController::reportParameterUnavailable(const QString& reason)
 {
     if (busy()) {
         _parameterFailed(reason);
     }
 }
+#endif
 
 void ThrusterDirectControlController::_vehicleUnavailable()
 {

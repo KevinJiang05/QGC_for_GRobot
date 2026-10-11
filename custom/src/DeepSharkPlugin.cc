@@ -20,6 +20,8 @@
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
 #include "DeepSharkConnectionMonitor.h"
+#include "MultiVehicleManager.h"
+#include "QGCApplication.h"
 
 Q_APPLICATION_STATIC(DeepSharkPlugin, _deepSharkPluginInstance);
 
@@ -59,6 +61,23 @@ void DeepSharkPlugin::init()
     qmlRegisterType<ThrusterMappingExportController>("DeepShark", 1, 0, "ThrusterMappingExportController");
     qmlRegisterType<ThrusterDirectControlController>("DeepShark", 1, 0, "ThrusterDirectControlController");
     _initAIDetection();
+    // Unit tests call init() repeatedly, so the connection is unique. Every change to another vehicle
+    // checks the record again.
+    connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this,
+            &DeepSharkPlugin::_activeVehicleChanged, Qt::UniqueConnection);
+}
+
+void DeepSharkPlugin::_activeVehicleChanged(Vehicle *vehicle)
+{
+    if (!vehicle) {
+        return;
+    }
+    // The tool that owns the record is closed after a restart, so nothing else would show it. The record
+    // is local, so this does not wait for parameters, which an armed or failing vehicle may never deliver.
+    const QString notice = ThrusterDirectControlController::pendingRecoveryNotice();
+    if (!notice.isEmpty()) {
+        qgcApp()->showAppMessage(notice, tr("输出测试未完成"));
+    }
 }
 
 void DeepSharkPlugin::_initAIDetection()

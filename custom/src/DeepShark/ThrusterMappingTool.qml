@@ -83,6 +83,37 @@ QGCPopupDialog {
     readonly property string directServoState: directControl.stateName
     readonly property string directServoFailureReason: directControl.failureReason
     property bool   recoveryDiscardConfirmation: false
+    // A record without a serial number cannot be matched to a vehicle. The operator may vouch for it,
+    // for this session only, unless that is switched off in the application settings.
+    property bool   recoveryManualConfirmed: false
+    property bool   recoveryManualConfirmation: false
+    readonly property bool recoveryManualConfirmAvailable: mappingSettings.recoveryPending && vehicleReady
+                                                && recoveryVehicleObject === null
+                                                && mappingSettings.recoveryVehicleUid.length === 0
+                                                && mappingSettings.recoveryVehicleId === activeVehicle.id
+                                                && !recoveryManualConfirmed && !directControl.busy
+                                                && manualRecoveryAllowed
+    readonly property bool manualRecoveryAllowed: QGroundControl.settingsManager.appSettings.allowManualOutputRecovery.rawValue
+    // The record is tied to this vehicle only by the operator's word, so the recovery needs the setting.
+    readonly property bool recoveryRestsOnManualConfirmation: mappingSettings.recoveryPending
+                                                && recoveryVehicleObject === null
+                                                && mappingSettings.recoveryVehicleUid.length === 0
+    readonly property bool recoveryPermitted: !recoveryRestsOnManualConfirmation || manualRecoveryAllowed
+
+    onManualRecoveryAllowedChanged: {
+        if (!manualRecoveryAllowed) {
+            // A half-given confirmation is dropped. A completed one stays as the operator's statement about
+            // the vehicle, which keeps the record from being discarded, but it no longer permits a recovery.
+            manualRecoveryConfirmTimer.stop()
+            recoveryManualConfirmation = false
+        }
+    }
+
+    function revokeManualRecoveryConfirmation() {
+        manualRecoveryConfirmTimer.stop()
+        recoveryManualConfirmation = false
+        recoveryManualConfirmed = false
+    }
     property var    recoveryVehicleObject: null
     property bool   disarmRequested:     false
     property bool   closeAfterSafeShutdown: false
@@ -170,9 +201,8 @@ QGCPopupDialog {
         }
 
         onOriginalFunctionConfirmed: (output, originalFunction) => {
+            // The backup is in the store before the controller writes Disabled.
             root.saveRecoveryJournal(output, originalFunction)
-            // Flush the backup before the controller writes Disabled.
-            mappingSettings.sync()
         }
 
         onTestRejected: (reason) => {
@@ -302,6 +332,7 @@ QGCPopupDialog {
             return
         }
 
+        root.revokeManualRecoveryConfirmation()
         if (root.testSessionOwned || root.directServoBusy() || root.runningOutput !== -1) {
             root.beginSafeShutdown(false, qsTr("活动载具已切换"))
         } else {
@@ -733,7 +764,30 @@ QGCPopupDialog {
                     && root.activeVehicle.vehicleUIDStr === mappingSettings.recoveryVehicleUid
         }
 
-        return false
+        return root.recoveryManualConfirmed
+    }
+
+    function confirmRecoveryVehicleManually() {
+        if (!root.recoveryManualConfirmAvailable) {
+            return
+        }
+        if (!root.recoveryManualConfirmation) {
+            var fact = directControl.getParameterFact(-1, root.servoParamName(mappingSettings.recoveryOutput), false)
+            root.recoveryManualConfirmation = true
+            root.directServoStatusText = qsTr("恢复记录没有序列号可比对。记录：载具编号 %1，SERVO%2，原功能 %3，记录于 %4。当前：载具编号 %5，该路功能现值 %6。确认是同一台机器人后，再次点击“确认是这台机器人”。")
+                    .arg(mappingSettings.recoveryVehicleId)
+                    .arg(mappingSettings.recoveryOutput)
+                    .arg(mappingSettings.recoveryFunction)
+                    .arg(mappingSettings.recoveryTimestamp)
+                    .arg(root.activeVehicle.id)
+                    .arg(fact ? fact.rawValue : qsTr("未知"))
+            manualRecoveryConfirmTimer.restart()
+            return
+        }
+        manualRecoveryConfirmTimer.stop()
+        root.recoveryManualConfirmation = false
+        root.recoveryManualConfirmed = true
+        root.directServoStatusText = qsTr("已人工确认恢复记录属于当前机器人。请保持飞控上锁并使用“恢复异常通道”。")
     }
 
     function saveRecoveryJournal(outputNumber, originalFunction) {
@@ -748,6 +802,21 @@ QGCPopupDialog {
         mappingSettings.recoveryTimestamp = new Date().toLocaleString()
         mappingSettings.recoveryPending = true
         root.recoveryVehicleObject = root.activeVehicle
+        root.recoveryManualConfirmed = false
+        root.recoveryManualConfirmation = false
+        root.storeRecoveryJournal()
+    }
+
+    // Settings writes assigned properties only after a delay, and sync() does not flush them. The
+    // recovery record must not wait for that: a crash in between would leave an output disabled with
+    // no record of it.
+    function storeRecoveryJournal() {
+        const keys = ["recoveryPending", "recoveryVehicleId", "recoveryVehicleUid", "recoveryOutput",
+                      "recoveryFunction", "recoveryTimestamp", "recoveryNeutralPwm", "recoveryOperation"]
+        for (const key of keys) {
+            mappingSettings.setValue(key, mappingSettings[key])
+        }
+        mappingSettings.sync()
     }
 
     function clearRecoveryJournal() {
@@ -762,7 +831,10 @@ QGCPopupDialog {
         mappingSettings.recoveryNeutralPwm = 1500
         mappingSettings.recoveryOperation = "thruster"
         root.recoveryVehicleObject = null
-        mappingSettings.sync()
+        root.recoveryManualConfirmed = false
+        root.recoveryManualConfirmation = false
+        manualRecoveryConfirmTimer.stop()
+        root.storeRecoveryJournal()
     }
 
     function directServoBusy() {
@@ -892,6 +964,11 @@ QGCPopupDialog {
         if (!root.vehicleReady || !root.recoveryMatchesSession() || root.directServoBusy() || root.runningOutput !== -1
                 || root.armingRequested || root.disarmRequested || root.disarmUnconfirmed) {
             root.directServoStatusText = qsTr("恢复记录与当前载具不匹配，已拒绝写入。")
+            return
+        }
+
+        if (!root.recoveryPermitted) {
+            root.directServoStatusText = qsTr("这条恢复记录没有序列号，只能凭人工确认恢复，而人工确认恢复已在系统设置里关闭；未写入飞控。")
             return
         }
 
@@ -1207,6 +1284,13 @@ QGCPopupDialog {
     }
 
     Timer {
+        id:         manualRecoveryConfirmTimer
+        interval:   20000 // Long enough to read and compare the record.
+        repeat:     false
+        onTriggered: root.recoveryManualConfirmation = false
+    }
+
+    Timer {
         id:         testCooldown
         interval:   1000
         repeat:     true
@@ -1334,6 +1418,7 @@ QGCPopupDialog {
                     && mappingSettings.recoveryVehicleUid.length === 0
                     && Number(root.activeVehicle.vehicleUID) > 0) {
                 mappingSettings.recoveryVehicleUid = root.activeVehicle.vehicleUIDStr
+                root.storeRecoveryJournal()
             }
         }
     }
@@ -1532,10 +1617,17 @@ QGCPopupDialog {
             QGCButton {
                 objectName: "outputRecovery"
                 text:       qsTr("恢复异常通道")
-                enabled:    root.vehicleReady && root.recoveryMatchesSession()
+                enabled:    root.vehicleReady && root.recoveryMatchesSession() && root.recoveryPermitted
                                 && root.activeVehicle && !root.activeVehicle.armed && !root.directServoBusy()
                                 && !root.disarmRequested && !root.disarmUnconfirmed && !root.armingRequested
                 onClicked:  root.recoverPendingServoFunction()
+            }
+
+            QGCButton {
+                objectName: "outputRecoveryManualConfirm"
+                visible:    root.recoveryManualConfirmAvailable
+                text:       root.recoveryManualConfirmation ? qsTr("确认是这台机器人") : qsTr("没有序列号，人工确认")
+                onClicked:  root.confirmRecoveryVehicleManually()
             }
 
             QGCButton {

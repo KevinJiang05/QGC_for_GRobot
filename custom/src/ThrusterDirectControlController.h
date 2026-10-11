@@ -66,11 +66,13 @@ public:
     Q_INVOKABLE bool beginFunctionSave(int output, int expectedOriginal, int newFunction);
     Q_INVOKABLE void abort(const QString& reason);
     Q_INVOKABLE void finishTest();
-    Q_INVOKABLE void requestRestore(const QString& reason);
-    Q_INVOKABLE void reportParameterUnavailable(const QString& reason);
     Q_INVOKABLE bool reset();
 
+    /// Operator notice for an output test that an earlier run left unfinished; empty when no record is pending.
+    static QString pendingRecoveryNotice();
+
 #ifdef QGC_UNITTEST_BUILD
+    void reportParameterUnavailable(const QString& reason);
     void setTimingsForTest(int settleMs, int commandTimeoutMs, int parameterTimeoutMs);
     void observeParameterState(double rawValue, bool pendingWrites);
     void handleCommandResult(int ackResult, int failureCode = 0);
@@ -110,6 +112,9 @@ private:
     void _vehicleUnavailable();
     bool _vehicleUsable(bool requireDisarmed) const;
     void _stopParameterWait();
+    // Writes the original function back without sending neutral; only valid before a test PWM was sent
+    // or after neutral was confirmed, which is why it is not exposed to QML.
+    void _requestRestore(const QString& reason);
     void _beginNeutral();
     void _requireRecovery(const QString& reason);
     void _completeRecovery();

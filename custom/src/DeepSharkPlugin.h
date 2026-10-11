@@ -17,6 +17,7 @@ class AIDetectionReceiver;
 class DeepSharkAuvController;
 class DeepSharkVideoSettings;
 class QQmlApplicationEngine;
+class Vehicle;
 
 class DeepSharkOverrideInterceptor;
 
@@ -44,6 +45,9 @@ public:
     QString stableVersionCheckFileUrl() const final { return QString(); }
     QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent) final;
     void destroyQmlApplicationEngine(QQmlApplicationEngine* qmlEngine) final;
+
+private slots:
+    void _activeVehicleChanged(Vehicle *vehicle);
 
 private:
     void _initAIDetection();

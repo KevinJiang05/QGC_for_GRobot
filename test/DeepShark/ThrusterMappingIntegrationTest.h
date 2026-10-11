@@ -18,6 +18,9 @@ private slots:
     void _safeEndWaitsForPendingArmAndDisarms();
     void _freshBackupOverridesStaleCache();
     void _backupReadFailureDoesNotCreateRecoveryJournal();
+    void _unfinishedRecoveryIsAnnouncedOnConnect();
+    void _recoveryJournalIsStoredBeforeDisable();
+    void _recordWithoutSerialNumberNeedsManualConfirmation();
     void _wiringRecordsAreScopedToVehicleUid();
     void _unknownUidRecordsStayInSession();
     void _functionSaveReadsBackAndRejectsStaleValues_data();

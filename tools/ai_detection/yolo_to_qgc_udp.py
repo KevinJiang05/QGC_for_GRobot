@@ -15,6 +15,10 @@ from typing import Any
 
 from ai_detection_core import LatestFrameReader, clean_source, collect_due_frames
 
+# QGC rejects a whole packet that carries more boxes (AIDetectionReceiver kMaxDetectionsPerPacket).
+MAX_DETECTIONS_PER_PACKET = 64
+
+
 def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, value))
 
@@ -45,6 +49,10 @@ def _build_payload(result: Any, source_id: str) -> dict[str, Any]:
                     "h": _clamp_unit(height / frame_height),
                 }
             )
+
+    if len(detections) > MAX_DETECTIONS_PER_PACKET:
+        detections.sort(key=lambda detection: detection["confidence"], reverse=True)
+        del detections[MAX_DETECTIONS_PER_PACKET:]
 
     return {
         "timestamp": time.time(),

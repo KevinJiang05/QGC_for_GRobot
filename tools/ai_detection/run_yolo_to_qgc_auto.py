@@ -45,7 +45,8 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
         if not settings_file.exists():
             continue
 
-        parser = configparser.ConfigParser()
+        # QSettings stores values verbatim; a percent-encoded URL is not an interpolation.
+        parser = configparser.ConfigParser(interpolation=None)
         parser.optionxform = str
         parser.read(settings_file, encoding="utf-8")
         if not parser.has_section("DeepShark"):
@@ -54,6 +55,10 @@ def _read_sources(settings_file_arg: str | None) -> list[tuple[str, str]]:
         sources: list[tuple[str, str]] = []
         section = parser["DeepShark"]
         for index in range(1, 5):
+            # QGC treats a missing switch as enabled.
+            enabled = section.get(f"Video\\Camera{index}Enabled", "true").strip().lower()
+            if enabled in ("false", "0"):
+                continue
             url = clean_source(section.get(f"Video\\Camera{index}Url", ""))
             if url:
                 sources.append((f"deepSharkVideo{index}", url))

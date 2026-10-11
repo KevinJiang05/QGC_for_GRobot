@@ -316,6 +316,10 @@ void AIDetectionManager::_detectFinished(int exitCode)
 
 void AIDetectionManager::_detectError(QProcess::ProcessError error)
 {
+    if (_stopRequested && error == QProcess::Crashed) {
+        // Killing the process on request is reported as a crash; the finished handler sets the real status.
+        return;
+    }
     if (_detectProcess) {
         _setStatusText(tr("AI detection process error: %1").arg(_detectProcess->errorString()));
     }
@@ -427,12 +431,17 @@ void AIDetectionManager::_requestDetectionStop(bool restartAfterStop)
     _stopRequested = true;
     _setStatusText(restartAfterStop ? tr("Restarting AI detection...") : tr("Stopping AI detection..."));
     const QPointer<QProcess> process(_detectProcess);
+#ifdef Q_OS_WIN
+    // terminate() posts WM_CLOSE, which a console Python process never receives; waiting only delays the kill.
+    process->kill();
+#else
     process->terminate();
     QTimer::singleShot(3000, this, [this, process]() {
         if (process && process == _detectProcess && process->state() != QProcess::NotRunning) {
             process->kill();
         }
     });
+#endif
 }
 
 void AIDetectionManager::_setStatusText(const QString &statusText)
@@ -467,11 +476,16 @@ void AIDetectionManager::_deleteProcess(QProcess *&process)
 
     disconnect(process, nullptr, this, nullptr);
     if (process->state() != QProcess::NotRunning) {
+#ifdef Q_OS_WIN
+        process->kill();
+        process->waitForFinished(1000);
+#else
         process->terminate();
         if (!process->waitForFinished(3000)) {
             process->kill();
             process->waitForFinished(1000);
         }
+#endif
     }
     delete process;
     process = nullptr;

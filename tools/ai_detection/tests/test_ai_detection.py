@@ -12,6 +12,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from ai_detection_core import clean_source, collect_due_frames, source_description  # noqa: E402
 from run_yolo_to_qgc_auto import _open_instance_lock, _read_sources  # noqa: E402
+from yolo_to_qgc_udp import MAX_DETECTIONS_PER_PACKET, _build_payload  # noqa: E402
 
 
 class _FakeReader:
@@ -113,6 +114,72 @@ class AIDetectionCoreTest(unittest.TestCase):
             self.assertEqual(_read_sources(str(explicit)), [])
             explicit.write_text("[DeepShark]\n", encoding="utf-8")
             self.assertEqual(_read_sources(str(explicit)), [])
+
+    def test_disabled_channels_are_not_opened(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings_file = Path(directory) / "selected.ini"
+            settings_file.write_text(
+                "[DeepShark]\n"
+                "Video\\Camera1Url=rtsp://192.0.2.10/camera1\n"
+                "Video\\Camera1Enabled=false\n"
+                "Video\\Camera2Url=rtsp://192.0.2.11/camera2\n"
+                "Video\\Camera2Enabled=true\n"
+                "Video\\Camera3Url=rtsp://192.0.2.12/camera3\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _read_sources(str(settings_file)),
+                [
+                    ("deepSharkVideo2", "rtsp://192.0.2.11/camera2"),
+                    ("deepSharkVideo3", "rtsp://192.0.2.12/camera3"),
+                ],
+            )
+
+    def test_percent_encoded_urls_are_read_verbatim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings_file = Path(directory) / "selected.ini"
+            settings_file.write_text(
+                "[DeepShark]\nVideo\\Camera1Url=rtsp://u:p%40x@192.0.2.10/camera1\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                _read_sources(str(settings_file)),
+                [("deepSharkVideo1", "rtsp://u:p%40x@192.0.2.10/camera1")],
+            )
+
+    def test_payload_keeps_the_most_confident_boxes_within_the_receiver_limit(self) -> None:
+        class Coordinates:
+            def tolist(self) -> list[float]:
+                return [10.0, 10.0, 50.0, 50.0]
+
+        class Scalar:
+            def __init__(self, value: float) -> None:
+                self.value = value
+
+            def __float__(self) -> float:
+                return float(self.value)
+
+            def __int__(self) -> int:
+                return int(self.value)
+
+        class Box:
+            def __init__(self, confidence: float) -> None:
+                self.xyxy = [Coordinates()]
+                self.conf = [Scalar(confidence)]
+                self.cls = [Scalar(0)]
+
+        class Result:
+            def __init__(self) -> None:
+                self.orig_shape = (720, 1280)
+                self.names = {0: "target"}
+                self.boxes = [Box(index / 100.0) for index in range(70)]
+
+        payload = _build_payload(Result(), "deepSharkVideo1")
+        self.assertEqual(len(payload["detections"]), MAX_DETECTIONS_PER_PACKET)
+        self.assertEqual(MAX_DETECTIONS_PER_PACKET, 64)
+        confidences = [detection["confidence"] for detection in payload["detections"]]
+        self.assertAlmostEqual(max(confidences), 0.69)
+        self.assertAlmostEqual(min(confidences), 0.06)
 
 
 if __name__ == "__main__":

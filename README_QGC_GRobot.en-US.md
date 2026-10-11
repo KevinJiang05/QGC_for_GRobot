@@ -273,7 +273,7 @@ When disabled, QGC may still receive UDP detection data, but the UI does not dra
 
 The customized ArduSub 4.8 firmware exposes firmware-backed button functions. The verified continuous Servo12 gripper setup uses `SERVO12_FUNCTION=187` (Actuator4), `BTN9_FUNCTION=116` (`actuator_4_dec`), and `BTN10_FUNCTION=115` (`actuator_4_inc`). Releasing either button keeps the current gripper position; safe PWM travel must be confirmed for each vehicle.
 
-See `docs/research/problem/Servo12机械爪手柄配置说明.md` for full parameters, direction, and speed adjustment. Before any first test, keep the flight controller disarmed, secure the vehicle, and clear the thruster and gripper area.
+Before any first test, keep the flight controller disarmed, secure the vehicle, and clear the thruster and gripper area.
 
 The three paths in the SERVO output scan tool are intentionally different:
 
@@ -291,7 +291,7 @@ For a non-invasive check:
 powershell -ExecutionPolicy Bypass -File .\tools\diagnostics\check-grobot-link.ps1
 ```
 
-If TCP is established but no vehicle appears, first check flight-controller power, crossed TX/RX plus common ground, the actual serial port's `SERIALx_PROTOCOL=2`, and `SERIALx_BAUD=57`. Do not repeatedly change QGC connection settings. See `docs/audits/flight_controller_connection_incident_2026-07-21.md` for the full incident review.
+If TCP is established but no vehicle appears, first check flight-controller power, crossed TX/RX plus common ground, the actual serial port's `SERIALx_PROTOCOL=2`, and `SERIALx_BAUD=57`. Do not repeatedly change QGC connection settings.
 
 ## Stability Model
 

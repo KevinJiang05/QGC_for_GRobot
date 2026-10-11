@@ -4,8 +4,8 @@
 
 本仓库是 QGroundControl `v5.1.5` 的定制版（DeepShark 水下机器人）。下方 `# AGENTS.md` 起是上游的通用说明，保留原文以便合并上游；与本节冲突时以本节为准。
 
-- 定制功能在 `custom/`，新功能默认放这里；改了上游目录的文件要在 `docs/audits/upstream_patch_inventory_2026-10-11.md` 登记。任务从相关的 `custom/` 代码读起，不必先读上游说明里的三个 "Critical Files"。
-- 分支和各目录的用途见 `docs/development/repository-maintenance.md`。提清理或重构建议前，先查 `docs/audits/` 里是否已有决定。
+- 定制功能在 `custom/`，新功能默认放这里；改了上游目录的文件要在 `docs/development/upstream_patch_inventory_2026-10-11.md` 登记。任务从相关的 `custom/` 代码读起，不必先读上游说明里的三个 "Critical Files"。
+- 分支和各目录的用途见 `docs/development/repository-maintenance.md`。提清理或重构建议前，先查 `docs/internal/audits/` 里是否已有决定。`docs/internal/` 放审计、交接和排查记录，已忽略，不随本仓库发布。
 - 构建用 `tools/debug/build-windows-debug.ps1`，在既有的 `build-v5.1.5-debug/` 上增量编译，说明见 `docs/debug/windows-v5.1.5-debug.md`。不新建构建目录，不全量重编；同一目录同一时间只跑一个构建或一套测试。上游的 `just` 配方默认用 `build/` 目录，不适用于本仓库。
 - 测试用 `ctest --test-dir build-v5.1.5-debug -C Debug --output-on-failure -R <名称>`。运行前要设置 Qt 和 GStreamer 的插件路径（`QT_PLUGIN_PATH`、`QT_QPA_PLATFORM_PLUGIN_PATH`、`QML_IMPORT_PATH`、`GST_PLUGIN_*`）以及 `QT_QPA_FONTDIR=C:\Windows\Fonts`；缺少字体目录时，QML 测试会因字体警告失败。界面测试需要原生窗口，直接运行测试程序并加 `--unittest:<名称> --onscreen`。
 - 静态检查用 `.venv/Scripts/pre-commit.exe`，缓存目录的设置见 `docs/debug/windows-v5.1.5-debug.md`。
@@ -19,7 +19,7 @@
 
 ## 复核触发项
 
-改动会改变以下内容的行为时，交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）；只改注释、文案或测试的不算。依据是 `docs/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
+改动会改变以下内容的行为时，交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）；只改注释、文案或测试的不算。依据是 `docs/internal/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
 
 - 向载具下发执行器或解锁类指令的路径：推进器输出直测与回中（`custom/src/ThrusterDirectControlController.*`、`custom/src/DeepShark/ThrusterMappingTool.qml`）、解锁、上锁与急停入口、手柄到控制量的映射。
 - 放宽或绕过安全限制的开关和判断："禁用安全限制"（`disableSetupSafetyRestrictions`、`ArmedSetupOverrideCapability`），以及 ArduSub 解锁检查和失联保护相关的参数页。

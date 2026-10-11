@@ -273,7 +273,7 @@ QGC 支持归一化框：
 
 本项目定制 ArduSub 4.8 固件可使用固件原生按钮函数。Servo12 机械爪已验证的连续控制方案是：`SERVO12_FUNCTION=187`（Actuator4）、`BTN9_FUNCTION=116`（`actuator_4_dec`）、`BTN10_FUNCTION=115`（`actuator_4_inc`）。松开按键后机械爪保持当前位置；实际 PWM 行程必须根据每台机器的机械限位确认。
 
-完整参数、方向和速度调整说明见 `docs/research/problem/Servo12机械爪手柄配置说明.md`。首次测试前必须确认飞控上锁、机器人固定、推进器和机械爪周边无人。
+首次测试前必须确认飞控上锁、机器人固定、推进器和机械爪周边无人。
 
 “SERVO 输出扫描向导”中三种测试方式不可混用：
 
@@ -291,7 +291,7 @@ QGC 支持归一化框：
 powershell -ExecutionPolicy Bypass -File .\tools\diagnostics\check-grobot-link.ps1
 ```
 
-若 TCP 已建立但没有载具，应优先检查飞控供电、串口 TX/RX 交叉和共地、实际 `SERIALx_PROTOCOL=2`、`SERIALx_BAUD=57`，而不是反复修改 QGC 连接配置。详细复盘见 `docs/audits/flight_controller_connection_incident_2026-07-21.md`。
+若 TCP 已建立但没有载具，应优先检查飞控供电、串口 TX/RX 交叉和共地、实际 `SERIALx_PROTOCOL=2`、`SERIALx_BAUD=57`，而不是反复修改 QGC 连接配置。
 
 ## 稳定性设计
 

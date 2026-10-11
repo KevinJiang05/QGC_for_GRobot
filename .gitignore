@@ -258,3 +258,6 @@ Qt*-linux*.tar.*
 !tools/debug/*.ps1
 !docs/debug/
 !docs/debug/*.md
+
+# Internal working notes (audits, handoffs, captures). Kept in a separate local repository.
+/docs/internal/

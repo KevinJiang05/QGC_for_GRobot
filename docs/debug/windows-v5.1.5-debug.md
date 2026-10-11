@@ -3,7 +3,7 @@
 本候选基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），保留 DeepShark 定制功能。
 升级前检查点为 `db9c9159631a271457a7d6c395deb50e2cf3c304`；长期开发分支统一为 `main`，版本及回退节点使用 tag 记录，见 [仓库维护说明](../development/repository-maintenance.md)。
 
-已执行的验证、此前失败/超时的修复及全量 lint 的保留问题，见 [Debug 验证记录](../audits/upstream_v5.1.5_debug_validation_2026-10-05.md)。
+已执行的验证、此前失败/超时的修复及全量 lint 的保留问题，记录在内部文档 `docs/internal/audits/upstream_v5.1.5_debug_validation_2026-10-05.md`（不随本仓库发布）。
 
 ## 启动
 
@@ -93,8 +93,8 @@ AI 页面的 Python 路径填 `D:\Develop\envs\yolo\Scripts\python.exe`，桥接
 `--settings-file` 时只使用该配置；选定配置没有视频地址时不回退读取其他应用。
 `StopDeepSharkQGC.cmd --list` 可先查看将停止的旧版、新 Debug 及相关子进程。
 
-升级遗漏的修复范围和证据见
-[迁移修复记录](../audits/upstream_v5.1.5_migration_repairs_2026-10-06.md)。
+升级遗漏的修复范围和证据记录在内部文档
+`docs/internal/audits/upstream_v5.1.5_migration_repairs_2026-10-06.md`（不随本仓库发布）。
 
 ## 简明实测清单
 

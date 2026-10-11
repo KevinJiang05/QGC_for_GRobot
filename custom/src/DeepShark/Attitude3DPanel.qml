@@ -12,6 +12,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 import QtQuick3D
 
+import DeepShark 1.0
 import QGroundControl
 import QGroundControl.Controls
 
@@ -22,12 +23,16 @@ Rectangle {
     property var vehicle: QGroundControl.multiVehicleManager.activeVehicle
     readonly property bool connected: vehicle !== null
     readonly property bool communicationLost: connected && vehicle.vehicleLinkManager.communicationLost
-    readonly property bool attitudeValid: connected && isFinite(vehicle.roll.rawValue)
+    // Attitude and depth values start at 0, so "level at the surface" only means something once the
+    // vehicle has reported it. Tests that feed a stand-in vehicle set these directly.
+    property bool attitudeReceived: telemetryArrival.attitudeReceived
+    property bool depthReceived: telemetryArrival.depthReceived
+    readonly property bool attitudeValid: connected && attitudeReceived && isFinite(vehicle.roll.rawValue)
                                          && isFinite(vehicle.pitch.rawValue) && isFinite(vehicle.heading.rawValue)
     readonly property real rollAngle: connected && isFinite(vehicle.roll.rawValue) ? vehicle.roll.rawValue : 0
     readonly property real pitchAngle: connected && isFinite(vehicle.pitch.rawValue) ? vehicle.pitch.rawValue : 0
     readonly property real headingAngle: connected && isFinite(vehicle.heading.rawValue) ? vehicle.heading.rawValue : 0
-    readonly property bool depthValid: connected && !communicationLost && !!vehicle.altitudeRelative
+    readonly property bool depthValid: connected && !communicationLost && depthReceived && !!vehicle.altitudeRelative
                                       && isFinite(vehicle.altitudeRelative.rawValue)
     readonly property real depthMeters: depthValid ? -vehicle.altitudeRelative.rawValue : NaN
     // The simplified model is about 330 units long; use an approximate 1.1 m visual scale.
@@ -51,6 +56,11 @@ Rectangle {
     signal expandRequested()
 
     Attitude3DViewState { id: localViewState }
+
+    DeepSharkTelemetryArrival {
+        id: telemetryArrival
+        vehicle: root.vehicle
+    }
 
     function synchronizeVehicle() {
         if (!componentReady) {

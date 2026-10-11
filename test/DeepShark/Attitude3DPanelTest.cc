@@ -2,12 +2,14 @@
 
 #include <QtCore/QDir>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QTimer>
 #include <QtCore/QtMath>
 #include <QtGui/QImage>
 #include <QtGui/QQuaternion>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
+#include <QtQml/QQmlProperty>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
@@ -17,6 +19,8 @@
 
 #include "ColoredSvgImageProvider.h"
 #include "QGCCorePlugin.h"
+#include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 namespace {
 class PanelFixture
@@ -57,13 +61,18 @@ public:
         setFact("heading", heading);
     }
 
-    std::unique_ptr<QObject> createPanel(QObject* state = nullptr)
+    /// The stand-in vehicle sends no messages, so its values count as received unless a test says otherwise.
+    std::unique_ptr<QObject> createPanel(QObject* state = nullptr, bool telemetryReceived = true)
     {
         QQmlComponent component(
             &engine, QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/Attitude3DPanel.qml")));
         QVariantMap properties{{QStringLiteral("vehicle"), QVariant::fromValue(vehicle.get())}};
         if (state) {
             properties.insert(QStringLiteral("viewState"), QVariant::fromValue(state));
+        }
+        if (telemetryReceived) {
+            properties.insert(QStringLiteral("attitudeReceived"), true);
+            properties.insert(QStringLiteral("depthReceived"), true);
         }
         auto panel = std::unique_ptr<QObject>(component.createWithInitialProperties(properties));
         error = component.errorString();
@@ -238,6 +247,79 @@ void Attitude3DPanelTest::_missingAndLostTelemetry()
     QCOMPARE(panel->property("attitudeStatus").toString(), QStringLiteral("等待飞控连接"));
 }
 
+void Attitude3DPanelTest::_telemetryMustArriveBeforeItIsShown()
+{
+    PanelFixture fixture;
+    Vehicle vehicle(MAV_AUTOPILOT_ARDUPILOTMEGA, MAV_TYPE_SUBMARINE, nullptr);
+    auto panel = fixture.createPanel(nullptr, false);
+    QVERIFY2(panel, qPrintable(fixture.error));
+    panel->setProperty("vehicle", QVariant::fromValue<QObject*>(&vehicle));
+    const auto clearVehicle = qScopeGuard([&panel] { panel->setProperty("vehicle", QVariant::fromValue<QObject*>(nullptr)); });
+
+    // The two steps Vehicle takes for a received message: update its own values, then publish the message.
+    const auto deliver = [&vehicle](const mavlink_message_t& message) {
+        vehicle.handleMessage(&vehicle, message);
+        emit vehicle.mavlinkMessageReceived(message);
+    };
+    const auto system = static_cast<uint8_t>(vehicle.id());
+    const auto autopilot = static_cast<uint8_t>(vehicle.compId());
+    const auto attitudeValid = [&panel] { return panel->property("attitudeValid").toBool(); };
+    const auto depthValid = [&panel] { return panel->property("depthValid").toBool(); };
+
+    // Level attitude and zero depth are what the values start with, not something the vehicle reported.
+    QCOMPARE(attitudeValid(), false);
+    QCOMPARE(panel->property("attitudeStatus").toString(), QStringLiteral("等待姿态数据"));
+    QCOMPARE(depthValid(), false);
+
+    mavlink_message_t message{};
+    mavlink_msg_heartbeat_pack(system, autopilot, &message, MAV_TYPE_SUBMARINE, MAV_AUTOPILOT_ARDUPILOTMEGA, 0, 0, 0);
+    deliver(message);
+    QCOMPARE(attitudeValid(), false);
+    QCOMPARE(depthValid(), false);
+
+    // Attitude from another component is not what the vehicle shows, so it does not count either.
+    mavlink_msg_attitude_pack(system, autopilot + 1, &message, 0, 0.2f, 0, 0, 0, 0, 0);
+    deliver(message);
+    QCOMPARE(vehicle.roll()->rawValue().toDouble(), 0.0);
+    QCOMPARE(attitudeValid(), false);
+
+    // An all-zero report from the autopilot is still a report.
+    mavlink_msg_attitude_pack(system, autopilot, &message, 0, 0, 0, 0, 0, 0, 0);
+    deliver(message);
+    QCOMPARE(attitudeValid(), true);
+    QCOMPARE(panel->property("attitudeStatus").toString(), QStringLiteral("姿态遥测"));
+    QCOMPARE(depthValid(), false);
+    mavlink_msg_altitude_pack(system, autopilot, &message, 0, 0, 0, 0, 0, 0, 0);
+    deliver(message);
+    QCOMPARE(depthValid(), true);
+
+    // A quaternion attitude with 30 degrees of roll. From here on the vehicle ignores Euler attitude.
+    const float halfRoll = qDegreesToRadians(15.0f);
+    const float noOffset[4] = {0, 0, 0, 0};
+    mavlink_msg_attitude_quaternion_pack(system, autopilot, &message, 0, std::cos(halfRoll), std::sin(halfRoll), 0, 0,
+                                         0, 0, 0, noOffset);
+    deliver(message);
+    QVERIFY(qAbs(vehicle.roll()->rawValue().toDouble() - 30.0) < 0.5);
+    QCOMPARE(attitudeValid(), true);
+
+    // After a link loss the old values say nothing about the vehicle.
+    emit vehicle.vehicleLinkManager()->communicationLostChanged(true);
+    QCOMPARE(attitudeValid(), false);
+    QCOMPARE(depthValid(), false);
+    emit vehicle.vehicleLinkManager()->communicationLostChanged(false);
+
+    // An Euler attitude now arrives but is ignored, so the 30 degrees on screen are still the old ones.
+    mavlink_msg_attitude_pack(system, autopilot, &message, 0, 0, 0, 0, 0, 0, 0);
+    deliver(message);
+    QVERIFY(qAbs(vehicle.roll()->rawValue().toDouble() - 30.0) < 0.5);
+    QCOMPARE(attitudeValid(), false);
+
+    mavlink_msg_attitude_quaternion_pack(system, autopilot, &message, 0, 1, 0, 0, 0, 0, 0, 0, noOffset);
+    deliver(message);
+    QVERIFY(qAbs(vehicle.roll()->rawValue().toDouble()) < 0.5);
+    QCOMPARE(attitudeValid(), true);
+}
+
 void Attitude3DPanelTest::_inertiaExposesTheSideAndSettles()
 {
     QQmlEngine engine;
@@ -352,6 +434,8 @@ void Attitude3DUITest::_previewWorkspaceRoundTrip()
         fixture.setAngles(22, -15, 135);
         fixture.setAltitude(-0.75);
         enlarged->setProperty("vehicle", QVariant::fromValue(fixture.vehicle.get()));
+        QQmlProperty(enlarged, QStringLiteral("attitudeReceived")).write(true);
+        QQmlProperty(enlarged, QStringLiteral("depthReceived")).write(true);
         QObject* body = enlarged->findChild<QObject*>(QStringLiteral("attitudeBody"));
         QVERIFY(body);
         QTRY_VERIFY_WITH_TIMEOUT(sameRotation(body->property("sceneRotation").value<QQuaternion>(),
@@ -438,6 +522,8 @@ void Attitude3DUITest::_previewWorkspaceRoundTrip()
         fixture.setAngles(22, -15, 135);
         fixture.setAltitude(-0.75);
         preview->setProperty("vehicle", QVariant::fromValue(fixture.vehicle.get()));
+        QQmlProperty(preview, QStringLiteral("attitudeReceived")).write(true);
+        QQmlProperty(preview, QStringLiteral("depthReceived")).write(true);
         QVERIFY(QMetaObject::invokeMethod(preview, "resetView"));
         QObject* body = preview->findChild<QObject*>(QStringLiteral("attitudeBody"));
         QVERIFY(body);

@@ -20,6 +20,7 @@
 #include "DeepSharkVideoController.h"
 #include "DeepSharkVideoSettings.h"
 #include "DeepSharkConnectionMonitor.h"
+#include "DeepSharkTelemetryArrival.h"
 #include "MultiVehicleManager.h"
 #include "QGCApplication.h"
 
@@ -58,6 +59,7 @@ void DeepSharkPlugin::init()
     qmlRegisterSingletonInstance("DeepShark", 1, 0, "DeepSharkConnectionMonitor", connectionMonitor);
     connectionMonitor->start();
     qmlRegisterType<DeepSharkVideoController>("DeepShark", 1, 0, "DeepSharkVideoController");
+    qmlRegisterType<DeepSharkTelemetryArrival>("DeepShark", 1, 0, "DeepSharkTelemetryArrival");
     qmlRegisterType<ThrusterMappingExportController>("DeepShark", 1, 0, "ThrusterMappingExportController");
     qmlRegisterType<ThrusterDirectControlController>("DeepShark", 1, 0, "ThrusterDirectControlController");
     _initAIDetection();

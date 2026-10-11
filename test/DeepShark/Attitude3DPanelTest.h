@@ -12,6 +12,7 @@ private slots:
     void _headingWrapUsesShortPath();
     void _viewStateSurvivesPanelRecreation();
     void _missingAndLostTelemetry();
+    void _telemetryMustArriveBeforeItIsShown();
     void _inertiaExposesTheSideAndSettles();
     void _springIsFrameRateIndependent();
     void _depthUsesSurfaceZero();

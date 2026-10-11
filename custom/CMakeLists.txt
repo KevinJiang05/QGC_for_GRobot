@@ -25,6 +25,8 @@ set(CUSTOM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoSettings.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkConnectionMonitor.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkConnectionMonitor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkTelemetryArrival.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkTelemetryArrival.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoController.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DeepSharkVideoController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThrusterMappingExportController.cc

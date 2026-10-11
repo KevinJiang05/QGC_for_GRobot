@@ -78,6 +78,12 @@ public:
     /// into the rcRSSI Fact. Called by Vehicle when an RC_CHANNELS message arrives.
     void updateRCRSSI(uint8_t rssi);
 
+signals:
+    /// A message was taken as the source of the attitude Facts, whether or not the values changed.
+    void attitudeAccepted();
+    /// A message was taken as the source of the relative altitude Fact, whether or not the value changed.
+    void altitudeRelativeAccepted();
+
 protected:
     void _handleAttitude(Vehicle *vehicle, const mavlink_message_t &message);
     void _handleAttitudeQuaternion(Vehicle *vehicle, const mavlink_message_t &message);

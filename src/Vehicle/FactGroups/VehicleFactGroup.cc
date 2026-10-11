@@ -124,6 +124,7 @@ void VehicleFactGroup::_handleAttitudeWorker(double rollRadians, double pitchRad
     roll()->setRawValue(rollDegrees);
     pitch()->setRawValue(pitchDegrees);
     heading()->setRawValue(yawDegrees);
+    emit attitudeAccepted();
 }
 
 void VehicleFactGroup::_handleAttitude(Vehicle *vehicle, const mavlink_message_t &message)
@@ -153,6 +154,7 @@ void VehicleFactGroup::_handleAltitude(const mavlink_message_t &message)
     _altitudeMessageAvailable = true;
     altitudeRelative()->setRawValue(altitude.altitude_relative);
     altitudeAMSL()->setRawValue(altitude.altitude_amsl);
+    emit altitudeRelativeAccepted();
 
     _setTelemetryAvailable(true);
 }

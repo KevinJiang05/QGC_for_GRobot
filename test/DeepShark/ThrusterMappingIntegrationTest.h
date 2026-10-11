@@ -13,6 +13,11 @@ private slots:
     void _abortWaitsForPendingPwmAck();
     void _parameterRejectionCannotConfirmDisable();
     void _missingNeutralAckKeepsQmlRecoveryJournal();
+    void _linkLossAndReturnSendNeutralAgain();
+    void _linkReturnLeavesAReassignedOutputAlone();
+    void _linkLossLeavesALiveReassignedOutputAlone();
+    void _delayedReissueChecksTheOutputAgain();
+    void _lateTestReplyIsNotTakenForNeutral();
     void _qmlModesAndDisconnectedExport();
     void _safeEndWaitsForPendingArmAndDisarms_data();
     void _safeEndWaitsForPendingArmAndDisarms();

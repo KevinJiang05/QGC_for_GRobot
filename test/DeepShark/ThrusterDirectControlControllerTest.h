@@ -10,6 +10,13 @@ private slots:
     void _happyPathRestoresOriginalFunction();
     void _rejectedTestCommandRestoresWithoutTesting();
     void _commandAndRestoreTimeoutRequireRecovery();
+    void _lostNeutralIsSentAgain();
+    void _neutralAttemptsAreBounded();
+    void _duplicateNeutralGoesStraightToRecovery();
+    void _recoveryRemembersItsOutput();
+    void _confirmedNeutralForgetsTheOutput();
+    void _unansweredTestPwmNeedsTwoAcceptedNeutrals();
+    void _secondNeutralConfirmationStaysWithinTheBudget();
     void _abortRestoresBeforeOutputStarts();
     void _noResponseSendsNeutralBeforeRestoringDisabled();
     void _abortWaitsForPendingCommandResult();

@@ -200,6 +200,14 @@ QGCPopupDialog {
             root.directServoStatusText = qsTr("恢复尚未确认：%1。请保持飞控上锁并使用“恢复异常通道”。").arg(reason)
         }
 
+        onNeutralReissueSkipped: (output) => {
+            root.directServoStatusText = qsTr("链路已恢复，但无法确认 SERVO%1 仍处于禁用状态，没有自动发送回中。请保持飞控上锁并使用“恢复异常通道”。").arg(output)
+        }
+
+        onNeutralReissued: (output) => {
+            root.directServoStatusText = qsTr("已再次向 SERVO%1 发送回中指令，但没有确认。请保持飞控上锁并使用“恢复异常通道”。").arg(output)
+        }
+
         onOriginalFunctionConfirmed: (output, originalFunction) => {
             // The backup is in the store before the controller writes Disabled.
             root.saveRecoveryJournal(output, originalFunction)

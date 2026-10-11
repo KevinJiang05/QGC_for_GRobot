@@ -46,7 +46,8 @@ add_qgc_test(DeepSharkVideoControllerTest LABELS Unit DeepShark ENV_MODIFICATION
 
 add_qgc_test(ThrusterDirectControlControllerTest LABELS Unit DeepShark)
 
-add_qgc_test(ThrusterMappingIntegrationTest LABELS Integration DeepShark)
+# The link loss and recovery cases each wait for a real heartbeat timeout or command timeout.
+add_qgc_test(ThrusterMappingIntegrationTest LABELS Integration DeepShark TIMEOUT 420)
 
 add_qgc_test(APMGimbalCompatibilityTest LABELS Unit DeepShark)
 

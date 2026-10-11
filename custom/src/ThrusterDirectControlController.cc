@@ -13,6 +13,13 @@
 
 namespace {
 
+// DO_SET_SERVO is sent once by the vehicle's command queue, and a disabled output holds its last PWM
+// with no timeout on the vehicle. A lost neutral therefore has to be repeated from here. This is the
+// number of neutrals one session may send, whatever the reason for sending another one.
+constexpr int kNeutralSendAttempts = 4;
+constexpr int kReissueChecks = 8;
+constexpr int kReissueCheckIntervalMs = 500;
+
 // The vehicle owns callbacks until its command queue has finished or is destroyed.
 // Closing the dialog therefore cannot invalidate the callback's data pointer.
 class ServoCommandContext : public QObject
@@ -34,11 +41,13 @@ ThrusterDirectControlController::ThrusterDirectControlController(QObject* parent
     _testDurationTimer.setSingleShot(true);
     _commandTimer.setSingleShot(true);
     _parameterTimeoutTimer.setSingleShot(true);
+    _reissueTimer.setSingleShot(true);
 
     connect(&_settleTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_settleFinished);
     connect(&_testDurationTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_testDurationFinished);
     connect(&_commandTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_commandTimedOut);
     connect(&_parameterTimeoutTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_parameterTimedOut);
+    connect(&_reissueTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_checkOutputBeforeReissue);
 }
 
 Vehicle* ThrusterDirectControlController::vehicle() const
@@ -67,6 +76,9 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
     connect(vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged, this, [this](bool lost) {
         if (lost) {
             _vehicleUnavailable();
+        } else {
+            _reissueChecksLeft = kReissueChecks;
+            _checkOutputBeforeReissue();
         }
     });
     connect(vehicle, &Vehicle::armedChanged, this, [this](bool armed) {
@@ -90,6 +102,12 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
     });
     connect(manager, &ParameterManager::_paramRequestReadSuccess, this,
             [this](int componentId, const QString& name, int) {
+                if (_reissueCheckFact && componentId == _reissueCheckFact->componentId() &&
+                    name == _reissueCheckFact->name()) {
+                    // Disabled only if the vehicle said so during this read and the ground value agrees.
+                    _outputCheckedForReissue(_reissueCheckValue.isValid() && _reissueCheckValue.toInt() == 0 &&
+                                             _reissueCheckFact->rawValue().toInt() == 0);
+                }
                 if (_parameterOperation == ReadingParameter && _functionFact &&
                     componentId == _functionFact->componentId() && name == _functionFact->name()) {
                     const double value = _functionFact->rawValue().toDouble();
@@ -126,6 +144,10 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
             });
     connect(manager, &ParameterManager::_paramRequestReadFailure, this,
             [this](int componentId, const QString& name, int) {
+                if (_reissueCheckFact && componentId == _reissueCheckFact->componentId() &&
+                    name == _reissueCheckFact->name()) {
+                    _outputCheckedForReissue(false);
+                }
                 if (_parameterOperation == ReadingParameter && _functionFact &&
                     componentId == _functionFact->componentId() && name == _functionFact->name()) {
                     _parameterFailed(tr("功能参数回读失败"));
@@ -222,6 +244,7 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
     _testDurationMs = testDurationMs;
     _stopRequested = false;
     _recovering = false;
+    _neutralAcksNeeded = 1;
     _failureReason.clear();
     emit detailsChanged();
 
@@ -263,6 +286,12 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
     _pendingOutput = output;
     _originalFunction = originalFunction;
     _neutralPwm = neutralPwm;
+    // The output may still hold the test PWM of the run that left the record, before this one sends anything.
+    _cancelReissue();
+    _unconfirmedOutput = output;
+    _unconfirmedNeutralPwm = neutralPwm;
+    // Nothing is known about the PWM commands that led here, so one of them may still be answered late.
+    _neutralAcksNeeded = 2;
     _stopRequested = true;
     _recovering = true;
     _failureReason = reason;
@@ -487,6 +516,7 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
             _requireRecovery(tr("PWM 指令与另一条未完成指令冲突，未确认回中"));
         } else if (failureCode == Vehicle::MavCmdResultFailureNoResponseToCommand) {
             _failureReason = tr("测试 PWM 指令无回执");
+            _neutralAcksNeeded = 2;
             emit detailsChanged();
             _beginNeutral();
         } else if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
@@ -504,9 +534,22 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
     }
     if (_state == WaitingNeutralAck) {
         if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
+            if (_neutralAcksNeeded > 1) {
+                // This reply may belong to an earlier unanswered PWM command, so neutral is requested again.
+                // That request counts against the same budget as every other neutral of the session.
+                --_neutralAcksNeeded;
+                _retryNeutralOrRequireRecovery(tr("PWM 回中只得到一次回执，无法排除它属于更早的指令；请恢复异常通道"));
+                return;
+            }
+            // What is left is the parameter, which the recovery record covers. A parameter failure after
+            // this point must not lead to another PWM on an output that may have its function back.
+            _forgetUnconfirmedNeutral();
             _requestRestore(QString());
+        } else if (failureCode == Vehicle::MavCmdResultFailureDuplicateCommand) {
+            // The queue rejected the command without sending it; repeating at once would be rejected again.
+            _requireRecovery(tr("PWM 回中指令与另一条未完成指令冲突，请恢复异常通道"));
         } else {
-            _requireRecovery(tr("PWM 回中未确认，请保持上锁后恢复异常通道"));
+            _retryNeutralOrRequireRecovery(tr("PWM 回中未确认，请保持上锁后恢复异常通道"));
         }
     }
 }
@@ -611,8 +654,24 @@ void ThrusterDirectControlController::_vehicleUnavailable()
     } else if (_state == WaitingBackup) {
         _rejectBeforeWrite(tr("载具连接已丢失，未修改输出"));
     } else if (busy() || _state == RecoveryNeeded) {
+        const bool outputWasLive = _output >= 1;
+        // The vehicle cannot be asked any more. What the ground side knows must at least not contradict
+        // "this output is still the one this session disabled".
+        const bool knownDisabled = _manualAdapter ||
+                                   (_functionFact && _functionFact->rawValue().toInt() == 0 && _vehicle &&
+                                    !_vehicle->parameterManager()->pendingWrites());
+        _cancelReissue();
         _requireRecovery(tr("载具连接已丢失，恢复记录保留；请重新连接对应载具后恢复"));
+        if (outputWasLive && knownDisabled) {
+            // This session disabled the output moments ago, and a missing heartbeat does not prove that
+            // nothing gets through in the other direction. A session that was already waiting for manual
+            // recovery sends nothing here: its output may have been given another function since.
+            _sendUnconfirmedNeutral();
+        } else if (outputWasLive && _unconfirmedOutput >= 1) {
+            emit neutralReissueSkipped(_unconfirmedOutput);
+        }
     }
+    _cancelReissue();
     _functionFact.clear();
 }
 
@@ -678,6 +737,7 @@ void ThrusterDirectControlController::_commandTimedOut()
 {
     if (_state == WaitingTestAck) {
         _failureReason = tr("测试 PWM 指令无回执");
+        _neutralAcksNeeded = 2;
         _stopRequested = true;
         emit detailsChanged();
         if (_manualAdapter || !_vehicle ||
@@ -686,7 +746,15 @@ void ThrusterDirectControlController::_commandTimedOut()
             _beginNeutral();
         }
     } else if (_state == WaitingNeutralAck) {
-        _requireRecovery(tr("PWM 回中指令无回执，请恢复异常通道"));
+        const QString reason = tr("PWM 回中指令无回执，请恢复异常通道");
+        if (!_manualAdapter && _vehicle &&
+            _vehicle->isMavCommandPending(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO)) {
+            // The queue would reject a second command of the same kind.
+            _requireRecovery(reason);
+        } else {
+            _commandPending = false;
+            _retryNeutralOrRequireRecovery(reason);
+        }
     }
 }
 
@@ -731,12 +799,133 @@ void ThrusterDirectControlController::_beginNeutral()
     }
     _testDurationTimer.stop();
     _commandTimer.stop();
+    _neutralAttemptsLeft = kNeutralSendAttempts - 1;
     _setState(WaitingNeutralAck);
     _sendPwm(_neutralPwm);
 }
 
+void ThrusterDirectControlController::_retryNeutralOrRequireRecovery(const QString& reason)
+{
+    if (_neutralAttemptsLeft < 1) {
+        _requireRecovery(reason);
+        return;
+    }
+    --_neutralAttemptsLeft;
+    _commandTimer.stop();
+    _sendPwm(_neutralPwm);
+}
+
+void ThrusterDirectControlController::_cancelReissue()
+{
+    // An answer to an earlier question, or a wait started for it, must not release a PWM later on.
+    _reissueTimer.stop();
+    _reissueChecksLeft = 0;
+    QObject::disconnect(_reissueCheckUpdate);
+    _reissueCheckFact.clear();
+    _reissueCheckValue.clear();
+}
+
+void ThrusterDirectControlController::_forgetUnconfirmedNeutral()
+{
+    _cancelReissue();
+    _unconfirmedOutput = -1;
+}
+
+bool ThrusterDirectControlController::_servoCommandOrParameterWritePending() const
+{
+    return _vehicle && (_vehicle->isMavCommandPending(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO) ||
+                        _vehicle->parameterManager()->pendingWrites());
+}
+
+void ThrusterDirectControlController::_checkOutputBeforeReissue()
+{
+    // The link of the same vehicle is back. Whether the output is still the one this session disabled is
+    // not known from here: its function may have been changed meanwhile, and a neutral PWM would then be
+    // written over a working configuration. Ask the vehicle, and send only right after it answered.
+    if (_state != RecoveryNeeded || _unconfirmedOutput < 1 || _manualAdapter) {
+        return;
+    }
+    const int output = _unconfirmedOutput;
+    const int checksLeft = _reissueChecksLeft;
+    _cancelReissue();
+    if (!_vehicleUsable(false)) {
+        emit neutralReissueSkipped(output);
+        return;
+    }
+    if (_servoCommandOrParameterWritePending()) {
+        // The queue would reject a second servo command, and a pending write may be changing the function.
+        // Wait for both, then ask again from the start: an earlier answer is not kept across the wait.
+        if (checksLeft > 0) {
+            _reissueChecksLeft = checksLeft - 1;
+            _reissueTimer.start(kReissueCheckIntervalMs);
+        } else {
+            emit neutralReissueSkipped(output);
+        }
+        return;
+    }
+    Fact* const fact = getParameterFact(-1, QStringLiteral("SERVO%1_FUNCTION").arg(output));
+    if (!fact) {
+        emit neutralReissueSkipped(output);
+        return;
+    }
+    _reissueChecksLeft = checksLeft;
+    _reissueCheckFact = fact;
+    _reissueCheckUpdate = connect(fact, &Fact::vehicleUpdated, this,
+                                  [this](const QVariant& value) { _reissueCheckValue = value; });
+    _vehicle->parameterManager()->refreshParameter(fact->componentId(), fact->name());
+}
+
+void ThrusterDirectControlController::_outputCheckedForReissue(bool stillDisabled)
+{
+    const int checksLeft = _reissueChecksLeft;
+    _cancelReissue();
+    if (_state != RecoveryNeeded || _unconfirmedOutput < 1) {
+        return;
+    }
+    if (!stillDisabled || !_vehicleUsable(false)) {
+        emit neutralReissueSkipped(_unconfirmedOutput);
+        return;
+    }
+    if (_servoCommandOrParameterWritePending()) {
+        // Something started while the vehicle was answering. This answer is not used later.
+        if (checksLeft > 0) {
+            _reissueChecksLeft = checksLeft - 1;
+            _reissueTimer.start(kReissueCheckIntervalMs);
+        } else {
+            emit neutralReissueSkipped(_unconfirmedOutput);
+        }
+        return;
+    }
+    _sendUnconfirmedNeutral();
+}
+
+void ThrusterDirectControlController::_sendUnconfirmedNeutral()
+{
+    // Best effort for an output that may still hold a test PWM. The session stays in manual recovery,
+    // which confirms neutral itself before it writes the original function back. The caller has decided
+    // that the output may be written; nothing is checked or waited for here.
+    if (_state != RecoveryNeeded || _unconfirmedOutput < 1) {
+        return;
+    }
+    if (!_manualAdapter) {
+        if (!_vehicle || !_vehicle->vehicleLinkManager()->primaryLink().lock() ||
+            _vehicle->isMavCommandPending(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO)) {
+            // Without a link, or with a servo command already pending, the queue would not send this one.
+            return;
+        }
+        _vehicle->sendMavCommand(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO, false /* showError */,
+                                 _unconfirmedOutput, _unconfirmedNeutralPwm);
+    }
+    emit servoPwmRequested(_unconfirmedOutput, _unconfirmedNeutralPwm);
+    emit neutralReissued(_unconfirmedOutput);
+}
+
 void ThrusterDirectControlController::_requireRecovery(const QString& reason)
 {
+    if (_output >= 1) {
+        _unconfirmedOutput = _output;
+        _unconfirmedNeutralPwm = _neutralPwm;
+    }
     _stopTimers();
     ++_commandToken;
     _commandPending = false;
@@ -783,6 +972,9 @@ void ThrusterDirectControlController::_clearSession()
     _stopRequested = false;
     _recovering = false;
     _functionSaveWriteStarted = false;
+    _neutralAttemptsLeft = 0;
+    _neutralAcksNeeded = 1;
+    _forgetUnconfirmedNeutral();
     _failureReason.clear();
     emit detailsChanged();
 }

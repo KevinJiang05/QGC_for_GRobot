@@ -3,6 +3,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>
+#include <QtCore/QVariant>
 
 class Fact;
 class Vehicle;
@@ -76,6 +77,7 @@ public:
     void setTimingsForTest(int settleMs, int commandTimeoutMs, int parameterTimeoutMs);
     void observeParameterState(double rawValue, bool pendingWrites);
     void handleCommandResult(int ackResult, int failureCode = 0);
+    int unconfirmedOutputForTest() const { return _unconfirmedOutput; }
 #endif
 
 signals:
@@ -88,6 +90,11 @@ signals:
     void testRejected(const QString& reason);
     void recoveryCompleted(int output, const QString& failureReason);
     void recoveryRequired(const QString& reason);
+    /// A neutral PWM was sent again for an output whose neutral was never confirmed. Nothing confirms this one either.
+    void neutralReissued(int output);
+    /// The link returned, but the output could not be confirmed as still disabled by this session, so no
+    /// neutral was sent on its own.
+    void neutralReissueSkipped(int output);
     void functionSaveFinished(int output, bool success, const QString& message);
 
 private slots:
@@ -116,6 +123,13 @@ private:
     // or after neutral was confirmed, which is why it is not exposed to QML.
     void _requestRestore(const QString& reason);
     void _beginNeutral();
+    void _retryNeutralOrRequireRecovery(const QString& reason);
+    void _sendUnconfirmedNeutral();
+    void _checkOutputBeforeReissue();
+    void _outputCheckedForReissue(bool stillDisabled);
+    void _cancelReissue();
+    void _forgetUnconfirmedNeutral();
+    bool _servoCommandOrParameterWritePending() const;
     void _requireRecovery(const QString& reason);
     void _completeRecovery();
     void _stopTimers();
@@ -131,6 +145,9 @@ private:
 
     QPointer<Vehicle> _vehicle;
     QPointer<Fact> _functionFact;
+    QPointer<Fact> _reissueCheckFact; ///< Function parameter being read back before a neutral is sent on a link return
+    QMetaObject::Connection _reissueCheckUpdate;
+    QVariant _reissueCheckValue; ///< What the vehicle reported for it during that read
     bool _vehicleBound = false;
     bool _manualAdapter = false;
     bool _stopRequested = false;
@@ -149,6 +166,14 @@ private:
     int _neutralPwm = 1500;
     int _testDurationMs = 1000;
     int _expectedParameterValue = -1;
+    int _neutralAttemptsLeft = 0;
+    // A command reply names the command only. When an earlier PWM command for this output ended without
+    // a reply, its late reply could be handed to a pending neutral, so one more accepted neutral is needed.
+    int _neutralAcksNeeded = 1;
+    // Output that may still hold a test PWM after the session fell back to manual recovery.
+    int _unconfirmedOutput = -1;
+    int _unconfirmedNeutralPwm = 1500;
+    int _reissueChecksLeft = 0;
     QString _failureReason;
 
     int _settleMs = 300;
@@ -160,4 +185,5 @@ private:
     QTimer _testDurationTimer;
     QTimer _commandTimer;
     QTimer _parameterTimeoutTimer;
+    QTimer _reissueTimer;
 };

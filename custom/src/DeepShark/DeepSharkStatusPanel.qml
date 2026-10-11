@@ -362,7 +362,7 @@ Rectangle {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: qsTr("%1. %2").arg(modelData.index).arg(root.compactText(modelData.url, 42))
+                                text: qsTr("%1. %2").arg(modelData.index).arg(root.compactText(modelData.displayUrl, 42))
                                 color: "#9ca3af"
                                 font.pointSize: ScreenTools.defaultFontPointSize * 0.7
                                 elide: Text.ElideRight

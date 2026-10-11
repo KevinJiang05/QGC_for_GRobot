@@ -6,6 +6,7 @@
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
+#include <QtQuick/QQuickItem>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <memory>
@@ -46,6 +47,93 @@ void DeepSharkVideoControllerTest::_rtspTransportPreservesCameraUrls()
     QCOMPARE(settings.streamUrl(QStringLiteral("rtspst") + tail, DeepSharkVideoSettings::Udp), QStringLiteral("rtspsu") + tail);
     QCOMPARE(settings.streamUrl(QStringLiteral("tcp://127.0.0.1:5600"), DeepSharkVideoSettings::Tcp), QStringLiteral("tcp://127.0.0.1:5600"));
     QVERIFY(settings.streamUrl(QString(), DeepSharkVideoSettings::Tcp).isEmpty());
+}
+
+void DeepSharkVideoControllerTest::_statusRowsHideUrlCredentials()
+{
+    DeepSharkVideoSettings helper;
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://admin:secret@192.168.1.10:554/stream?channel=1")),
+             QStringLiteral("rtsp://192.168.1.10:554/stream?channel=1"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtspt://viewer@camera.local/main")),
+             QStringLiteral("rtspt://camera.local/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p@ss@camera/main")), QStringLiteral("rtsp://camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p%40%2F%23%3F%25@camera/main")),
+             QStringLiteral("rtsp://camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p@[2001:db8::1]:554/main")),
+             QStringLiteral("rtsp://[2001:db8::1]:554/main"));
+    // A password typed with an unescaped delimiter ends the authority early, so the text before the
+    // last '@' cannot be trusted and is masked as a whole.
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p/x@camera/main")), QStringLiteral("rtsp://***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p?x@camera/main")), QStringLiteral("rtsp://***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p#x@camera/main")), QStringLiteral("rtsp://***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://u:p@x/y@camera/main")), QStringLiteral("rtsp://***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("u:p@camera/main")), QStringLiteral("***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("//u:p@camera/main")), QStringLiteral("***@camera/main"));
+    // The same rule costs a credential-free address with '@' in its path the part before it.
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://192.168.1.10/path@segment")),
+             QStringLiteral("rtsp://***@segment"));
+    // Text before "://" is shown only when it is a well-formed scheme; otherwise it may be a credential.
+    QCOMPARE(helper.displayUrl(QStringLiteral("u:p@rtsp://camera/main")), QStringLiteral("***@rtsp://camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("u:p@://camera/main")), QStringLiteral("***@://camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("u:p://x@camera/main")), QStringLiteral("***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("foo@://bar@camera/main")), QStringLiteral("***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://192.168.1.10")), QStringLiteral("rtsp://192.168.1.10"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("no scheme")), QStringLiteral("no scheme"));
+    QVERIFY(helper.displayUrl(QString()).isEmpty());
+    // Query parameters are not searched for credentials, but an '@' there is masked like any other.
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://camera/main?channel=1&subtype=0")),
+             QStringLiteral("rtsp://camera/main?channel=1&subtype=0"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://camera/main?x=a@b")), QStringLiteral("rtsp://***@b"));
+
+    QGCCorePlugin::instance()->init();
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
+    auto *settings = engine.singletonInstance<DeepSharkVideoSettings *>("DeepShark", "DeepSharkVideoSettings");
+    QVERIFY(settings);
+    const QString previousUrl = settings->camera1Url();
+    const bool previousEnabled = settings->camera1Enabled();
+    const auto restore = qScopeGuard([&]() {
+        settings->setCamera1Url(previousUrl);
+        settings->setCamera1Enabled(previousEnabled);
+    });
+    settings->setCamera1Enabled(false);
+    settings->setCamera1Url(QStringLiteral("rtsp://admin:secret@127.0.0.1:554/camera1"));
+
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/FourVideoPanel.qml")),
+                            QQmlComponent::PreferSynchronous);
+    std::unique_ptr<QObject> panel(component.create());
+    QVERIFY2(panel, qPrintable(component.errorString()));
+    QObject *const row = panel->property("videoRows").value<QJSValue>().property(0).toQObject();
+    QVERIFY(row);
+    // The connection keeps the full address; only what is shown to the operator is reduced.
+    QCOMPARE(row->property("url").toString(), QStringLiteral("rtsp://admin:secret@127.0.0.1:554/camera1"));
+    QCOMPARE(row->property("displayUrl").toString(), QStringLiteral("rtsp://127.0.0.1:554/camera1"));
+
+    QQmlComponent statusComponent(
+        &engine, QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/DeepSharkStatusPanel.qml")),
+        QQmlComponent::PreferSynchronous);
+    std::unique_ptr<QObject> statusPanel(statusComponent.createWithInitialProperties(
+        {{QStringLiteral("videoRows"), panel->property("videoRows")}, {QStringLiteral("diagnosticsExpanded"), true}}));
+    QVERIFY2(statusPanel, qPrintable(statusComponent.errorString()));
+    // Repeater delegates are visual children only, so walk the item tree.
+    QStringList shownTexts;
+    const auto collectTexts = [&shownTexts](auto &&self, QQuickItem *item) -> void {
+        const QString text = item->property("text").toString();
+        if (!text.isEmpty()) {
+            shownTexts.append(text);
+        }
+        for (QQuickItem *child : item->childItems()) {
+            self(self, child);
+        }
+    };
+    auto *const statusItem = qobject_cast<QQuickItem *>(statusPanel.get());
+    QVERIFY(statusItem);
+    collectTexts(collectTexts, statusItem);
+    const QString allTexts = shownTexts.join(QLatin1Char('\n'));
+    QVERIFY2(!allTexts.contains(QStringLiteral("secret")), qPrintable(allTexts));
+    QVERIFY2(allTexts.contains(QStringLiteral("127.0.0.1:554/camera1")), qPrintable(allTexts));
 }
 
 void DeepSharkVideoControllerTest::_videoPanelSavesTransportSelection()
@@ -371,6 +459,51 @@ void DeepSharkVideoControllerTest::_startedRestartCanScheduleAgain()
     QVERIFY(controller);
     QVERIFY(QMetaObject::invokeMethod(controller, "startAttemptsChanged", Qt::DirectConnection));
     QCOMPARE(tile->property("reconnectPending").toBool(), false);
+}
+
+void DeepSharkVideoControllerTest::_reconnectNeverGivesUp()
+{
+    QGCCorePlugin::instance()->init();
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
+
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
+                            QQmlComponent::PreferSynchronous);
+    QVERIFY2(component.status() == QQmlComponent::Ready, qPrintable(component.errorString()));
+    std::unique_ptr<QObject> tile(component.create());
+    QVERIFY2(tile, qPrintable(component.errorString()));
+
+    // Enable the channel without letting the controller open a real stream: only the retry policy is under test.
+    // Setting the address of a disabled channel clears the manual stop, so the stop comes after it.
+    tile->setProperty("videoSource", QStringLiteral("rtsp://127.0.0.1:9/unreachable"));
+    tile->setProperty("manualStopped", true);
+    tile->setProperty("videoEnabled", true);
+    tile->setProperty("manualStopped", false);
+    QCOMPARE(tile->property("controllerAutoStart").toBool(), false);
+
+    // A camera that stays away for minutes must still come back on its own.
+    for (int attempt = 1; attempt <= 12; ++attempt) {
+        tile->setProperty("reconnectPending", false);
+        QVERIFY(QMetaObject::invokeMethod(tile.get(), "_scheduleReconnect",
+                                          Q_ARG(QVariant, QVariant(QStringLiteral("Stream stopped")))));
+        QCOMPARE(tile->property("currentStatus").toString(), QStringLiteral("Reconnecting"));
+        QCOMPARE(tile->property("reconnectPending").toBool(), true);
+        QCOMPARE(tile->property("retryCount").toInt(), attempt);
+    }
+
+    const auto retryDelay = [&tile](int attempt) {
+        QVariant delay;
+        QMetaObject::invokeMethod(tile.get(), "_retryDelayMs", Q_RETURN_ARG(QVariant, delay),
+                                  Q_ARG(QVariant, QVariant(attempt)));
+        return delay.toInt();
+    };
+    QCOMPARE(retryDelay(1), 2500);
+    QCOMPARE(retryDelay(2), 5000);
+    QCOMPARE(retryDelay(3), 10000);
+    QCOMPARE(retryDelay(4), 15000);
+    QCOMPARE(retryDelay(200), 15000);
 }
 
 void DeepSharkVideoControllerTest::_flyViewStatusQmlLoads()

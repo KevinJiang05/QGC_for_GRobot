@@ -11,6 +11,7 @@ protected slots:
 
 private slots:
     void _rtspTransportPreservesCameraUrls();
+    void _statusRowsHideUrlCredentials();
     void _videoPanelSavesTransportSelection();
     void _pendingAutoStartIsCancelled();
     void _clearingUriCancelsPendingAutoStart();
@@ -21,6 +22,7 @@ private slots:
     void _restartRebuildsVideoSink();
     void _failedRestartCanScheduleAgain();
     void _startedRestartCanScheduleAgain();
+    void _reconnectNeverGivesUp();
     void _flyViewStatusQmlLoads();
     void _videoRowsUpdateWithoutReplacingDelegates();
     void _disabledVideoResourcesCanBeRecreated();

@@ -36,6 +36,7 @@ Rectangle {
         required property var tile
         readonly property string name: root.titleForIndex(index - 1)
         readonly property string url: root.urlForIndex(index - 1)
+        readonly property string displayUrl: DeepSharkVideoSettings.displayUrl(url)
         readonly property bool enabled: root.enabledForIndex(index - 1)
         readonly property string status: tile.currentStatus
         readonly property int retry: tile.retryCount

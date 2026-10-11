@@ -39,7 +39,9 @@ Rectangle {
     property string frameRateText: videoController.frameRateText
     property string latencyText: videoController.latencyText
     property int estimatedLatencyMs: videoController.estimatedLatencyMs
-    property int maxAutoRetries: 6
+    // 0 keeps retrying for as long as the channel is enabled, so a camera that returns after a long
+    // outage reappears without the operator.
+    property int maxAutoRetries: 0
     property string watchdogStatus: (!videoEnabled || videoSource.length === 0 || manualStopped || currentStatus === "Failed") ? "Disabled" : (stalled ? "Stalled" : "OK")
     property bool stalled: false
     property bool dragEnabled: true
@@ -231,13 +233,18 @@ Rectangle {
             return
         }
 
-        var delayMs = Math.min(30000, 2500 * Math.pow(2, retryCount - 1))
+        var delayMs = _retryDelayMs(retryCount)
         if (currentStatus === "Stalled") {
             videoEvent(qsTr("%1：正在重连，第 %2 次").arg(title).arg(retryCount))
         }
         _setStatus("Reconnecting", error)
         reconnectPending = true
         videoController.restart(delayMs)
+    }
+
+    // Back off quickly at first, then keep a steady pace.
+    function _retryDelayMs(attempt) {
+        return Math.min(15000, 2500 * Math.pow(2, attempt - 1))
     }
 
     function startVideo() {

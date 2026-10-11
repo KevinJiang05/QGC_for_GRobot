@@ -34,6 +34,8 @@ public:
     int rtspTransport() const { return _rtspTransport; }
     void setRtspTransport(int transport);
     Q_INVOKABLE QString streamUrl(const QString &url, int transport) const;
+    /// The stream address without its user name and password, for status panels and event logs.
+    Q_INVOKABLE QString displayUrl(const QString &url) const;
 
     QString camera1Name() const { return _camera1Name; }
     QString camera1Url() const { return _camera1Url; }

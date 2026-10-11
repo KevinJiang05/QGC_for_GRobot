@@ -6,6 +6,7 @@
 
 #include "DeepSharkVideoSettings.h"
 
+#include <QtCore/QRegularExpression>
 #include <QtCore/QSettings>
 
 namespace {
@@ -73,6 +74,36 @@ QString DeepSharkVideoSettings::streamUrl(const QString &url, int transport) con
     }
     // Preserve the camera's path/query verbatim, including escaped characters.
     return replacement + url.mid(separator);
+}
+
+QString DeepSharkVideoSettings::displayUrl(const QString &url) const
+{
+    // Text before "://" counts as a scheme only when it is spelled like one; anything else, such as
+    // "user:password", is treated as part of the address and masked with the rest.
+    static const QRegularExpression schemeSyntax(QStringLiteral("^[A-Za-z][A-Za-z0-9+.-]*\\z"));
+    auto schemeEnd = url.indexOf(QStringLiteral("://"));
+    if (schemeEnd >= 0 && !schemeSyntax.match(url.left(schemeEnd)).hasMatch()) {
+        schemeEnd = -1;
+    }
+    const auto authorityStart = schemeEnd < 0 ? 0 : schemeEnd + 3;
+    const auto lastAt = url.lastIndexOf(QLatin1Char('@'));
+    if (lastAt < authorityStart) {
+        return url;
+    }
+    auto authorityEnd = url.size();
+    for (const QChar terminator : {QLatin1Char('/'), QLatin1Char('?'), QLatin1Char('#')}) {
+        const auto position = url.indexOf(terminator, authorityStart);
+        if (position >= 0 && position < authorityEnd) {
+            authorityEnd = position;
+        }
+    }
+    if (schemeEnd >= 0 && lastAt < authorityEnd) {
+        return url.left(authorityStart) + url.mid(lastAt + 1);
+    }
+    // An '@' outside a well-formed authority may belong to a password typed with an unescaped '/', '?' or '#',
+    // so everything before the last one is masked instead of guessed at. Query parameters are not searched
+    // for credentials.
+    return url.left(authorityStart) + QStringLiteral("***@") + url.mid(lastAt + 1);
 }
 
 void DeepSharkVideoSettings::setCamera1Name(const QString &name)

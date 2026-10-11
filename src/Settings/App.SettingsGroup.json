@@ -376,6 +376,22 @@
             "keywords": "ardusub,armed,configuration,safety restrictions"
         },
         {
+            "name": "joystickSetupLiveControlGuard",
+            "shortDesc": "While the joystick controls the vehicle from its setup page, show a notice there and stop a held gimbal action when its button is reassigned.",
+            "type": "bool",
+            "default": true,
+            "label": "Joystick setup live-control guard",
+            "keywords": "joystick,setup,gimbal,safety restrictions"
+        },
+        {
+            "name": "allowManualOutputRecovery",
+            "shortDesc": "Allow an unfinished output test to be recovered after the operator confirms the vehicle by hand when the flight controller reports no serial number.",
+            "type": "bool",
+            "default": true,
+            "label": "Manual output recovery confirmation",
+            "keywords": "output test,recovery,thruster,serial number"
+        },
+        {
             "name": "firstRunPromptIdsShown",
             "shortDesc": "Comma separated list of first run prompt ids which have already been shown.",
             "type": "string",

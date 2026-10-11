@@ -431,6 +431,7 @@ private:
     void _resetFunctionToAxisMap();
     void _resetAxisCalibrationData();
     void _resetButtonActionData();
+    void _releaseReplacedButtonAction(const QString &replacedAction);
     void _resetButtonEventStates();
 
     void _foundInvalidAxisSettingsCleanup();

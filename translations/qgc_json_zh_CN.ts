@@ -7689,6 +7689,30 @@
       <translation>禁用所有数据持久化</translation>
     </message>
     <message>
+      <extracomment>.QGC.MetaData.Facts[joystickSetupLiveControlGuard].label</extracomment>
+      <location filename="../src/Settings/App.SettingsGroup.json"/>
+      <source>Joystick setup live-control guard</source>
+      <translation>手柄配置页实时控制保护</translation>
+    </message>
+    <message>
+      <extracomment>.QGC.MetaData.Facts[joystickSetupLiveControlGuard].shortDesc</extracomment>
+      <location filename="../src/Settings/App.SettingsGroup.json"/>
+      <source>While the joystick controls the vehicle from its setup page, show a notice there and stop a held gimbal action when its button is reassigned.</source>
+      <translation>手柄在配置页仍在控制机器人时，在该页显示提示，并在改派正被按住的云台按键时先发停止。</translation>
+    </message>
+    <message>
+      <extracomment>.QGC.MetaData.Facts[allowManualOutputRecovery].label</extracomment>
+      <location filename="../src/Settings/App.SettingsGroup.json"/>
+      <source>Manual output recovery confirmation</source>
+      <translation>允许人工确认后恢复输出</translation>
+    </message>
+    <message>
+      <extracomment>.QGC.MetaData.Facts[allowManualOutputRecovery].shortDesc</extracomment>
+      <location filename="../src/Settings/App.SettingsGroup.json"/>
+      <source>Allow an unfinished output test to be recovered after the operator confirms the vehicle by hand when the flight controller reports no serial number.</source>
+      <translation>飞控不上报序列号时，允许操作者人工确认是同一台机器人后，恢复未完成的输出测试。</translation>
+    </message>
+    <message>
       <extracomment>.QGC.MetaData.Facts[disableSetupSafetyRestrictions].label</extracomment>
       <location filename="../src/Settings/App.SettingsGroup.json"/>
       <source>Disable safety restrictions</source>

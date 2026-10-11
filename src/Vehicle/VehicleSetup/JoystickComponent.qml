@@ -90,6 +90,19 @@ SetupPage {
                 }
             }
 
+            // With the safety restrictions off this page does not suspend joystick control.
+            QGCLabel {
+                objectName: "joystickLiveControlNotice"
+                Layout.fillWidth: true
+                visible: root.configurationAvailable && root.activeVehicle.setupSafetyRestrictionsDisabled
+                         && joystickManager.activeJoystickEnabledForActiveVehicle
+                         && QGroundControl.settingsManager.appSettings.joystickSetupLiveControlGuard.rawValue
+                wrapMode: Text.WordWrap
+                font.bold: true
+                color: qgcPal.warningText
+                text: qsTr("手柄正在控制机器人：本页上的摇杆和按键操作会直接作用到机器人上。")
+            }
+
             QGCLabel {
                 Layout.fillWidth: true
                 visible: !root.configurationAvailable

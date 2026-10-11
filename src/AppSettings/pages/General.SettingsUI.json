@@ -49,6 +49,12 @@
                     "setting": "appSettings.disableSetupSafetyRestrictions"
                 },
                 {
+                    "setting": "appSettings.joystickSetupLiveControlGuard"
+                },
+                {
+                    "setting": "appSettings.allowManualOutputRecovery"
+                },
+                {
                     "setting": "appSettings.clearSettingsNextBoot"
                 }
             ]

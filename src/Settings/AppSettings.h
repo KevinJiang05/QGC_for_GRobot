@@ -40,6 +40,8 @@ public:
     DEFINE_SETTINGFACT(enforceChecklist)
     DEFINE_SETTINGFACT(enableMultiVehiclePanel)
     DEFINE_SETTINGFACT(disableSetupSafetyRestrictions)
+    DEFINE_SETTINGFACT(joystickSetupLiveControlGuard)
+    DEFINE_SETTINGFACT(allowManualOutputRecovery)
     DEFINE_SETTINGFACT(tiandituToken)
     DEFINE_SETTINGFACT(mapboxToken)
     DEFINE_SETTINGFACT(mapboxAccount)

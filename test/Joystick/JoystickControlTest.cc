@@ -551,4 +551,74 @@ void JoystickControlTest::_pollingStateChangesAreSerializedWithPolling()
     QVERIFY(joystick->isRunning());
 }
 
+void JoystickControlTest::_reassigningAHeldActionReleasesIt()
+{
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression("showAppMessage:.*Configuration tasks remain"));
+    // The mock vehicle has no gimbal. The gimbal controller reports that for every stop, exactly as it
+    // does when such a button is released normally.
+    ignoreLogMessage("Gimbal.GimbalController", QtCriticalMsg,
+                     QRegularExpression("gimbal(Pitch|Yaw)Stop: active gimbal is nullptr"));
+    _mockLink = MockLink::startAPMArduSubMockLink();
+    QVERIFY(_mockLink);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle(), 10000);
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(waitForInitialConnect());
+
+    auto mock = std::unique_ptr<MockJoystick>(MockJoystick::create(QStringLiteral("Reassign fixture"), 6, 20, 0));
+    QVERIFY(mock->isValid());
+    auto* const manager = JoystickManager::instance();
+    manager->init();
+    SettingsManager::instance()->joystickManagerSettings()->activeJoystickName()->setRawValue(
+        QStringLiteral("Reassign fixture"));
+    QPointer<Joystick> joystick = manager->activeJoystick();
+    QVERIFY(joystick);
+    const auto stopJoystick = qScopeGuard([&]() {
+        manager->setActiveJoystickEnabledForActiveVehicle(false);
+        if (joystick) {
+            joystick->stop();
+        }
+        mock.reset();
+        manager->init();
+    });
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    for (int axis = 0; axis < 4; ++axis) {
+        joystick->_setJoystickAxisForAxisFunction(static_cast<Joystick::AxisFunction_t>(axis), axis);
+        joystick->_rgCalibration[axis].reset();
+    }
+    joystick->settings()->calibrated()->setRawValue(true);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+
+    // The release handler is looked up by the action assigned at release time. Once a held "start" action
+    // is replaced, nothing would ever run its stop, so the edit itself has to.
+    joystick->setButtonAction(1, gimbalUp);
+    QCOMPARE(pitchStops.count(), 0);
+    joystick->setButtonAction(1, gimbalLeft);
+    QCOMPARE(pitchStops.count(), 1);
+    QCOMPARE(yawStops.count(), 0);
+    joystick->setButtonAction(1, joystick->buttonActionNone());
+    QCOMPARE(yawStops.count(), 1);
+
+    // Assigning the same action again, or one without a release handler, stops nothing.
+    joystick->setButtonAction(1, gimbalUp);
+    joystick->setButtonAction(1, gimbalUp);
+    QCOMPARE(pitchStops.count(), 1);
+
+    // The guard can be switched off in the application settings.
+    guard->setRawValue(false);
+    joystick->setButtonAction(1, joystick->buttonActionNone());
+    QCOMPARE(pitchStops.count(), 1);
+}
+
 UT_REGISTER_TEST(JoystickControlTest, TestLabel::Unit, TestLabel::Joystick)

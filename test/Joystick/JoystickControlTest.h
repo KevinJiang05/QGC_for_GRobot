@@ -13,4 +13,5 @@ private slots:
     void _configurationKeepsManualControl();
     void _buttonActionEditsAreSerializedWithPolling();
     void _pollingStateChangesAreSerializedWithPolling();
+    void _reassigningAHeldActionReleasesIt();
 };

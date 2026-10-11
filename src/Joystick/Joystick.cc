@@ -2,6 +2,7 @@
 #include "Fact.h"
 #include "MavlinkAction.h"
 #include "MavlinkActionManager.h"
+#include "AppSettings.h"
 #include "MavlinkActionsSettings.h"
 #include "FirmwarePlugin.h"
 #include "GimbalController.h"
@@ -1589,6 +1590,7 @@ void Joystick::setButtonAction(int button, const QString& actionName)
     const QString repeatKey = QString::fromLatin1(kButtonRepeatKey);
 
     QMutexLocker locker(&_assignedButtonActionsMutex);
+    const QString replacedAction = _assignedButtonActions[button] ? _assignedButtonActions[button]->actionName : QString();
     if (actionName.isEmpty() || actionName == _buttonActionNone) {
         if (_assignedButtonActions[button]) {
             delete _assignedButtonActions[button];
@@ -1620,7 +1622,33 @@ void Joystick::setButtonAction(int button, const QString& actionName)
     settings.endGroup();
     settings.endGroup();
 
+    if (replacedAction != actionName) {
+        _releaseReplacedButtonAction(replacedAction);
+    }
+
     emit buttonActionsChanged();
+}
+
+void Joystick::_releaseReplacedButtonAction(const QString &replacedAction)
+{
+    // A button release runs the handler of whatever action is assigned at that moment. When the action of
+    // a held button is replaced or removed, its own release handler would therefore never run and a
+    // continuous action, such as moving the gimbal, would keep its last rate. Only such actions have a
+    // release handler, and running one that is not active stops nothing that moves.
+    if (replacedAction.isEmpty() || replacedAction == _buttonActionNone || !_pollingVehicle ||
+        !_joystickManager->activeJoystickEnabledForActiveVehicle() ||
+        !SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool()) {
+        return;
+    }
+    const int idx = _findAvailableButtonActionIndex(replacedAction);
+    if (idx < 0) {
+        return;
+    }
+    const AvailableButtonAction *const action = qobject_cast<const AvailableButtonAction*>(_availableButtonActions->get(idx));
+    if (action && action->onUp()) {
+        qCDebug(JoystickLog) << "Releasing replaced button action:" << replacedAction;
+        action->onUp()();
+    }
 }
 
 QString Joystick::getButtonAction(int button) const

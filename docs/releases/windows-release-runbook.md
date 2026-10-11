@@ -15,6 +15,17 @@ Run from the repository root:
 Use a new semantic version for every normal release. Rebuilding an existing
 version is rejected unless `-Force` is supplied explicitly.
 
+The pipeline builds without tests and does not run any. Link the record of the
+functional regression run for the same commit with `-RegressionEvidence <file>`:
+
+```powershell
+.\tools\release\build-windows-release.ps1 -Version 2.0.1 -RegressionEvidence .\unit-test-results.txt
+```
+
+The file is not interpreted; its path and SHA-256 are written to the audit. A
+release started without it still runs, and its report says
+`Regression evidence: not attached`.
+
 Compilation defaults to 8 jobs. Use `-Jobs 12` or `-Jobs 16` for measured
 comparisons, or `-Jobs 4` / `-Jobs 1` to reduce concurrency if memory pressure
 or a resource-generation race appears. The existing Ninja link pool remains
@@ -151,6 +162,9 @@ shows identical installer/application versions. Confirm that all eight release
 steps succeeded (or steps 1–7 in the source audit plus a successful linked
 verification retry), no required runtime file is missing, the upgrade identity remains
 `QGC_KevinJiang`, and the reported SHA-256 matches the file being distributed.
+A report with `Regression evidence: not attached` describes an installer for
+which no test record of that commit was linked; decide consciously whether that
+is acceptable before distributing it.
 
 The current release workflow does not apply an Authenticode signature. A
 `NotSigned` result is reported explicitly and is not treated as a pipeline

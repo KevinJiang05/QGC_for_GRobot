@@ -199,6 +199,25 @@ $events = (Get-Content -LiteralPath (Join-Path $fixture 'events.txt')) -join ','
 Assert-True ($events -eq 'configure,build:8,stage,boot,package,signature') "Wrong phase order: $events"
 Assert-True ((Get-Item -LiteralPath $versionPath).LastWriteTimeUtc -eq $versionTime) 'Unchanged version source was rewritten.'
 Complete-Test 'eight-job build, boot before packaging, no repeated deployment or version rewrite'
+$report = Get-Content -LiteralPath (Join-Path $result.AuditDirectory 'release-report.md') -Raw
+Assert-True ($null -eq $result.State.regressionEvidence -and $report.Contains('- Regression evidence: not attached')) 'A release without regression evidence did not say so.'
+Complete-Test 'a release without regression evidence is reported as such'
+
+$fixture = New-ReleaseFixture 'regression-evidence'
+$evidence = Join-Path $fixture 'unit-test-results.txt'
+Write-FixtureFile $evidence '205 of 205 tests passed'
+$evidenceHash = (Get-FileHash -LiteralPath $evidence -Algorithm SHA256).Hash
+$result = Invoke-ReleaseFixture $fixture -Arguments @('-RegressionEvidence', $evidence)
+Assert-True ($result.ExitCode -eq 0 -and $result.State.status -eq 'succeeded') $result.Output
+Assert-True ($result.State.regressionEvidence.sha256 -eq $evidenceHash) 'Regression evidence hash was not recorded.'
+$report = Get-Content -LiteralPath (Join-Path $result.AuditDirectory 'release-report.md') -Raw
+Assert-True ($report.Contains("(SHA-256 $evidenceHash)")) 'Regression evidence is missing from the report.'
+Complete-Test 'regression evidence is linked into the audit with its hash'
+
+$fixture = New-ReleaseFixture 'missing-regression-evidence'
+$result = Invoke-ReleaseFixture $fixture -Arguments @('-RegressionEvidence', (Join-Path $fixture 'no-such-file.txt'))
+Assert-True ($result.ExitCode -ne 0 -and $null -eq $result.State) 'A missing regression evidence file started a release.'
+Complete-Test 'a missing regression evidence file is rejected before pipeline execution'
 
 $fixture = New-ReleaseFixture 'include-prefix'
 Write-FixtureFile (Join-Path $fixture 'build-v5.1.5-release\.ninja_deps') 'original dependency log'

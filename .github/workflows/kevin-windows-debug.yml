@@ -1,12 +1,8 @@
 name: Kevin Windows Debug
 
+# Manual only: verification runs on the development machine, and a full Debug build takes
+# one to two hours of runner time. Start it from the Actions page before a release.
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['docs/**']
-  pull_request:
-    branches: [main]
-    paths-ignore: ['docs/**']
   workflow_dispatch:
 
 permissions:
@@ -16,6 +12,10 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Same aqtinstall pin as windows.yml: the PyPI release cannot locate Qt 6.11 packages.
+env:
+  AQT_SOURCE: 'git+https://github.com/miurahr/aqtinstall.git@8d961e61720b3c06583517fbc68d57ec0a4e9f95'
 
 jobs:
   debug:
@@ -40,6 +40,7 @@ jobs:
           qt-host: windows
           qt-arch: win64_msvc2022_64
           qt-version: '6.11.1'
+          aqt-source: ${{ env.AQT_SOURCE }}
           build-type: Debug
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
@@ -80,15 +81,18 @@ jobs:
           BUILD_DIR: ${{ runner.temp }}/kevin-debug
           QT_PLUGIN_PATH: ${{ steps.setup.outputs.qt_root_dir }}/plugins
           QML_IMPORT_PATH: ${{ steps.setup.outputs.qt_root_dir }}/qml
+          # Qt ships no fonts; without this the strict log check fails QML tests on the font warning.
+          QT_QPA_FONTDIR: C:\Windows\Fonts
           PYTHONIOENCODING: utf-8
         run: |
           $names = @(
             'AIDetectionReceiverTest', 'DeepSharkAuvControllerTest', 'DeepSharkConnectionMonitorTest',
             'DeepSharkVideoControllerTest', 'ThrusterDirectControlControllerTest', 'APMGimbalCompatibilityTest',
-            'AppSettingsTest', 'JoystickTest', 'JoystickManagerTest', 'QGCCameraManagerTest', 'VehicleLinkManagerTest'
+            'AppSettingsTest', 'JoystickTest', 'JoystickManagerTest', 'JoystickControlTest', 'QGCCameraManagerTest',
+            'VehicleLinkManagerTest'
           )
           $tests = '^(' + ($names -join '|') + ')$'
-          ctest --test-dir $env:BUILD_DIR -C Debug --output-on-failure --parallel 1 --timeout 90 --output-junit "$env:BUILD_DIR/kevin-debug-junit.xml" -R $tests
+          ctest --test-dir $env:BUILD_DIR -C Debug --output-on-failure --parallel 1 --timeout 90 --output-junit "$env:BUILD_DIR/kevin-debug-junit.xml" --no-tests=error -R $tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .venv/Scripts/python.exe -B -m unittest discover -s tools/ai_detection/tests -v
           exit $LASTEXITCODE

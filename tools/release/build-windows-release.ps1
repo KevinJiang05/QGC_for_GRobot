@@ -19,7 +19,12 @@ param(
     [int]$Jobs = 8,
 
     [Parameter(ParameterSetName = 'Release')]
-    [switch]$Force
+    [switch]$Force,
+
+    # Record of the functional regression run for the commit being released. It is only linked into
+    # the audit; the pipeline does not run or judge tests itself.
+    [Parameter(ParameterSetName = 'Release')]
+    [string]$RegressionEvidence
 )
 
 Set-StrictMode -Version Latest
@@ -39,6 +44,18 @@ $logDirectory = Join-Path $runDirectory 'steps'
 $stagingDirectory = Join-Path $buildDirectory ("release-runs\v{0}\{1}\staging" -f $Version, $runId)
 $statePath = Join-Path $runDirectory 'release-state.json'
 $reportPath = Join-Path $runDirectory 'release-report.md'
+
+$script:RegressionRecord = $null
+if ($RegressionEvidence) {
+    if (-not (Test-Path -LiteralPath $RegressionEvidence -PathType Leaf)) {
+        throw "Regression evidence file was not found: $RegressionEvidence"
+    }
+    $evidencePath = (Resolve-Path -LiteralPath $RegressionEvidence).Path
+    $script:RegressionRecord = [ordered]@{
+        path = $evidencePath
+        sha256 = (Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash
+    }
+}
 
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 if (-not $VerifyOnly -and -not $PreflightOnly) {
@@ -75,6 +92,7 @@ function Write-RunState {
         mode = $script:Mode
         compilerJobs = $Jobs
         sourceAudit = $script:SourceAudit
+        regressionEvidence = $script:RegressionRecord
         status = $script:RunStatus
         startedAt = $script:StartedAt
         updatedAt = (Get-Date).ToString('o')
@@ -420,6 +438,16 @@ function Write-FinalReport {
         @('- No distributable artifact was produced.')
     }
 
+    $regressionLine = if ($null -ne $script:RegressionRecord) {
+        "- Regression evidence: $($script:RegressionRecord.path) (SHA-256 $($script:RegressionRecord.sha256))"
+    }
+    elseif ($script:Mode -eq 'release') {
+        '- Regression evidence: not attached'
+    }
+    else {
+        '- Regression evidence: not applicable in this mode'
+    }
+
     $markdown = @(
         "# QGC_KevinJiang Windows release report"
         ""
@@ -427,6 +455,7 @@ function Write-FinalReport {
         "- Mode: $($script:Mode)"
         "- Compiler jobs: $Jobs"
         "- Source audit: $($script:SourceAudit)"
+        $regressionLine
         "- Requested version: $Version"
         "- Status: $($script:RunStatus)"
         "- Failure: $($script:FailureMessage)"

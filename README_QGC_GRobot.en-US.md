@@ -347,6 +347,13 @@ The overlay computes the real video content area from the video dimensions and d
 
 This is not caused by leaving the YOLO bridge running. The bridge is an external UDP sender; after QGC exits, packets are dropped by the OS. If it still reproduces, continue investigating QGC-side video object lifetime, GStreamer sink release order, or asynchronous reconnect callbacks.
 
+### Joystick settings assume an underwater vehicle
+
+The joystick support in this build targets underwater vehicles only. When upgrading from an older version, the calibration and the
+transmitter mode are migrated from the underwater-vehicle settings (mode 3 when none was stored). With any other vehicle type the four
+axes may all be mapped differently while the setup page still shows the joystick as calibrated. Recalibrate and check every axis before
+using another vehicle type.
+
 ## Development Boundaries
 
 Current project rules:

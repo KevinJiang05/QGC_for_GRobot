@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QMutex>
 #include <QtCore/QObject>
 #include <QtCore/QThread>
 #include <QtCore/QVariantMap>
@@ -419,6 +420,9 @@ private:
     void _startPollingThread();
     void _stopPollingThread();
     QString _pollingFlagsToString(PollingFlags flags) const;
+    // The GUI thread changes the polling flags and the vehicle while the polling thread reads them. The
+    // polling thread holds this for a whole scan, so a vehicle is no longer in use once it was cleared.
+    QMutex _pollingStateMutex;
     PollingFlags _pollingFlags = PollingNone;
     std::atomic_bool _configurationAllowsVehicleControl{false};
 
@@ -468,6 +472,8 @@ private:
     QVector<AxisCalibration_t> _rgCalibration;
     QVector<ButtonEvent_t> _buttonEventStates;
     QVector<AssignedButtonAction*> _assignedButtonActions;
+    // The GUI thread edits assignments while the polling thread reads them and restarts their timers.
+    QMutex _assignedButtonActionsMutex;
     MavlinkActionManager *_mavlinkActionManager = nullptr;
     QmlObjectListModel *_availableButtonActions = nullptr;
 

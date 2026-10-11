@@ -7,7 +7,9 @@
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtTest/QSignalSpy>
+#include <atomic>
 #include <memory>
+#include <thread>
 
 #include "AppSettings.h"
 #include "Fact.h"
@@ -350,12 +352,17 @@ Item {
     QVERIFY(QMetaObject::invokeMethod(root.get(), "currentQgcAction", Q_RETURN_ARG(QVariant, action)));
     QCOMPARE(action.toString(), QStringLiteral("No Action"));
     QCOMPARE(qgcCombo->property("currentIndex").toInt(), 0);
+    // Re-selecting "No Action" assigns nothing, so it must leave the vehicle's own functions alone.
+    QVERIFY(QMetaObject::invokeMethod(qgcCombo, "activated", Q_ARG(int, 0)));
+    QCOMPARE(normal.rawValue().toInt(), -56);
     QVERIFY(QMetaObject::invokeMethod(qgcCombo, "activated", Q_ARG(int, 1)));
     QVERIFY(QMetaObject::invokeMethod(shiftCombo, "activated", Q_ARG(int, 2)));
     QCOMPARE(shift.rawValue().toInt(), -56);
     QVERIFY(QMetaObject::invokeMethod(root.get(), "currentQgcAction", Q_RETURN_ARG(QVariant, action)));
     QCOMPARE(action.toString(), QStringLiteral("No Action"));
     QCOMPARE(qgcCombo->property("currentIndex").toInt(), 0);
+    QVERIFY(QMetaObject::invokeMethod(qgcCombo, "activated", Q_ARG(int, 0)));
+    QCOMPARE(shift.rawValue().toInt(), -56);
     root->setProperty("parametersPresent", false);
     QTRY_VERIFY(!qvariant_cast<Fact*>(firstRow->property("_buttonFunction")));
     QVERIFY(QMetaObject::invokeMethod(qgcCombo, "activated", Q_ARG(int, 1)));
@@ -370,6 +377,178 @@ Item {
     QVERIFY(QMetaObject::invokeMethod(root.get(), "pressButton", Q_ARG(QVariant, QVariant(1)),
                                       Q_ARG(QVariant, QVariant(false))));
     QVERIFY(!secondRow->property("pressed").toBool());
+}
+
+void JoystickControlTest::_buttonActionEditsAreSerializedWithPolling()
+{
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression("showAppMessage:.*Configuration tasks remain"));
+    _mockLink = MockLink::startAPMArduSubMockLink();
+    QVERIFY(_mockLink);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle(), 10000);
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(waitForInitialConnect());
+
+    auto mock = std::unique_ptr<MockJoystick>(MockJoystick::create(QStringLiteral("Button edit fixture"), 6, 20, 0));
+    QVERIFY(mock->isValid());
+    auto* const manager = JoystickManager::instance();
+    manager->init();
+    SettingsManager::instance()->joystickManagerSettings()->activeJoystickName()->setRawValue(
+        QStringLiteral("Button edit fixture"));
+    QPointer<Joystick> joystick = manager->activeJoystick();
+    QVERIFY(joystick);
+    const auto stopJoystick = qScopeGuard([&]() {
+        manager->setActiveJoystickEnabledForActiveVehicle(false);
+        if (joystick) {
+            joystick->stop();
+        }
+        mock.reset();
+        manager->init();
+    });
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    for (int axis = 0; axis < 4; ++axis) {
+        joystick->_setJoystickAxisForAxisFunction(static_cast<Joystick::AxisFunction_t>(axis), axis);
+        joystick->_rgCalibration[axis].reset();
+    }
+    joystick->settings()->calibrated()->setRawValue(true);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+
+    // Stress regression for the assignment objects: replace the 50 Hz worker with a fast loop over the
+    // same handler so that the page's edits overlap the vehicle-control scan. It cannot force the exact
+    // interleaving, and with no button held it does not reach the repeat timer or the queued actions.
+    joystick->_stopPollingThread();
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+    std::atomic_bool stopPolling{false};
+    std::atomic<quint64> pollCount{0};
+    std::thread polling([&]() {
+        while (!stopPolling.load()) {
+            joystick->_handleButtons();
+            pollCount.fetch_add(1);
+            std::this_thread::yield();
+        }
+    });
+    const auto stopWorker = qScopeGuard([&]() {
+        stopPolling.store(true);
+        if (polling.joinable()) {
+            polling.join();
+        }
+    });
+    QElapsedTimer budget;
+    budget.start();
+    // Two more completed scans guarantee that one of them started after the caller's last edit.
+    const auto waitForScan = [&]() {
+        const quint64 seen = pollCount.load();
+        while (pollCount.load() < seen + 2 && budget.elapsed() < 30000) {
+            std::this_thread::yield();
+        }
+        return pollCount.load() >= seen + 2;
+    };
+    QVERIFY2(waitForScan(), "The polling loop did not start");
+    const QString action = QStringLiteral("Button edit fixture action");
+    for (int edit = 0; edit < 200; ++edit) {
+        joystick->setButtonAction(1, action);
+        joystick->setButtonRepeat(1, true);
+        QVERIFY2(waitForScan(), "The polling loop made no progress while an assignment existed");
+        joystick->setButtonAction(1, joystick->buttonActionNone());
+    }
+    stopPolling.store(true);
+    polling.join();
+    QCOMPARE(joystick->getButtonAction(1), joystick->buttonActionNone());
+    joystick->_startPollingThread();
+}
+
+void JoystickControlTest::_pollingStateChangesAreSerializedWithPolling()
+{
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression("showAppMessage:.*Configuration tasks remain"));
+    _mockLink = MockLink::startAPMArduSubMockLink();
+    QVERIFY(_mockLink);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle(), 10000);
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(waitForInitialConnect());
+
+    auto mock = std::unique_ptr<MockJoystick>(MockJoystick::create(QStringLiteral("Polling state fixture"), 6, 20, 0));
+    QVERIFY(mock->isValid());
+    auto* const manager = JoystickManager::instance();
+    manager->init();
+    SettingsManager::instance()->joystickManagerSettings()->activeJoystickName()->setRawValue(
+        QStringLiteral("Polling state fixture"));
+    QPointer<Joystick> joystick = manager->activeJoystick();
+    QVERIFY(joystick);
+    const auto stopJoystick = qScopeGuard([&]() {
+        manager->setActiveJoystickEnabledForActiveVehicle(false);
+        if (joystick) {
+            joystick->stop();
+        }
+        mock.reset();
+        manager->init();
+    });
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    for (int axis = 0; axis < 4; ++axis) {
+        joystick->_setJoystickAxisForAxisFunction(static_cast<Joystick::AxisFunction_t>(axis), axis);
+        joystick->_rgCalibration[axis].reset();
+    }
+    joystick->settings()->calibrated()->setRawValue(true);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+
+    // Stress regression: the configuration page stays open (its flag keeps the worker alive) while the
+    // vehicle side is dropped and picked up again, as on a vehicle switch or disconnect. The worker must
+    // never see "polling for a vehicle" without a vehicle, which it reports as an internal error and
+    // which strict log checking turns into a failure. The exact interleaving cannot be forced.
+    QSignalSpy firstScan(joystick, &Joystick::rawChannelValuesChanged);
+    joystick->_startPollingForConfiguration();
+    joystick->_configurationAllowsVehicleControl = true; // As with "disable safety restrictions".
+    QVERIFY(joystick->isRunning());
+    // A running thread may still be opening the device. The channel values are reported from a scan, so
+    // one report means that the device is open and the first scan is through.
+    QVERIFY(!firstScan.isEmpty() || firstScan.wait(10000));
+    const auto stopConfiguration = qScopeGuard([&]() {
+        if (joystick && joystick->_pollingFlags.testFlag(Joystick::PollingForConfiguration)) {
+            joystick->_stopPollingForConfiguration();
+        }
+    });
+    // The joystick's own 50 Hz worker keeps running; a second, fast scanner over the same handler makes
+    // the scans overlap the state changes often enough to matter.
+    std::atomic_bool stopPolling{false};
+    std::atomic<quint64> pollCount{0};
+    std::thread polling([&]() {
+        while (!stopPolling.load()) {
+            joystick->_handleButtons();
+            pollCount.fetch_add(1);
+        }
+    });
+    const auto stopWorker = qScopeGuard([&]() {
+        stopPolling.store(true);
+        if (polling.joinable()) {
+            polling.join();
+        }
+    });
+    QElapsedTimer budget;
+    budget.start();
+    while (pollCount.load() < 2 && budget.elapsed() < 30000) {
+        std::this_thread::yield();
+    }
+    QVERIFY2(pollCount.load() >= 2, "The polling loop did not start");
+
+    Vehicle* const vehicle = _vehicle;
+    for (int change = 0; change < 3000; ++change) {
+        joystick->_stopAllPollingForVehicle();
+        QVERIFY(!joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+        // Pick the vehicle up again without the signal connections, which this test does not need.
+        const QMutexLocker locker(&joystick->_pollingStateMutex);
+        joystick->_pollingVehicle = vehicle;
+        joystick->_pollingFlags |= Joystick::PollingForVehicle;
+    }
+    const quint64 seen = pollCount.load();
+    while (pollCount.load() < seen + 2 && budget.elapsed() < 30000) {
+        std::this_thread::yield();
+    }
+    stopPolling.store(true);
+    polling.join();
+    QVERIFY(pollCount.load() >= seen + 2);
+    QVERIFY(joystick->isRunning());
 }
 
 UT_REGISTER_TEST(JoystickControlTest, TestLabel::Unit, TestLabel::Joystick)

@@ -108,8 +108,11 @@ ColumnLayout {
                     onActivated: (index) => {
                         const action = root.joystick.assignableActions.get(index)
                         if (!action) return
-                        if (buttonRow._buttonFunction) buttonRow._buttonFunction.rawValue = 0
-                        if (buttonRow._shiftFunction) buttonRow._shiftFunction.rawValue = 0
+                        // Only a real ground station action takes the button away from the vehicle.
+                        if (action.action !== root.joystick.buttonActionNone) {
+                            if (buttonRow._buttonFunction) buttonRow._buttonFunction.rawValue = 0
+                            if (buttonRow._shiftFunction) buttonRow._shiftFunction.rawValue = 0
+                        }
                         root.joystick.setButtonAction(buttonRow.index, action.action)
                     }
 

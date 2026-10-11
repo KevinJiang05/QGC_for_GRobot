@@ -196,6 +196,7 @@ void Joystick::_resetAxisCalibrationData()
 
 void Joystick::_resetButtonActionData()
 {
+    const QMutexLocker locker(&_assignedButtonActionsMutex);
     for (int i = 0; i < _assignedButtonActions.count(); i++) {
         delete _assignedButtonActions[i];
         _assignedButtonActions[i] = nullptr;
@@ -260,8 +261,11 @@ void Joystick::_loadButtonSettings()
             }
 
             AssignedButtonAction *buttonAction = new AssignedButtonAction(actionName, repeat);
-            _assignedButtonActions[buttonIndex] = buttonAction;
-            _assignedButtonActions[buttonIndex]->buttonElapsedTimer.start();
+            buttonAction->buttonElapsedTimer.start();
+            {
+                const QMutexLocker locker(&_assignedButtonActionsMutex);
+                _assignedButtonActions[buttonIndex] = buttonAction;
+            }
             foundButton = true;
 
             qCDebug(JoystickLog)
@@ -694,9 +698,12 @@ void Joystick::run()
     if (!openFailed) {
         _axisElapsedTimer.start();
 
-        for (int buttonIndex = 0; buttonIndex < _totalButtonCount; buttonIndex++) {
-            if (_assignedButtonActions[buttonIndex]) {
-                _assignedButtonActions[buttonIndex]->buttonElapsedTimer.start();
+        {
+            const QMutexLocker locker(&_assignedButtonActionsMutex);
+            for (int buttonIndex = 0; buttonIndex < _totalButtonCount; buttonIndex++) {
+                if (_assignedButtonActions[buttonIndex]) {
+                    _assignedButtonActions[buttonIndex]->buttonElapsedTimer.start();
+                }
             }
         }
 
@@ -778,6 +785,7 @@ void Joystick::_updateButtonEventStates(QVector<ButtonEvent_t> &buttonEventState
 
 void Joystick::_handleButtons()
 {
+    const QMutexLocker pollingState(&_pollingStateMutex);
     if (_pollingFlags == PollingNone) {
         qCWarning(JoystickLog) << "Internal Error: Joystick not polling!";
         return;
@@ -814,6 +822,8 @@ void Joystick::_handleButtons()
         //-- Process button press/release
         const int buttonDelay = static_cast<int>(1000.0 / _joystickSettings.buttonFrequencyHz()->rawValue().toDouble());
         QSet<QString> executedActions;
+        // Actions are posted by value and never run inline here, so no assignment pointer leaves the lock.
+        const QMutexLocker locker(&_assignedButtonActionsMutex);
         for (int buttonIndex = 0; buttonIndex < _totalButtonCount; buttonIndex++) {
             if (!_assignedButtonActions[buttonIndex]) {
                 continue;
@@ -968,6 +978,7 @@ void Joystick::_handleAxis()
 
     _axisElapsedTimer.start();
 
+    const QMutexLocker pollingState(&_pollingStateMutex);
     if (_pollingFlags == PollingNone) {
         qCWarning(JoystickLog) << "Internal Error: Joystick not polling!";
         return;
@@ -1237,7 +1248,10 @@ void Joystick::_startPollingForVehicle(Vehicle &vehicle)
         return;
     }
 
-    _pollingVehicle = &vehicle;
+    {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _pollingVehicle = &vehicle;
+    }
     qCDebug(JoystickLog) << "Started joystick polling for vehicle. Vehicle id:" << _pollingVehicle->id();
 
     _buildAvailableButtonsActionList(_pollingVehicle);
@@ -1262,7 +1276,10 @@ void Joystick::_startPollingForVehicle(Vehicle &vehicle)
         (void) connect(this, &Joystick::gimbalYawStop,      gimbal, &GimbalController::gimbalYawStop);
     }
 
-    _pollingFlags |= PollingForVehicle;
+    {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _pollingFlags |= PollingForVehicle;
+    }
     _startPollingThread();
 }
 
@@ -1275,7 +1292,10 @@ void Joystick::_startPollingForConfiguration()
         return;
     }
 
-    _pollingFlags |= PollingForConfiguration;
+    {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _pollingFlags |= PollingForConfiguration;
+    }
     _startPollingThread();
 }
 
@@ -1301,7 +1321,10 @@ void Joystick::_stopPollingForConfiguration()
         _stopPollingThread();
     }
 
-    _pollingFlags = remainingFlags;
+    {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _pollingFlags = remainingFlags;
+    }
     qCDebug(JoystickLog) << "Remaining flags:" << _pollingFlagsToString(_pollingFlags);
 
     if (remainingFlags.testFlag(PollingForVehicle) && !isRunning()) {
@@ -1314,8 +1337,8 @@ void Joystick::_stopAllPollingForVehicle()
 {
     qCDebug(JoystickLog) << "Stopping all joystick polling for vehicle. Current flags:" << _pollingFlagsToString(_pollingFlags);
 
+    Vehicle *const releasedVehicle = _pollingVehicle;
     if (_pollingVehicle) {
-        _pollingVehicle->sendJoystickAuxRcOverrideThreadSafe({}, {}, false);
         (void) disconnect(this, nullptr, _pollingVehicle, nullptr);
         (void) disconnect(_pollingVehicle, &Vehicle::flightModesChanged, this, &Joystick::_flightModesChanged);
         if (GimbalController *const gimbal = _pollingVehicle->gimbalController()) {
@@ -1335,11 +1358,17 @@ void Joystick::_stopAllPollingForVehicle()
         _stopPollingThread();
     }
 
-    // Clear _pollingVehicle AFTER updating _pollingFlags so the polling thread never sees
-    // PollingForVehicle set with a null _pollingVehicle, which would fire spurious
-    // "Internal Error: No vehicle for joystick!" warnings.
-    _pollingVehicle = nullptr;
-    _pollingFlags = remainingFlags;
+    // Both change in one step under the lock, so a polling thread kept alive by the configuration flag
+    // never sees PollingForVehicle without a vehicle and is not inside a scan that still uses the old one.
+    {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _pollingVehicle = nullptr;
+        _pollingFlags = remainingFlags;
+    }
+    if (releasedVehicle) {
+        // Only now can no scan send another override for this vehicle, so the release is the last word.
+        releasedVehicle->sendJoystickAuxRcOverrideThreadSafe({}, {}, false);
+    }
     qCDebug(JoystickLog) << "Remaining flags:" << _pollingFlagsToString(_pollingFlags);
 
     if (remainingFlags.testFlag(PollingForConfiguration) && !isRunning()) {
@@ -1518,8 +1547,11 @@ void Joystick::setButtonRepeat(int button, bool repeat)
         return;
     }
 
-    _assignedButtonActions[button]->repeat = repeat;
-    _assignedButtonActions[button]->buttonElapsedTimer.start();
+    {
+        const QMutexLocker locker(&_assignedButtonActionsMutex);
+        _assignedButtonActions[button]->repeat = repeat;
+        _assignedButtonActions[button]->buttonElapsedTimer.start();
+    }
 
     QSettings settings;
     settings.beginGroup(_joystickSettings.settingsGroup());
@@ -1556,6 +1588,7 @@ void Joystick::setButtonAction(int button, const QString& actionName)
     const QString actionNameKey = QString::fromLatin1(kButtonActionNameKey);
     const QString repeatKey = QString::fromLatin1(kButtonRepeatKey);
 
+    QMutexLocker locker(&_assignedButtonActionsMutex);
     if (actionName.isEmpty() || actionName == _buttonActionNone) {
         if (_assignedButtonActions[button]) {
             delete _assignedButtonActions[button];
@@ -1581,6 +1614,7 @@ void Joystick::setButtonAction(int button, const QString& actionName)
         settings.setValue(actionNameKey, _assignedButtonActions[button]->actionName);
         settings.setValue(repeatKey, _assignedButtonActions[button]->repeat);
     }
+    locker.unlock();
 
     settings.endGroup();
     settings.endGroup();

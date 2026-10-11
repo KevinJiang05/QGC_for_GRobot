@@ -229,16 +229,15 @@ ColumnLayout {
                             { axisLabel: qsTr("Roll"), inputFact: gimbalParams.rollInputFact }
                         ]
                         LabelledFactComboBox {
+                            objectName: "gimbalLegacyInput_" + index
                             label: modelData.axisLabel
                             fact: modelData.inputFact
                             indexModel: false
                             visible: fact !== null
-                            Connections {
-                                target: modelData.inputFact
-                                function onValueChanged() {
-                                    if (gimbalParams.defaultModeFact) {
-                                        gimbalParams.defaultModeFact.rawValue = 3
-                                    }
+                            // Values arriving from the vehicle or the parameter editor must not change the mode.
+                            onActivated: {
+                                if (gimbalParams.defaultModeFact) {
+                                    gimbalParams.defaultModeFact.rawValue = 3
                                 }
                             }
                         }

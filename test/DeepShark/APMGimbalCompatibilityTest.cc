@@ -5,6 +5,7 @@
 #include <QtQuick/QQuickItem>
 #include <memory>
 
+#include "ColoredSvgImageProvider.h"
 #include "Fact.h"
 #include "QGCCorePlugin.h"
 
@@ -224,4 +225,73 @@ Item {
     QVERIFY(combo);
     QCOMPARE(combo->property("currentIndex").toInt(), 0);
     QCOMPARE(page->property("missingReports").toInt(), 0);
+}
+
+void APMGimbalCompatibilityTest::_legacyInputSideEffectNeedsUserSelection()
+{
+    QObject factOwner;
+    QVariantMap facts;
+    const auto addFact = [&](const QString& name, int value) {
+        auto* const fact = new Fact(1, name, FactMetaData::valueTypeInt32, &factOwner);
+        fact->setRawValue(value);
+        QQmlEngine::setObjectOwnership(fact, QQmlEngine::CppOwnership);
+        facts.insert(name, QVariant::fromValue(fact));
+        return fact;
+    };
+    addFact(QStringLiteral("MNT_TYPE"), 1);
+    Fact* const defaultMode = addFact(QStringLiteral("MNT_DEFLT_MODE"), 0);
+    Fact* const tiltInput = addFact(QStringLiteral("MNT_RC_IN_TILT"), 0);
+    tiltInput->setEnumInfo({QStringLiteral("Disabled"), QStringLiteral("RC6"), QStringLiteral("RC8")}, {0, 6, 8});
+    QGCCorePlugin::instance()->init();
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
+    QQmlComponent component(&engine);
+    component.setData(R"(
+import QtQuick
+import QGroundControl
+import QGroundControl.AutoPilotPlugins.APM
+Item {
+    property var fixtureFacts: ({})
+    QtObject {
+        id: fixtureController
+        function parameterExists(componentId, name) { return fixtureFacts[name] !== undefined }
+        function getParameterFact(componentId, name, reportMissing) {
+            return parameterExists(componentId, name) ? fixtureFacts[name] : null
+        }
+    }
+    APMGimbalInstance {
+        parameterController: fixtureController
+        width: 1200
+    }
+})",
+                      QUrl(QStringLiteral("qrc:/gimbal-legacy-input-fixture.qml")));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    std::unique_ptr<QObject> page(component.createWithInitialProperties({{QStringLiteral("fixtureFacts"), facts}}));
+    QVERIFY2(page, qPrintable(component.errorString()));
+
+    // A value arriving from the vehicle or from the parameter editor is not a selection on this page.
+    tiltInput->setRawValue(6);
+    QCoreApplication::processEvents();
+    QCOMPARE(defaultMode->rawValue().toInt(), 0);
+
+    const auto findInput = [](auto&& self, QQuickItem* item) -> QQuickItem* {
+        if (item->objectName() == QStringLiteral("gimbalLegacyInput_0")) {
+            return item;
+        }
+        for (auto* child : item->childItems()) {
+            if (auto* match = self(self, child)) {
+                return match;
+            }
+        }
+        return nullptr;
+    };
+    auto* const input = findInput(findInput, qobject_cast<QQuickItem*>(page.get()));
+    QVERIFY(input);
+    // Activating the inner combo box is what a selection does: it writes the input and reaches the page handler.
+    auto* const comboBox = qvariant_cast<QObject*>(input->property("comboBox"));
+    QVERIFY(comboBox);
+    QVERIFY(QMetaObject::invokeMethod(comboBox, "activated", Q_ARG(int, 2)));
+    QCOMPARE(tiltInput->rawValue().toInt(), 8);
+    QCOMPARE(defaultMode->rawValue().toInt(), 3);
 }

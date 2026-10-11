@@ -12,18 +12,22 @@
 #include <QtTest/QSignalSpy>
 #include <memory>
 
+#include "AppSettings.h"
 #include "AutoPilotPlugin.h"
 #include "DeepSharkVideoController.h"
 #include "Fact.h"
 #include "Joystick.h"
 #include "JoystickManager.h"
 #include "JoystickManagerSettings.h"
+#include "LinkManager.h"
+#include "MavlinkSettings.h"
 #include "MockJoystick.h"
 #include "MockLink.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 void DeepSharkUILayoutTest::_toolbarAndJoystickLayout()
 {
@@ -233,6 +237,62 @@ void DeepSharkUILayoutTest::_chineseSettingsPages()
                        QStringLiteral("固定翼飞行时，围绕前往目标点盘旋的半径。（仅适用于 ArduPilot）"),
                        QStringLiteral("deepshark-chinese-fly-settings.png"));
     stopUI();
+}
+
+void DeepSharkUILayoutTest::_armedConnectKeepsDisarmAvailable()
+{
+    ignoreLogMessage("qt.qml.propertyCache.append", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Member enabled of the object QQuickPinchArea overrides")));
+    auto* const overrideSetting = SettingsManager::instance()->appSettings()->disableSetupSafetyRestrictions();
+    auto* const skipSetting = SettingsManager::instance()->mavlinkSettings()->noInitialDownloadWhenFlying();
+    const QVariant previousOverride = overrideSetting->rawValue();
+    const QVariant previousSkip = skipSetting->rawValue();
+    const auto restoreSettings = qScopeGuard([&]() {
+        overrideSetting->setRawValue(previousOverride);
+        skipSetting->setRawValue(previousSkip);
+    });
+    overrideSetting->setRawValue(false);
+    skipSetting->setRawValue(true);
+    startUI();
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+    _window->setGeometry(_window->screen()->availableGeometry().adjusted(24, 48, -24, -48));
+
+    // The ground station restarts while the vehicle is still armed in the water.
+    LinkManager::instance()->setConnectionsAllowed();
+    auto* const config = new MockConfiguration(QStringLiteral("ArmedConnectToolbar"));
+    config->setFirmwareType(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    config->setVehicleType(MAV_TYPE_SUBMARINE);
+    config->setStartArmed(true);
+    config->setDynamic(true);
+    auto linkConfig = LinkManager::instance()->addConfiguration(config);
+    QVERIFY(LinkManager::instance()->createConnectedLink(linkConfig));
+    QPointer<MockLink> link = qobject_cast<MockLink*>(linkConfig->link());
+    QVERIFY(link);
+    const auto disconnect = qScopeGuard([&]() {
+        if (link) {
+            link->disconnect();
+        }
+    });
+    auto* const vehicles = MultiVehicleManager::instance();
+    QTRY_VERIFY_WITH_TIMEOUT(vehicles->activeVehicle(), 10000);
+    auto* const vehicle = vehicles->activeVehicle();
+    QTRY_VERIFY_WITH_TIMEOUT(vehicle->isInitialConnectComplete(), 15000);
+    QVERIFY(vehicle->armed());
+    QVERIFY(!vehicle->parameterManager()->parametersReady());
+
+    auto* const arm = findVisibleItem(_rootItem, QStringLiteral("toolbar_armDisarmButton"), 5000);
+    QVERIFY(arm);
+    QTRY_VERIFY_WITH_TIMEOUT(arm->isEnabled(), 5000);
+    QVERIFY(QMetaObject::invokeMethod(arm, "activated"));
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle->armed(), 5000);
+    // Arming still waits for the parameters.
+    QTRY_VERIFY_WITH_TIMEOUT(!arm->isEnabled(), 5000);
+    // The button is off for that reason and not because the link or the vehicle went away.
+    QVERIFY(!vehicles->parameterReadyVehicleAvailable());
+    QVERIFY(!vehicle->vehicleLinkManager()->communicationLost());
+    QCOMPARE(vehicles->activeVehicle(), vehicle);
 }
 
 UT_REGISTER_TEST(DeepSharkUILayoutTest, TestLabel::Integration)

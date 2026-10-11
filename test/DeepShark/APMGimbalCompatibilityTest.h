@@ -11,4 +11,5 @@ private slots:
     void _parameterFamilies();
     void _outputAssignments_data();
     void _outputAssignments();
+    void _legacyInputSideEffectNeedsUserSelection();
 };

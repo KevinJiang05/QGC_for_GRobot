@@ -244,6 +244,9 @@ SetupPage {
                         wrapMode:           Text.WordWrap
                         color:              qgcPal.warningText
                         text:               qsTr("Warning: Turning off arming checks can lead to loss of Vehicle control.")
+                        // 0x00fffe3f is ArduSub's own ARMING_SKIPCHK default. It is a skip mask: every configurable
+                        // check is skipped except RC, voltage and battery, i.e. 0x00ffffff & ~0x1c0
+                        // (ArduSub/Parameters.h).
                         visible:            _armingCheck ? _armingCheck.value !== 1 :
                                             (_armingSkipCheck && _armingSkipCheck.value !== 0 && _armingSkipCheck.value !== 0x00fffe3f)
                     }

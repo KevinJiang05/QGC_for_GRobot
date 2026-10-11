@@ -1,5 +1,6 @@
 #include "DeepSharkVideoControllerTest.h"
 
+#include <QtCore/QSemaphore>
 #include <QtCore/qscopeguard.h>
 #include <QtNetwork/QUdpSocket>
 #include <QtQml/QJSValue>
@@ -77,6 +78,7 @@ void DeepSharkVideoControllerTest::_statusRowsHideUrlCredentials()
     QCOMPARE(helper.displayUrl(QStringLiteral("u:p@://camera/main")), QStringLiteral("***@://camera/main"));
     QCOMPARE(helper.displayUrl(QStringLiteral("u:p://x@camera/main")), QStringLiteral("***@camera/main"));
     QCOMPARE(helper.displayUrl(QStringLiteral("foo@://bar@camera/main")), QStringLiteral("***@camera/main"));
+    QCOMPARE(helper.displayUrl(QStringLiteral("rtsp\n://u:p@camera/main")), QStringLiteral("***@camera/main"));
     QCOMPARE(helper.displayUrl(QStringLiteral("rtsp://192.168.1.10")), QStringLiteral("rtsp://192.168.1.10"));
     QCOMPARE(helper.displayUrl(QStringLiteral("no scheme")), QStringLiteral("no scheme"));
     QVERIFY(helper.displayUrl(QString()).isEmpty());
@@ -666,6 +668,29 @@ void DeepSharkVideoControllerTest::_coreOptionsSurviveGarbageCollection()
         engine.collectGarbage();
         otherEngine.collectGarbage();
     }
+}
+
+void DeepSharkVideoControllerTest::_workerShutdownOutlastsSlowStop()
+{
+#ifndef QGC_GST_STREAMING
+    QSKIP("GStreamer video sinks are not enabled");
+#else
+    // Finalizing a recording can keep the receiver's stop task busy for three seconds. The receiver
+    // destroys its worker right after shutdown(), so shutdown() must not return while the task runs.
+    // Declared first so that the task can still release it when an early return joins the worker.
+    QSemaphore taskStarted;
+    GstVideoWorker worker;
+    const auto joinWorker = qScopeGuard([&worker] { worker.shutdown(); });
+    worker.start();
+    worker.dispatch([&taskStarted] {
+        taskStarted.release();
+        // A full second past the two seconds the old shutdown() waited, to leave room for a slow scheduler.
+        QThread::msleep(3000);
+    });
+    QVERIFY(taskStarted.tryAcquire(1, 5000));
+    worker.shutdown();
+    QVERIFY(worker.isFinished());
+#endif
 }
 
 UT_REGISTER_TEST(DeepSharkVideoControllerTest, TestLabel::Unit)

@@ -28,4 +28,5 @@ private slots:
     void _disabledVideoResourcesCanBeRecreated();
     void _coreOptionsSurviveGarbageCollection();
     void _qmlEngineTeardownIsRepeatable();
+    void _workerShutdownOutlastsSlowStop();
 };

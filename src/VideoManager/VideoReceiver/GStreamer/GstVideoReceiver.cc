@@ -1791,7 +1791,10 @@ void GstVideoWorker::shutdown()
 {
     if (needDispatch()) {
         dispatch([this]() { _shutdown = true; });
-        (void) QThread::wait(2000);
+        // The receiver destroys this thread right after shutdown(). A queued stop() that finalizes a
+        // recording outlasts any fixed budget, so wait until the tasks queued before this one have run
+        // and the thread has exited.
+        (void) QThread::wait();
     } else {
         QThread::quit();
     }

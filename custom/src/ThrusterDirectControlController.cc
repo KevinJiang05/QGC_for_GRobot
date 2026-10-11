@@ -15,7 +15,8 @@ namespace {
 
 // DO_SET_SERVO is sent once by the vehicle's command queue, and a disabled output holds its last PWM
 // with no timeout on the vehicle. A lost neutral therefore has to be repeated from here. This is the
-// number of neutrals one session may send, whatever the reason for sending another one.
+// number of neutrals a session may send while it waits for neutral to be confirmed, whatever the reason
+// for sending another one. The best-effort neutrals around a link loss are not counted here.
 constexpr int kNeutralSendAttempts = 4;
 constexpr int kReissueChecks = 8;
 constexpr int kReissueCheckIntervalMs = 500;

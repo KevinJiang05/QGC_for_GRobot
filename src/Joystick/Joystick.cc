@@ -6,6 +6,8 @@
 #include "MavlinkActionsSettings.h"
 #include "FirmwarePlugin.h"
 #include "GimbalController.h"
+#include "MavlinkCameraControlInterface.h"
+#include "QGCCameraManager.h"
 #include "QGCCorePlugin.h"
 #include "QGCLoggingCategory.h"
 #include "QmlObjectListModel.h"
@@ -82,6 +84,7 @@ Joystick::Joystick(const QString &name, int axisCount, int buttonCount, int hatC
     , _rgCalibration(_axisCount)
     , _buttonEventStates(_totalButtonCount)
     , _assignedButtonActions(_totalButtonCount, nullptr)
+    , _buttonAssignmentGenerations(_totalButtonCount, 0)
     , _mavlinkActionManager(new MavlinkActionManager(SettingsManager::instance()->mavlinkActionsSettings()->joystickActionsFile(), this))
     , _availableButtonActions(new QmlObjectListModel(this))
     , _joystickManager(JoystickManager::instance())
@@ -825,6 +828,24 @@ void Joystick::_handleButtons()
         QSet<QString> executedActions;
         // Actions are posted by value and never run inline here, so no assignment pointer leaves the lock.
         const QMutexLocker locker(&_assignedButtonActionsMutex);
+        // Posts to the GUI thread for safe access to class members. The event names the assignments it was
+        // read from, so that the GUI thread can drop it when one of them was replaced in the meantime.
+        const auto postButtonAction = [this](const QList<int> &buttons, const QString &action, const ButtonEvent_t buttonEvent) {
+            QList<ButtonAssignmentRef> assignments;
+            assignments.reserve(buttons.size());
+            for (const int button : buttons) {
+                assignments.append({ button, _buttonAssignmentGenerations[button] });
+            }
+            const quint32 pollingSession = _pollingSession;
+            quint64 releaseId = 0;
+            if (buttonEvent == ButtonEventUpTransition) {
+                releaseId = ++_lastQueuedReleaseId;
+                _queuedReleases.append({ releaseId, assignments, action });
+            }
+            QMetaObject::invokeMethod(this, [this, pollingSession, releaseId, assignments, action, buttonEvent]() {
+                _executeQueuedButtonAction(pollingSession, releaseId, assignments, action, buttonEvent);
+            }, Qt::QueuedConnection);
+        };
         for (int buttonIndex = 0; buttonIndex < _totalButtonCount; buttonIndex++) {
             if (!_assignedButtonActions[buttonIndex]) {
                 continue;
@@ -842,10 +863,7 @@ void Joystick::_handleButtons()
                     if (assignedAction->buttonElapsedTimer.elapsed() > buttonDelay) {
                         assignedAction->buttonElapsedTimer.start();
                         qCDebug(JoystickLog) << "Repeat - button:action" << buttonIndex << buttonAction;
-                        // Post to the GUI thread for safe access to class members.
-                        QMetaObject::invokeMethod(this, [this, buttonAction]() {
-                            _executeButtonAction(buttonAction, ButtonEventRepeat);
-                        }, Qt::QueuedConnection);
+                        postButtonAction({ buttonIndex }, buttonAction, ButtonEventRepeat);
                     }
                 } else {
                     if (buttonEventState == ButtonEventDownTransition) {
@@ -882,10 +900,7 @@ void Joystick::_handleButtons()
                         // Guard against executing the action more than once per poll cycle when
                         // several such buttons are all in the same event state simultaneously.
                         if (!executedActions.contains(buttonAction)) {
-                            // Post to the GUI thread for safe access to class members.
-                            QMetaObject::invokeMethod(this, [this, buttonAction]() {
-                                _executeButtonAction(buttonAction, ButtonEventDownTransition);
-                            }, Qt::QueuedConnection);
+                            postButtonAction(multiActionButtons, buttonAction, ButtonEventDownTransition);
                             executedActions.insert(buttonAction);
                         }
                         continue;
@@ -894,10 +909,7 @@ void Joystick::_handleButtons()
             } else if (buttonEventState == ButtonEventUpTransition) {
                 // Same deduplication guard for release events.
                 if (!executedActions.contains(buttonAction)) {
-                    // Post to the GUI thread for safe access to class members.
-                    QMetaObject::invokeMethod(this, [this, buttonAction]() {
-                        _executeButtonAction(buttonAction, ButtonEventUpTransition);
-                    }, Qt::QueuedConnection);
+                    postButtonAction({ buttonIndex }, buttonAction, ButtonEventUpTransition);
                     executedActions.insert(buttonAction);
                 }
                 continue;
@@ -1339,15 +1351,8 @@ void Joystick::_stopAllPollingForVehicle()
     qCDebug(JoystickLog) << "Stopping all joystick polling for vehicle. Current flags:" << _pollingFlagsToString(_pollingFlags);
 
     Vehicle *const releasedVehicle = _pollingVehicle;
-    if (_pollingVehicle) {
-        (void) disconnect(this, nullptr, _pollingVehicle, nullptr);
-        (void) disconnect(_pollingVehicle, &Vehicle::flightModesChanged, this, &Joystick::_flightModesChanged);
-        if (GimbalController *const gimbal = _pollingVehicle->gimbalController()) {
-            (void) disconnect(this, nullptr, gimbal, nullptr);
-        }
-        if (!isRunning()) {
-            qCWarning(JoystickLog) << "Joystick polling thread not running even though _pollingVehicle was set.";
-        }
+    if (releasedVehicle && !isRunning()) {
+        qCWarning(JoystickLog) << "Joystick polling thread not running even though _pollingVehicle was set.";
     }
 
     const PollingFlags remainingFlags = _pollingFlags & ~PollingFlags(PollingForVehicle);
@@ -1359,15 +1364,58 @@ void Joystick::_stopAllPollingForVehicle()
         _stopPollingThread();
     }
 
-    // Both change in one step under the lock, so a polling thread kept alive by the configuration flag
-    // never sees PollingForVehicle without a vehicle and is not inside a scan that still uses the old one.
+    // All of this changes in one step under the lock, so a polling thread kept alive by the configuration
+    // flag never sees PollingForVehicle without a vehicle and is not inside a scan that still uses the old
+    // one. The session ends here: whatever a scan has queued up to now is dropped when it is delivered.
+    QList<QueuedRelease> queuedReleases;
     {
         const QMutexLocker pollingState(&_pollingStateMutex);
         _pollingVehicle = nullptr;
         _pollingFlags = remainingFlags;
+        ++_pollingSession;
+        queuedReleases.swap(_queuedReleases);
     }
+
     if (releasedVehicle) {
-        // Only now can no scan send another override for this vehicle, so the release is the last word.
+        // No scan can queue anything for this vehicle any more, and the action signals still reach it.
+        // A release that is queued has really happened. Nothing reports it again, so it is completed
+        // here instead of being lost with its session, but only as the end of a press that was
+        // dispatched in this session: the button has to hold the control still, on the device that is
+        // still selected. A release whose press is itself still queued, whose press belongs to an
+        // earlier session, or whose control another button has taken over ends nothing of its own and
+        // would stop what it did not start.
+        for (const QueuedRelease &release : std::as_const(queuedReleases)) {
+            if (!_queuedActionIsCurrent(release.assignments, release.action)) {
+                continue;
+            }
+            const QString control = _continuousControlForAction(release.action);
+            const auto held = _startedContinuousActions.constFind(control);
+            if (held == _startedContinuousActions.cend()) {
+                continue;
+            }
+            const bool releasedByHolder = std::any_of(release.assignments.cbegin(), release.assignments.cend(),
+                [&held](const ButtonAssignmentRef &assignment) { return held->buttons.contains(assignment.button); });
+            if (!releasedByHolder || !_deviceStillSelected(held.value(), control, releasedVehicle)) {
+                continue;
+            }
+            _startedContinuousActions.remove(control);
+            _runReleaseHandler(release.action);
+        }
+        if (SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool()) {
+            // What is still held has to end with the session: the buttons may stay down across the stop,
+            // and their releases would belong to another session.
+            _settleStartedContinuousActions(releasedVehicle);
+        }
+    }
+    _startedContinuousActions.clear();
+
+    if (releasedVehicle) {
+        (void) disconnect(this, nullptr, releasedVehicle, nullptr);
+        (void) disconnect(releasedVehicle, &Vehicle::flightModesChanged, this, &Joystick::_flightModesChanged);
+        if (GimbalController *const gimbal = releasedVehicle->gimbalController()) {
+            (void) disconnect(this, nullptr, gimbal, nullptr);
+        }
+        // No scan can send another override for this vehicle, so the release is the last word.
         releasedVehicle->sendJoystickAuxRcOverrideThreadSafe({}, {}, false);
     }
     qCDebug(JoystickLog) << "Remaining flags:" << _pollingFlagsToString(_pollingFlags);
@@ -1591,7 +1639,17 @@ void Joystick::setButtonAction(int button, const QString& actionName)
 
     QMutexLocker locker(&_assignedButtonActionsMutex);
     const QString replacedAction = _assignedButtonActions[button] ? _assignedButtonActions[button]->actionName : QString();
-    if (actionName.isEmpty() || actionName == _buttonActionNone) {
+    const bool clearsAssignment = actionName.isEmpty() || actionName == _buttonActionNone;
+    const bool assignmentChanges = clearsAssignment ? !replacedAction.isEmpty() : (replacedAction != actionName);
+    // The guard is read once per edit. A guarded edit settles what its button started and invalidates
+    // what is queued for the old assignment; an unguarded edit does neither, so that a queued release
+    // still ends the old action. Doing only one of the two would leave an action that nothing stops.
+    const bool settlesReplacedAssignment = assignmentChanges &&
+        SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool();
+    if (settlesReplacedAssignment) {
+        ++_buttonAssignmentGenerations[button];
+    }
+    if (clearsAssignment) {
         if (_assignedButtonActions[button]) {
             delete _assignedButtonActions[button];
             _assignedButtonActions[button] = nullptr;
@@ -1622,32 +1680,176 @@ void Joystick::setButtonAction(int button, const QString& actionName)
     settings.endGroup();
     settings.endGroup();
 
-    if (replacedAction != actionName) {
-        _releaseReplacedButtonAction(replacedAction);
+    if (settlesReplacedAssignment) {
+        _releaseActionStartedByButton(button);
     }
 
     emit buttonActionsChanged();
 }
 
-void Joystick::_releaseReplacedButtonAction(const QString &replacedAction)
+void Joystick::_releaseActionStartedByButton(int button)
 {
     // A button release runs the handler of whatever action is assigned at that moment. When the action of
     // a held button is replaced or removed, its own release handler would therefore never run and a
-    // continuous action, such as moving the gimbal, would keep its last rate. Only such actions have a
-    // release handler, and running one that is not active stops nothing that moves.
-    if (replacedAction.isEmpty() || replacedAction == _buttonActionNone || !_pollingVehicle ||
-        !_joystickManager->activeJoystickEnabledForActiveVehicle() ||
-        !SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool()) {
-        return;
+    // continuous action, such as moving the gimbal, would keep its last rate. The edit stands in for the
+    // release, but only where this button still holds the control: a stop for a control that another,
+    // still held button has taken over would end that button's motion.
+    QStringList heldActions;
+    for (auto entry = _startedContinuousActions.begin(); entry != _startedContinuousActions.end();) {
+        if (entry->buttons.contains(button)) {
+            if (_deviceStillSelected(entry.value(), entry.key(), _pollingVehicle)) {
+                heldActions.append(entry->action);
+            }
+            entry = _startedContinuousActions.erase(entry);
+        } else {
+            ++entry;
+        }
     }
-    const int idx = _findAvailableButtonActionIndex(replacedAction);
+    for (const QString &action : std::as_const(heldActions)) {
+        qCDebug(JoystickLog) << "Releasing action held by reassigned button:" << button << action;
+        _runReleaseHandler(action);
+    }
+}
+
+void Joystick::_settleStartedContinuousActions(Vehicle *vehicle)
+{
+    QStringList heldActions;
+    for (auto entry = _startedContinuousActions.cbegin(); entry != _startedContinuousActions.cend(); ++entry) {
+        if (_deviceStillSelected(entry.value(), entry.key(), vehicle)) {
+            heldActions.append(entry->action);
+        }
+    }
+    _startedContinuousActions.clear();
+    for (const QString &action : std::as_const(heldActions)) {
+        qCDebug(JoystickLog) << "Releasing action held while polling for the vehicle ends:" << action;
+        _runReleaseHandler(action);
+    }
+}
+
+bool Joystick::_deviceStillSelected(const StartedContinuousAction &started, const QString &control, Vehicle *vehicle) const
+{
+    // The stop is delivered to the gimbal or camera that is selected now. When that is no longer the one
+    // the press was dispatched to, a stop sent on behalf of this press would reach a device this joystick
+    // has not moved, and would not reach the one it has. It is not sent then; the first device keeps its
+    // last command, which is what a normal release does in that situation as well.
+    if (started.hadDevice && started.device.isNull()) {
+        return false;
+    }
+    if (_deviceForContinuousControl(vehicle, control) != started.device.data()) {
+        qCDebug(JoystickLog) << "Not releasing" << started.action << "- the selected device has changed since it was started";
+        return false;
+    }
+    return true;
+}
+
+QObject *Joystick::_deviceForContinuousControl(Vehicle *vehicle, const QString &control) const
+{
+#ifdef QGC_UNITTEST_BUILD
+    if (_deviceForContinuousControlOverride) {
+        return _deviceForContinuousControlOverride(control);
+    }
+#endif
+    if (!vehicle) {
+        return nullptr;
+    }
+    if ((control == QLatin1String("gimbalPitch")) || (control == QLatin1String("gimbalYaw"))) {
+        GimbalController *const gimbalController = vehicle->gimbalController();
+        return gimbalController ? gimbalController->activeGimbal() : nullptr;
+    }
+    if ((control == QLatin1String("zoom")) || (control == QLatin1String("focus"))) {
+        QGCCameraManager *const cameraManager = vehicle->cameraManager();
+        return cameraManager ? cameraManager->currentCameraInstance() : nullptr;
+    }
+    return nullptr;
+}
+
+void Joystick::_runReleaseHandler(const QString &action)
+{
+    const int idx = _findAvailableButtonActionIndex(action);
     if (idx < 0) {
         return;
     }
-    const AvailableButtonAction *const action = qobject_cast<const AvailableButtonAction*>(_availableButtonActions->get(idx));
-    if (action && action->onUp()) {
-        qCDebug(JoystickLog) << "Releasing replaced button action:" << replacedAction;
-        action->onUp()();
+    const AvailableButtonAction *const availAction = qobject_cast<const AvailableButtonAction*>(_availableButtonActions->get(idx));
+    if (availAction && availAction->onUp()) {
+        availAction->onUp()();
+    }
+}
+
+bool Joystick::_queuedActionIsCurrent(const QList<ButtonAssignmentRef> &assignments, const QString &action) const
+{
+    for (const ButtonAssignmentRef &assignment : assignments) {
+        // A guarded edit has replaced the assignment and settled what the button held. Running the old
+        // press now would start something that no release ends, because the release looks up the new
+        // assignment; the old release has nothing left to end.
+        if ((assignment.button < 0) || (assignment.button >= _totalButtonCount) ||
+            (_buttonAssignmentGenerations[assignment.button] != assignment.generation)) {
+            qCDebug(JoystickLog) << "Dropping action queued for a replaced assignment - button:action" << assignment.button << action;
+            return false;
+        }
+    }
+    return true;
+}
+
+QString Joystick::_continuousControlForAction(const QString &action)
+{
+    // Both directions of a control end with the same stop, so the later press takes the control over
+    // from the earlier one. Any other action with a release handler is a control of its own.
+    static const QHash<QString, QString> controls = {
+        { QString(_buttonActionGimbalUp),           QStringLiteral("gimbalPitch") },
+        { QString(_buttonActionGimbalDown),         QStringLiteral("gimbalPitch") },
+        { QString(_buttonActionGimbalLeft),         QStringLiteral("gimbalYaw") },
+        { QString(_buttonActionGimbalRight),        QStringLiteral("gimbalYaw") },
+        { QString(_buttonActionContinuousZoomIn),   QStringLiteral("zoom") },
+        { QString(_buttonActionContinuousZoomOut),  QStringLiteral("zoom") },
+        { QString(_buttonActionContinuousFocusIn),  QStringLiteral("focus") },
+        { QString(_buttonActionContinuousFocusOut), QStringLiteral("focus") },
+    };
+    return controls.value(action, action);
+}
+
+void Joystick::_executeQueuedButtonAction(quint32 pollingSession, quint64 releaseId, const QList<ButtonAssignmentRef> &assignments, const QString &action, const ButtonEvent_t buttonEvent)
+{
+    // This runs on the GUI thread, which is the only thread that ends polling for a vehicle or changes
+    // assignments. The polling thread queued the event some time ago.
+    if (releaseId != 0) {
+        const QMutexLocker pollingState(&_pollingStateMutex);
+        _queuedReleases.removeIf([releaseId](const QueuedRelease &release) { return release.id == releaseId; });
+    }
+    if (pollingSession != _pollingSession) {
+        // Polling for the vehicle this was read for has ended. Whatever is polled now is another session,
+        // possibly for another vehicle. The releases of the old session that qualified were completed
+        // when it ended; the rest is dropped with it.
+        qCDebug(JoystickLog) << "Dropping action queued in an earlier polling session:" << action;
+        return;
+    }
+    if (!_queuedActionIsCurrent(assignments, action)) {
+        return;
+    }
+
+    if (!_executeButtonAction(action, buttonEvent)) {
+        return;
+    }
+
+    const int idx = _findAvailableButtonActionIndex(action);
+    const AvailableButtonAction *const availAction = (idx >= 0) ? qobject_cast<const AvailableButtonAction*>(_availableButtonActions->get(idx)) : nullptr;
+    if (!availAction || !availAction->onUp()) {
+        return;
+    }
+    const QString control = _continuousControlForAction(action);
+    if (buttonEvent == ButtonEventDownTransition) {
+        // This press holds the control now, also when an earlier press on the same control is still down.
+        StartedContinuousAction started;
+        started.action = action;
+        started.buttons.reserve(assignments.size());
+        for (const ButtonAssignmentRef &assignment : assignments) {
+            started.buttons.append(assignment.button);
+        }
+        started.device = _deviceForContinuousControl(_pollingVehicle, control);
+        started.hadDevice = !started.device.isNull();
+        _startedContinuousActions.insert(control, started);
+    } else if (buttonEvent == ButtonEventUpTransition) {
+        // The stop has gone out, whoever held the control.
+        _startedContinuousActions.remove(control);
     }
 }
 
@@ -1679,19 +1881,19 @@ QStringList Joystick::buttonActions() const
     return list;
 }
 
-void Joystick::_executeButtonAction(const QString &action, const ButtonEvent_t buttonEvent)
+bool Joystick::_executeButtonAction(const QString &action, const ButtonEvent_t buttonEvent)
 {
     Vehicle *const vehicle = _pollingVehicle;
     if (!vehicle) {
         qCWarning(JoystickLog) << "Internal Error: No vehicle for joystick!";
-        return;
+        return false;
     }
     if (!_joystickManager->activeJoystickEnabledForActiveVehicle()) {
         qCWarning(JoystickLog) << "Internal Error: Joystick not enabled for vehicle!";
-        return;
+        return false;
     }
     if (action == _buttonActionNone) {
-        return;
+        return false;
     }
 
     const int idx = _findAvailableButtonActionIndex(action);
@@ -1709,28 +1911,28 @@ void Joystick::_executeButtonAction(const QString &action, const ButtonEvent_t b
             handler = availAction->onUp();
             break;
         default:
-            return;
+            return false;
         }
         if (handler) {
             qCDebug(JoystickLog) << "Button Action:" << action << buttonEvent;
             handler();
-            return;
+            return true;
         }
         // No lambda for this event — only DownTransition falls through to flight mode / MAVLink handling
         if (buttonEvent != ButtonEventDownTransition) {
-            return;
+            return false;
         }
     }
 
     if (buttonEvent != ButtonEventDownTransition) {
-        return;
+        return false;
     }
 
     // Flight mode check
     if (vehicle->flightModes().contains(action)) {
         qCDebug(JoystickLog) << "Button Action: Switching flight mode to" << action;
         emit setFlightMode(action);
-        return;
+        return true;
     }
 
     // MAVLink actions
@@ -1740,9 +1942,10 @@ void Joystick::_executeButtonAction(const QString &action, const ButtonEvent_t b
         if (action == mavlinkAction->label()) {
             qCDebug(JoystickLog) << "Button Action: Sending MAVLink action" << action;
             mavlinkAction->sendTo(vehicle);
-            return;
+            return true;
         }
     }
+    return false;
 }
 
 bool Joystick::_validAxis(int axis) const

@@ -1,5 +1,6 @@
 #include "JoystickControlTest.h"
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QPointer>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QScopeGuard>
@@ -8,6 +9,7 @@
 #include <QtQuick/QQuickItem>
 #include <QtTest/QSignalSpy>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <thread>
 
@@ -502,7 +504,7 @@ void JoystickControlTest::_pollingStateChangesAreSerializedWithPolling()
     joystick->_configurationAllowsVehicleControl = true; // As with "disable safety restrictions".
     QVERIFY(joystick->isRunning());
     // A running thread may still be opening the device. The channel values are reported from a scan, so
-    // one report means that the device is open and the first scan is through.
+    // one report means that the device is open and the first scan has begun.
     QVERIFY(!firstScan.isEmpty() || firstScan.wait(10000));
     const auto stopConfiguration = qScopeGuard([&]() {
         if (joystick && joystick->_pollingFlags.testFlag(Joystick::PollingForConfiguration)) {
@@ -551,36 +553,28 @@ void JoystickControlTest::_pollingStateChangesAreSerializedWithPolling()
     QVERIFY(joystick->isRunning());
 }
 
-void JoystickControlTest::_reassigningAHeldActionReleasesIt()
+void JoystickControlTest::_startLiveJoystick(const QString &name, std::unique_ptr<MockJoystick> &mock,
+                                             QPointer<Joystick> &joystick)
 {
     ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
                      QRegularExpression("showAppMessage:.*Configuration tasks remain"));
-    // The mock vehicle has no gimbal. The gimbal controller reports that for every stop, exactly as it
-    // does when such a button is released normally.
+    // The mock vehicle has no gimbal. The gimbal controller reports that for every start and stop, exactly
+    // as it does when such a button is pressed and released normally.
     ignoreLogMessage("Gimbal.GimbalController", QtCriticalMsg,
-                     QRegularExpression("gimbal(Pitch|Yaw)Stop: active gimbal is nullptr"));
+                     QRegularExpression("gimbal(Pitch|Yaw)(Start|Stop): active gimbal is nullptr"));
     _mockLink = MockLink::startAPMArduSubMockLink();
     QVERIFY(_mockLink);
     QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle(), 10000);
     _vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(waitForInitialConnect());
 
-    auto mock = std::unique_ptr<MockJoystick>(MockJoystick::create(QStringLiteral("Reassign fixture"), 6, 20, 0));
+    mock.reset(MockJoystick::create(name, 6, 20, 0));
     QVERIFY(mock->isValid());
     auto* const manager = JoystickManager::instance();
     manager->init();
-    SettingsManager::instance()->joystickManagerSettings()->activeJoystickName()->setRawValue(
-        QStringLiteral("Reassign fixture"));
-    QPointer<Joystick> joystick = manager->activeJoystick();
+    SettingsManager::instance()->joystickManagerSettings()->activeJoystickName()->setRawValue(name);
+    joystick = manager->activeJoystick();
     QVERIFY(joystick);
-    const auto stopJoystick = qScopeGuard([&]() {
-        manager->setActiveJoystickEnabledForActiveVehicle(false);
-        if (joystick) {
-            joystick->stop();
-        }
-        mock.reset();
-        manager->init();
-    });
     manager->setActiveJoystickEnabledForActiveVehicle(false);
     for (int axis = 0; axis < 4; ++axis) {
         joystick->_setJoystickAxisForAxisFunction(static_cast<Joystick::AxisFunction_t>(axis), axis);
@@ -589,36 +583,595 @@ void JoystickControlTest::_reassigningAHeldActionReleasesIt()
     joystick->settings()->calibrated()->setRawValue(true);
     manager->setActiveJoystickEnabledForActiveVehicle(true);
     QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+}
 
+void JoystickControlTest::_stopLiveJoystick(std::unique_ptr<MockJoystick> &mock, const QPointer<Joystick> &joystick)
+{
+    auto* const manager = JoystickManager::instance();
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    if (joystick) {
+        joystick->stop();
+    }
+    mock.reset();
+    manager->init();
+}
+
+bool JoystickControlTest::_scanHasSeen(Joystick *joystick, int button, bool pressed)
+{
+    // Waits, without running the event loop, until a scan has seen the button pressed, or has seen it
+    // released and gone back to idle. A scan holds the polling state lock from reading the buttons to
+    // queueing their actions, so once this returns the action of that scan is queued and has not run yet.
+    // A press that arrives before the button is idle again is not seen as a new press at all.
+    QElapsedTimer budget;
+    budget.start();
+    while (budget.elapsed() < 30000) {
+        {
+            const QMutexLocker locker(&joystick->_pollingStateMutex);
+            const Joystick::ButtonEvent_t state = joystick->_buttonEventStates[button];
+            const bool seenPressed =
+                (state == Joystick::ButtonEventDownTransition) || (state == Joystick::ButtonEventRepeat);
+            if (pressed ? seenPressed : (state == Joystick::ButtonEventNone)) {
+                return true;
+            }
+        }
+        // Sleeping outside the lock leaves it to the polling thread.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
+void JoystickControlTest::_reassignmentSettlesOnlyWhatTheButtonHolds()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Reassign fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
     auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
     const QVariant previousGuard = guard->rawValue();
     const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
     guard->setRawValue(true);
 
     const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
     const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
     QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
     QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
 
-    // The release handler is looked up by the action assigned at release time. Once a held "start" action
-    // is replaced, nothing would ever run its stop, so the edit itself has to.
+    const QString zoomIn = QString::fromLatin1(Joystick::_buttonActionContinuousZoomIn);
+    const QString zoomOut = QString::fromLatin1(Joystick::_buttonActionContinuousZoomOut);
+    QSignalSpy zoomStarts(joystick, &Joystick::startContinuousZoom);
+    QSignalSpy zoomStops(joystick, &Joystick::stopContinuousZoom);
+
+    // Button 1 moves the gimbal up and is held. Button 2 has "gimbal down" and is not pressed; both actions
+    // end with the same pitch stop.
     joystick->setButtonAction(1, gimbalUp);
+    joystick->setButtonAction(2, gimbalDown);
     QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+
+    // Taking the action away from the idle button must not stop what the held button is doing.
+    joystick->setButtonAction(2, none);
+    QCOMPARE(pitchStops.count(), 0);
+
+    // The release handler is looked up by the action assigned at release time. Once the action of the held
+    // button is replaced, nothing would ever run its stop, so the edit itself has to. The new action is
+    // not started by a button that was already down.
     joystick->setButtonAction(1, gimbalLeft);
     QCOMPARE(pitchStops.count(), 1);
     QCOMPARE(yawStops.count(), 0);
-    joystick->setButtonAction(1, joystick->buttonActionNone());
-    QCOMPARE(yawStops.count(), 1);
+    QCOMPARE(yawStarts.count(), 0);
 
-    // Assigning the same action again, or one without a release handler, stops nothing.
-    joystick->setButtonAction(1, gimbalUp);
+    // The stop is sent once. Another edit of the same button has nothing left to settle.
     joystick->setButtonAction(1, gimbalUp);
     QCOMPARE(pitchStops.count(), 1);
+    QCOMPARE(yawStops.count(), 0);
+    QVERIFY(releaseAndSettle(1));
 
-    // The guard can be switched off in the application settings.
+    // A later press on the same control takes it over. Button 1 went up first, button 2 then went down,
+    // and both are held: the pitch rate is the one of button 2. Editing button 1 must leave it alone;
+    // editing button 2 ends it.
+    joystick->setButtonAction(2, gimbalDown);
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    QVERIFY(mock->pressButton(2));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 2, 10000);
+    QCOMPARE(pitchStarts.at(1).at(0).toInt(), -1);
+    joystick->setButtonAction(1, none);
+    QCOMPARE(pitchStops.count(), 0);
+    joystick->setButtonAction(2, none);
+    QCOMPARE(pitchStops.count(), 1);
+    QVERIFY(releaseAndSettle(1));
+    QVERIFY(releaseAndSettle(2));
+
+    // The same holds for the camera zoom, another pair of actions with a common stop.
+    joystick->setButtonAction(1, zoomIn);
+    joystick->setButtonAction(2, zoomOut);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(zoomStarts.count(), 1, 10000);
+    QVERIFY(mock->pressButton(2));
+    QTRY_COMPARE_WITH_TIMEOUT(zoomStarts.count(), 2, 10000);
+    joystick->setButtonAction(1, none);
+    QCOMPARE(zoomStops.count(), 0);
+    joystick->setButtonAction(2, none);
+    QCOMPARE(zoomStops.count(), 1);
+    QVERIFY(releaseAndSettle(1));
+    QVERIFY(releaseAndSettle(2));
+}
+
+void JoystickControlTest::_guardIsReadWhenAButtonIsEdited()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Guard fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    // A press that a scan has queued, and that has not run yet, belongs to the assignment it was read
+    // from. After that assignment is replaced it must not run: no release would end it.
+    joystick->setButtonAction(1, gimbalUp);
+    QVERIFY(mock->pressButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, true));
+    QCOMPARE(pitchStarts.count(), 0);
+    joystick->setButtonAction(1, gimbalLeft);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStarts.count(), 0);
+    QCOMPARE(yawStarts.count(), 0);
+    QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(releaseAndSettle(1));
+
+    // The guard can be switched off in the application settings. The same sequence then behaves as it
+    // did before: the queued press runs and the edit releases nothing.
     guard->setRawValue(false);
-    joystick->setButtonAction(1, joystick->buttonActionNone());
+    joystick->setButtonAction(1, gimbalUp);
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, true));
+    joystick->setButtonAction(1, gimbalLeft);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStarts.count(), 1);
+    QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(releaseAndSettle(1));
+
+    // The guard is read when the edit is made, not when a queued event runs. An edit without the guard
+    // stops nothing, so the release that was already queued for the old action has to stay valid even if
+    // the guard is switched on before it runs. Otherwise neither of the two would end the motion.
+    joystick->setButtonAction(1, gimbalUp);
+    pitchStarts.clear();
+    pitchStops.clear();
+    yawStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    QVERIFY(mock->releaseButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, false));
+    QCOMPARE(pitchStops.count(), 0);
+    joystick->setButtonAction(1, gimbalLeft);
+    QCOMPARE(pitchStops.count(), 0);
+    guard->setRawValue(true);
+    QCoreApplication::processEvents();
     QCOMPARE(pitchStops.count(), 1);
+    QCOMPARE(yawStops.count(), 0);
+}
+
+void JoystickControlTest::_leavingAVehicleSettlesWhatTheJoystickStarted()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Leave fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    // The joystick stops controlling the vehicle while a button holds the gimbal. The button stays down,
+    // so no release will be delivered: the stop has to end what the joystick started.
+    joystick->setButtonAction(1, gimbalUp);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 1);
+
+    // After it controls the vehicle again the button is still down. That is no new press, and an edit has
+    // nothing left to settle.
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+    QVERIFY(_scanHasSeen(joystick, 1, true));
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStarts.count(), 1);
+    joystick->setButtonAction(1, gimbalLeft);
+    QCOMPARE(pitchStops.count(), 1);
+    QCOMPARE(yawStarts.count(), 0);
+    QVERIFY(releaseAndSettle(1));
+    QCOMPARE(pitchStarts.count(), 1);
+
+    // Without the guard nothing is ended for a button that is still down, as before.
+    guard->setRawValue(false);
+    joystick->setButtonAction(1, gimbalUp);
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(releaseAndSettle(1));
+}
+
+void JoystickControlTest::_actionsQueuedForAnEarlierSessionDoNotRun()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Session fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    QSignalSpy armRequests(joystick, &Joystick::setArmed);
+    joystick->setButtonAction(1, gimbalUp);
+    joystick->setButtonAction(2, gimbalDown);
+    joystick->setButtonAction(3, QString::fromLatin1(Joystick::_buttonActionArm));
+
+    // An action that was queued while the joystick controlled the vehicle must not run once that has
+    // ended, even when the joystick controls a vehicle again by the time the event is delivered. This is
+    // an arm request read in the old session.
+    QVERIFY(mock->pressButton(3));
+    QVERIFY(_scanHasSeen(joystick, 3, true));
+    QCOMPARE(armRequests.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCoreApplication::processEvents();
+    QCOMPARE(armRequests.count(), 0);
+    QVERIFY(releaseAndSettle(3));
+    QCOMPARE(armRequests.count(), 0);
+
+    // A release is different: the button really was released, and nothing will report that again. With
+    // the guard off, nothing else ends the motion either, so the release that a scan has already queued
+    // has to be completed when its session ends. It is completed exactly once.
+    guard->setRawValue(false);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    QVERIFY(mock->releaseButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, false));
+    QCOMPARE(pitchStops.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCOMPARE(pitchStops.count(), 1);
+
+    // The queued event of that release is still waiting. It must not run in the new session, where it
+    // would stop what another button has started since.
+    QVERIFY(mock->pressButton(2));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 2, 10000);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStops.count(), 1);
+    QVERIFY(releaseAndSettle(2));
+    QCOMPARE(pitchStops.count(), 2);
+}
+
+void JoystickControlTest::_heldActionIsNotSettledOnAnotherDevice()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Device fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    // The stop of a continuous action goes to whichever gimbal or camera is selected when it is sent. The
+    // mock vehicle has neither, so the selection is supplied here.
+    QObject firstDevice;
+    QObject secondDevice;
+    QObject *selectedDevice = &firstDevice;
+    joystick->_deviceForContinuousControlOverride = [&selectedDevice](const QString &) { return selectedDevice; };
+    const auto clearOverride = qScopeGuard([&]() {
+        if (joystick) {
+            joystick->_deviceForContinuousControlOverride = nullptr;
+        }
+    });
+
+    // Started on the first device and still held when the selection changes: a stop sent now would reach
+    // the second device, which this joystick never moved. Neither an edit nor the end of the session may
+    // send it.
+    joystick->setButtonAction(1, gimbalUp);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    selectedDevice = &secondDevice;
+    joystick->setButtonAction(1, gimbalLeft);
+    QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(releaseAndSettle(1));
+
+    joystick->setButtonAction(1, gimbalUp);
+    selectedDevice = &firstDevice;
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    selectedDevice = &secondDevice;
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(releaseAndSettle(1));
+
+    // With the selection unchanged both still settle.
+    selectedDevice = &firstDevice;
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 1);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(releaseAndSettle(1));
+
+    // A release that is still queued when the session ends is completed there. That stop is subject to
+    // the same check: started on the first device, released after the second was selected.
+    pitchStarts.clear();
+    pitchStops.clear();
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    selectedDevice = &secondDevice;
+    QVERIFY(mock->releaseButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, false));
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStops.count(), 0);
+}
+
+void JoystickControlTest::_releaseWithoutADispatchedPressIsNotCompleted()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Undispatched fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    // A press and its release are both queued when the session ends. The press is dropped with the
+    // session, so its release has nothing to end: completing it would send a stop for a motion this
+    // button never started, to a gimbal that something else may be moving.
+    guard->setRawValue(false);
+    joystick->setButtonAction(1, gimbalUp);
+    QVERIFY(mock->pressButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, true));
+    QVERIFY(mock->releaseButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, false));
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStarts.count(), 0);
+    QCOMPARE(pitchStops.count(), 0);
+}
+
+void JoystickControlTest::_releaseOfAPressFromAnEarlierSessionIsNotCompleted()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Carried press fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant previousGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(previousGuard); });
+    guard->setRawValue(true);
+
+    const QString gimbalUp = QString::fromLatin1(Joystick::_buttonActionGimbalUp);
+    const QString gimbalDown = QString::fromLatin1(Joystick::_buttonActionGimbalDown);
+    const QString gimbalLeft = QString::fromLatin1(Joystick::_buttonActionGimbalLeft);
+    const QString none = joystick->buttonActionNone();
+    QSignalSpy pitchStarts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy pitchStops(joystick, &Joystick::gimbalPitchStop);
+    QSignalSpy yawStarts(joystick, &Joystick::gimbalYawStart);
+    QSignalSpy yawStops(joystick, &Joystick::gimbalYawStop);
+    // Releases the button, waits until a scan has queued the release and runs what is queued.
+    const auto releaseAndSettle = [&](int button) {
+        const bool released = mock->releaseButton(button) && _scanHasSeen(joystick, button, false);
+        QCoreApplication::processEvents();
+        return released;
+    };
+    Q_UNUSED(manager)
+    Q_UNUSED(gimbalDown)
+    Q_UNUSED(gimbalLeft)
+    Q_UNUSED(none)
+    Q_UNUSED(yawStarts)
+    Q_UNUSED(yawStops)
+    Q_UNUSED(releaseAndSettle)
+
+    // Button 1 is pressed in one session and stays down into the next one, where button 2 takes the
+    // pitch over. The release of button 1 is scanned in the second session, but its press is not of that
+    // session: completing it when the session ends would stop what button 2 holds. Without the guard
+    // nothing is settled for a button that is still down, so no stop goes out at all.
+    guard->setRawValue(false);
+    joystick->setButtonAction(1, gimbalUp);
+    joystick->setButtonAction(2, gimbalDown);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 1, 10000);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(mock->pressButton(2));
+    QTRY_COMPARE_WITH_TIMEOUT(pitchStarts.count(), 2, 10000);
+    QVERIFY(mock->releaseButton(1));
+    QVERIFY(_scanHasSeen(joystick, 1, false));
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QCOMPARE(pitchStops.count(), 0);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QCoreApplication::processEvents();
+    QCOMPARE(pitchStops.count(), 0);
+    QVERIFY(releaseAndSettle(2));
 }
 
 UT_REGISTER_TEST(JoystickControlTest, TestLabel::Unit, TestLabel::Joystick)

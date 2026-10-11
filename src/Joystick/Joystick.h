@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QMutex>
+#include <QtCore/QPointer>
 #include <QtCore/QObject>
 #include <QtCore/QThread>
 #include <QtCore/QVariantMap>
@@ -431,7 +433,10 @@ private:
     void _resetFunctionToAxisMap();
     void _resetAxisCalibrationData();
     void _resetButtonActionData();
-    void _releaseReplacedButtonAction(const QString &replacedAction);
+    void _releaseActionStartedByButton(int button);
+    void _settleStartedContinuousActions(Vehicle *vehicle);
+    static QString _continuousControlForAction(const QString &action);
+    QObject *_deviceForContinuousControl(Vehicle *vehicle, const QString &control) const;
     void _resetButtonEventStates();
 
     void _foundInvalidAxisSettingsCleanup();
@@ -449,7 +454,22 @@ private:
     float _adjustRange(int reversedAxisValue, const AxisCalibration_t &calibration, bool withDeadbands);
     uint16_t _adjustRangeToRcOverridePwm(int value, const AxisCalibration_t &calibration, bool withDeadbands);
 
-    void _executeButtonAction(const QString &action, const ButtonEvent_t buttonEvent);
+    /// A button and the count of its assignment changes at the time an action was queued for it.
+    struct ButtonAssignmentRef {
+        int button = -1;
+        quint32 generation = 0;
+    };
+    /// A release that the polling thread has queued and the GUI thread has not run yet.
+    struct QueuedRelease {
+        quint64 id = 0;
+        QList<ButtonAssignmentRef> assignments;
+        QString action;
+    };
+    void _executeQueuedButtonAction(quint32 pollingSession, quint64 releaseId, const QList<ButtonAssignmentRef> &assignments, const QString &action, const ButtonEvent_t buttonEvent);
+    bool _queuedActionIsCurrent(const QList<ButtonAssignmentRef> &assignments, const QString &action) const;
+    void _runReleaseHandler(const QString &action);
+    /// @return true when the action was dispatched for this event; this says nothing about what the vehicle did
+    bool _executeButtonAction(const QString &action, const ButtonEvent_t buttonEvent);
     int  _findAvailableButtonActionIndex(const QString &action);
     void _addAvailableButtonActionIfMissing(const QString &action);
     bool _validAxis(int axis) const;
@@ -475,6 +495,34 @@ private:
     QVector<AssignedButtonAction*> _assignedButtonActions;
     // The GUI thread edits assignments while the polling thread reads them and restarts their timers.
     QMutex _assignedButtonActionsMutex;
+    // Counts the guarded assignment changes of each button, protected like the assignments. An action
+    // queued by the polling thread carries the counts it was read under and is dropped when one has
+    // changed since.
+    QVector<quint32> _buttonAssignmentGenerations;
+    // Counts how often polling for a vehicle has ended, protected by _pollingStateMutex. A queued action
+    // carries the count it was read under: what was read for one vehicle must not act on the next.
+    quint32 _pollingSession = 0;
+    // Releases that are queued for the GUI thread, protected by _pollingStateMutex. A release has really
+    // happened and no scan reports it again, so the ones still queued when polling for a vehicle ends are
+    // completed there; their queued events are dropped with the session like everything else.
+    QList<QueuedRelease> _queuedReleases;
+    quint64 _lastQueuedReleaseId = 0;
+    /// The press that currently holds a control which a release has to end.
+    struct StartedContinuousAction {
+        QString action;
+        QList<int> buttons;
+        // The gimbal or camera that was selected when the press was dispatched. The stop goes to
+        // whichever is selected when it is sent, so it is only sent on behalf of this press while the
+        // selection is still the same.
+        QPointer<QObject> device;
+        bool hadDevice = false;
+    };
+    // Keyed by what the action controls, see _continuousControlForAction(). GUI thread only.
+    QHash<QString, StartedContinuousAction> _startedContinuousActions;
+    bool _deviceStillSelected(const StartedContinuousAction &started, const QString &control, Vehicle *vehicle) const;
+#ifdef QGC_UNITTEST_BUILD
+    std::function<QObject*(const QString &control)> _deviceForContinuousControlOverride;
+#endif
     MavlinkActionManager *_mavlinkActionManager = nullptr;
     QmlObjectListModel *_availableButtonActions = nullptr;
 

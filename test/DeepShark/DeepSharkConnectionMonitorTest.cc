@@ -160,7 +160,8 @@ void DeepSharkConnectionMonitorTest::_frameProgressSurvivesReconnect()
     m._tick();
     QCOMPARE(m._channels[0].lastFrame, qint64(-100));
     controller.reset();
-    m._armed = true;
+    m._flightArmed = true;
+    m._channels[0].armed = true;
     m._lastHeartbeat = m._clock.elapsed();
     m._flightPresent = true;
     m._channels[0].lastFrame = -1;
@@ -263,7 +264,7 @@ void DeepSharkConnectionMonitorTest::_vehicleSignals()
     heartbeat.compid = vehicle.defaultComponentId();
     emit vehicle.mavlinkMessageReceived(heartbeat);
     QVERIFY(m._lastHeartbeat >= 0);
-    m._armed = true;
+    m._flightArmed = true;
     m._channels[0].lastFrame = 0;
     m._setVehicle(nullptr);
     m._evaluate(0);
@@ -282,12 +283,195 @@ void DeepSharkConnectionMonitorTest::_existingAlarmSurvivesRearm()
     _prepare(m);
     m._armed = true;
     m._alarmActive = true;
+    m._faultMask = 1; // An active alarm always names the sources it was raised for.
     m._acknowledged = false;
     m._resetReadiness();
     QSignalSpy sounds(&m, &DeepSharkConnectionMonitor::soundRequested);
     m._evaluate(10000);
     QVERIFY(m.alarmActive());
     QCOMPARE(sounds.count(), 1); // Rearming must never silence an existing incident.
+}
+
+void DeepSharkConnectionMonitorTest::_steadyStateDoesNotRenotify()
+{
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m);
+    _fresh(m, 0);
+    _fresh(m, 10000);
+    QVERIFY(m.monitoring());
+    QSignalSpy state(&m, &DeepSharkConnectionMonitor::stateChanged);
+    // Nothing a binding can read changes between these ticks.
+    _fresh(m, 10500);
+    _fresh(m, 11000);
+    QCOMPARE(state.count(), 0);
+    m._evaluate(14000);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(state.count(), 1);
+    m._evaluate(14500);
+    QCOMPARE(state.count(), 1);
+
+    // The confirmation countdown is shown to the user and must keep updating.
+    DeepSharkConnectionMonitor starting(nullptr, false);
+    _prepare(starting);
+    _fresh(starting, 0);
+    QSignalSpy startingState(&starting, &DeepSharkConnectionMonitor::stateChanged);
+    _fresh(starting, 1000);
+    _fresh(starting, 2000);
+    QCOMPARE(startingState.count(), 2);
+}
+
+void DeepSharkConnectionMonitorTest::_deadCameraDoesNotBlockFlightMonitoring()
+{
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m); // The enabled channel never delivers a frame.
+    for (qint64 now = 0; now <= 10000; now += 1000) {
+        m._lastHeartbeat = now;
+        m._evaluate(now);
+    }
+    QVERIFY(m.monitoring());
+    // A camera that never worked is reported as waiting, not as a lost link.
+    QVERIFY(!m.alarmActive());
+    QVERIFY(m.statusText().contains(QStringLiteral("Left")));
+
+    m._evaluate(14000);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(1));
+    for (qint64 now = 15000; now <= 20000; now += 1000) {
+        m._lastHeartbeat = now;
+        m._evaluate(now);
+    }
+    QVERIFY(!m.alarmActive());
+
+    // Once the camera has delivered frames for the confirmation period it is monitored as well.
+    for (qint64 now = 21000; now <= 31000; now += 1000) {
+        _fresh(m, now);
+    }
+    m._lastHeartbeat = 34000;
+    m._evaluate(34000);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(2));
+}
+
+void DeepSharkConnectionMonitorTest::_flightIsMonitoredWithoutVideo()
+{
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m);
+    m._channels[0].expected = false;
+    for (qint64 now = 0; now <= 10000; now += 1000) {
+        m._lastHeartbeat = now;
+        m._evaluate(now);
+    }
+    QVERIFY(m.monitoring());
+    m._evaluate(14000);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(1));
+}
+
+void DeepSharkConnectionMonitorTest::_alarmKeepsSourcesThatNeverRecovered()
+{
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m);
+    DeepSharkConnectionMonitor::Channel right;
+    right.name = QStringLiteral("Right");
+    right.expected = true;
+    m._channels.append(right);
+    const auto step = [&m](qint64 now, bool left, bool rightFresh) {
+        m._lastHeartbeat = now;
+        if (left) { m._channels[0].lastFrame = now; }
+        if (rightFresh) { m._channels[1].lastFrame = now; }
+        m._evaluate(now);
+    };
+    for (qint64 now = 0; now <= 10000; now += 1000) { step(now, true, true); }
+    step(14000, false, false);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(6));
+
+    // The application was suspended: every source has to prove itself again, the incident stays.
+    m._resetReadiness();
+    m._lastHeartbeat = -1;
+    for (auto &channel : m._channels) { channel.lastFrame = -1; }
+
+    // Only the right camera returns, drops again and returns once more. The left one never does.
+    for (qint64 now = 15000; now <= 25000; now += 1000) { step(now, false, true); }
+    QVERIFY(m.alarmActive());
+    step(29000, false, false);
+    for (qint64 now = 30000; now <= 36000; now += 1000) { step(now, false, true); }
+    QVERIFY(m.alarmActive());
+    QVERIFY(m._faultMask & quint64(2));
+    QVERIFY(!m.alarmText().contains(QStringLiteral("已恢复")));
+}
+
+void DeepSharkConnectionMonitorTest::_disablingAFaultedCameraEndsItsAlarm_data()
+{
+    QTest::addColumn<bool>("flightMonitored");
+    QTest::newRow("camera-only") << false;
+    QTest::newRow("flight-and-camera") << true;
+}
+
+void DeepSharkConnectionMonitorTest::_disablingAFaultedCameraEndsItsAlarm()
+{
+    QFETCH(bool, flightMonitored);
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m);
+    const auto step = [&m, flightMonitored](qint64 now, bool cameraFresh) {
+        if (flightMonitored) { m._lastHeartbeat = now; }
+        if (cameraFresh) { m._channels[0].lastFrame = now; }
+        m._evaluate(now);
+    };
+    for (qint64 now = 0; now <= 10000; now += 1000) { step(now, true); }
+    QVERIFY(m.monitoring());
+    step(14000, false);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(2));
+
+    // Switching the failed camera off is not a recovery, and it must not leave an alarm that can never end.
+    m._channels[0].expected = false;
+    step(15000, false);
+    QVERIFY(!m.alarmActive());
+    QVERIFY(m.attentionRequired());
+    QVERIFY(m.alarmText().contains(QStringLiteral("停用")));
+    for (qint64 now = 16000; now <= 22000; now += 1000) { step(now, false); }
+    QVERIFY(!m.alarmActive());
+    QVERIFY(!m.alarmText().contains(QStringLiteral("已恢复")));
+}
+
+void DeepSharkConnectionMonitorTest::_switchedOffCameraIsNotReportedAsRecovered()
+{
+    DeepSharkConnectionMonitor m(nullptr, false);
+    _prepare(m);
+    DeepSharkConnectionMonitor::Channel right;
+    right.name = QStringLiteral("Right");
+    right.expected = true;
+    m._channels.append(right);
+    const auto step = [&m](qint64 now, bool left, bool rightFresh) {
+        m._lastHeartbeat = now;
+        if (left) { m._channels[0].lastFrame = now; }
+        if (rightFresh) { m._channels[1].lastFrame = now; }
+        m._evaluate(now);
+    };
+    for (qint64 now = 0; now <= 10000; now += 1000) { step(now, true, true); }
+    step(14000, false, false);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(6));
+
+    // The left camera is switched off while the right one is already delivering again.
+    QSignalSpy events(&m, &DeepSharkConnectionMonitor::eventOccurred);
+    m._channels[0].expected = false;
+    step(15000, false, true);
+    QVERIFY(m.alarmActive());
+    QCOMPARE(m._faultMask, quint64(4));
+    QVERIFY(!m.alarmText().contains(QStringLiteral("Left")));
+    QCOMPARE(events.count(), 1);
+    QVERIFY(events.constFirst().constFirst().toString().contains(QStringLiteral("Left")));
+    QVERIFY(events.constFirst().constFirst().toString().contains(QStringLiteral("停用")));
+
+    // Only the right camera recovers, and only it is named as recovered.
+    for (qint64 now = 16000; now <= 21000; now += 1000) { step(now, false, true); }
+    QVERIFY(!m.alarmActive());
+    QVERIFY(m.alarmText().contains(QStringLiteral("已恢复")));
+    QVERIFY(m.alarmText().contains(QStringLiteral("Right")));
+    QVERIFY(!m.alarmText().contains(QStringLiteral("Left")));
+    QCOMPARE(events.count(), 2);
 }
 
 UT_REGISTER_TEST(DeepSharkConnectionMonitorTest, TestLabel::Unit)

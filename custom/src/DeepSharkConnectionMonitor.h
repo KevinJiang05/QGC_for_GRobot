@@ -82,6 +82,9 @@ private:
         quint64 count = 0;
         qint64 lastFrame = -1;
         qint64 graceUntil = -1;
+        // Each source is monitored once it has been healthy for the confirmation period on its own.
+        qint64 readySince = -1;
+        bool armed = false;
     };
     void _tick();
     void _evaluate(qint64 now);
@@ -94,6 +97,18 @@ private:
     void _playSound();
     void _repeatSound(qint64 now);
     void _setThreshold(int &field, int value, int low, int high);
+    struct NotifiedState {
+        bool armed = false;
+        bool alarmActive = false;
+        bool pendingAcknowledgement = false;
+        bool acknowledged = false;
+        QString statusText;
+        QString alarmText;
+        QString audioStatus;
+        bool operator==(const NotifiedState &) const = default;
+    };
+    NotifiedState _currentState() const;
+    void _notifyStateIfChanged();
     QElapsedTimer _clock;
     QTimer _timer;
     QVector<Channel> _channels;
@@ -114,14 +129,16 @@ private:
     int _vehicleId = -1;
     qint64 _lastHeartbeat = -1;
     qint64 _lastTick = -1;
-    qint64 _readySince = -1;
+    qint64 _flightReadySince = -1;
     qint64 _recoverySince = -1;
     qint64 _lastSound = -1;
-    bool _armed = false;
+    bool _flightArmed = false;
+    bool _armed = false; ///< At least one source is monitored
     bool _alarmActive = false;
     bool _pendingAcknowledgement = false;
     bool _acknowledged = false;
     quint64 _faultMask = 0;
     QString _statusText;
     QString _alarmText;
+    NotifiedState _notifiedState;
 };

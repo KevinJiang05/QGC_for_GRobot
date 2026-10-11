@@ -14,6 +14,13 @@ private slots:
     void _settingsRoundTrip();
     void _vehicleSignals();
     void _existingAlarmSurvivesRearm();
+    void _steadyStateDoesNotRenotify();
+    void _deadCameraDoesNotBlockFlightMonitoring();
+    void _flightIsMonitoredWithoutVideo();
+    void _alarmKeepsSourcesThatNeverRecovered();
+    void _disablingAFaultedCameraEndsItsAlarm_data();
+    void _disablingAFaultedCameraEndsItsAlarm();
+    void _switchedOffCameraIsNotReportedAsRecovered();
     void _qmlControlsLoad();
 private:
     void _prepare(DeepSharkConnectionMonitor &monitor);

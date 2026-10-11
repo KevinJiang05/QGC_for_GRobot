@@ -34,6 +34,21 @@ DeepSharkConnectionMonitor::DeepSharkConnectionMonitor(QObject *parent, bool liv
         qCInfo(DeepSharkConnectionMonitorLog).noquote() << message;
     });
     _statusText = _enabled ? tr("等待飞控和视频就绪") : tr("断联预警已关闭");
+    connect(this, &DeepSharkConnectionMonitor::stateChanged, this, [this] { _notifiedState = _currentState(); });
+}
+
+DeepSharkConnectionMonitor::NotifiedState DeepSharkConnectionMonitor::_currentState() const
+{
+    // audioStatus follows the application mute setting, which has no signal wired to this object.
+    return {_armed, _alarmActive, _pendingAcknowledgement, _acknowledged, _statusText, _alarmText, audioStatus()};
+}
+
+void DeepSharkConnectionMonitor::_notifyStateIfChanged()
+{
+    // The state properties share one signal; a tick that changed none of them stays silent.
+    if (!(_notifiedState == _currentState())) {
+        emit stateChanged();
+    }
 }
 
 void DeepSharkConnectionMonitor::start()
@@ -93,7 +108,12 @@ void DeepSharkConnectionMonitor::_persist()
 void DeepSharkConnectionMonitor::_resetReadiness()
 {
     _armed = false;
-    _readySince = -1;
+    _flightArmed = false;
+    _flightReadySince = -1;
+    for (auto &channel : _channels) {
+        channel.armed = false;
+        channel.readySince = -1;
+    }
     _recoverySince = -1;
 }
 
@@ -136,7 +156,8 @@ void DeepSharkConnectionMonitor::_setThreshold(int &field, int value, int low, i
     if (field == value) { return; }
     field = value;
     // Do not clear incidents or their acknowledgement when settings change.
-    _readySince = -1;
+    _flightReadySince = -1;
+    for (auto &channel : _channels) { channel.readySince = -1; }
     _recoverySince = -1;
     _persist();
 }
@@ -263,6 +284,8 @@ void DeepSharkConnectionMonitor::_tick()
             channel.lastFrame = -1;
             channel.count = channel.controller->totalFrameCount();
             channel.graceUntil = now + 5000;
+            channel.armed = false;
+            channel.readySince = -1;
         }
         channel.expected = expected;
         channel.name = channel.controller->alertTitle();
@@ -277,69 +300,119 @@ void DeepSharkConnectionMonitor::_evaluate(qint64 now)
 {
     if (!_enabled) { return; }
     const bool flightFresh = _flightPresent && _lastHeartbeat >= 0 && now - _lastHeartbeat < _heartbeatTimeout * 1000;
-    quint64 faults = flightFresh ? 0 : 1;
-    QStringList reasons;
-    QStringList waitingVideos;
-    if (!flightFresh) { reasons << tr("飞控心跳中断"); }
-    int expectedCount = 0;
-    bool videosFresh = true;
+    // A source joins the monitoring on its own. A camera that never delivered a frame must not keep
+    // the flight link, or the other cameras, unmonitored.
+    const auto confirm = [this, now](bool fresh, qint64 &readySince, bool &armed) {
+        if (armed) { return false; }
+        if (!fresh) { readySince = -1; return false; }
+        if (readySince < 0) { readySince = now; }
+        armed = now - readySince >= _readySeconds * 1000;
+        return armed;
+    };
+    QStringList newlyArmed;
+    if (confirm(flightFresh, _flightReadySince, _flightArmed)) { newlyArmed << tr("飞控"); }
+    quint64 faults = _flightArmed && !flightFresh ? 1 : 0;
+    // _faultMask holds every source the active alarm was raised for. A switched-off source leaves it at
+    // once; the others stay until all of them have been healthy for the recovery period, never dropping
+    // out because they are momentarily unmonitored.
+    quint64 alarmSources = _faultMask;
+    bool alarmSourcesFresh = !(alarmSources & 1) || flightFresh;
+    QStringList retired;
+    QStringList waiting;
+    if (!_flightArmed && !flightFresh) { waiting << tr("飞控心跳"); }
+    qint64 confirmingSince = _flightArmed ? -1 : _flightReadySince;
+    int armedVideos = 0;
     for (int i = 0; i < _channels.size(); ++i) {
-        const auto &channel = _channels[i];
-        if (!channel.expected) { continue; }
-        ++expectedCount;
-        const bool fresh = channel.lastFrame >= 0 && now - channel.lastFrame < _videoTimeout * 1000;
-        videosFresh &= fresh;
-        if (!fresh) { waitingVideos << channel.name; }
-        if (!fresh && now >= channel.graceUntil) {
-            faults |= quint64(1) << (i + 1);
-            reasons << tr("%1视频无新帧").arg(channel.name);
-        }
-    }
-    if (!_armed) {
-        if (flightFresh && videosFresh && expectedCount > 0) {
-            if (_readySince < 0) { _readySince = now; }
-            if (now - _readySince >= _readySeconds * 1000) {
-                _armed = true;
-                emit eventOccurred(tr("链路监测已就绪（%1 路视频）").arg(expectedCount));
-            } else {
-                _statusText = tr("链路就绪确认：%1 / %2 秒").arg((now - _readySince) / 1000).arg(_readySeconds);
+        auto &channel = _channels[i];
+        const quint64 bit = quint64(1) << (i + 1);
+        if (!channel.expected) {
+            channel.armed = false;
+            channel.readySince = -1;
+            if (alarmSources & bit) {
+                alarmSources &= ~bit;
+                retired << channel.name;
             }
-        } else {
-            _readySince = -1;
-            _statusText = expectedCount == 0 ? tr("等待启用视频通道")
-                    : tr("等待链路就绪：%1").arg(!flightFresh ? tr("飞控心跳") : tr("%1视频新帧").arg(waitingVideos.join(tr("、"))));
+            continue;
         }
-        if (!_armed) { _repeatSound(now); emit stateChanged(); return; }
+        const bool fresh = channel.lastFrame >= 0 && now - channel.lastFrame < _videoTimeout * 1000;
+        if (confirm(fresh, channel.readySince, channel.armed)) { newlyArmed << channel.name; }
+        if (channel.armed) {
+            ++armedVideos;
+            if (!fresh && now >= channel.graceUntil) { faults |= bit; }
+        } else if (!fresh) {
+            waiting << tr("%1视频新帧").arg(channel.name);
+        } else if (confirmingSince < 0 || channel.readySince < confirmingSince) {
+            confirmingSince = channel.readySince;
+        }
+        if ((alarmSources & bit) && !fresh) { alarmSourcesFresh = false; }
     }
-    _statusText = tr("链路监测中：飞控 + %1 路视频").arg(expectedCount);
+    if (!newlyArmed.isEmpty()) {
+        emit eventOccurred(tr("链路监测已就绪：%1").arg(newlyArmed.join(tr("、"))));
+    }
+    _armed = _flightArmed || armedVideos > 0;
+    if (!_armed) {
+        _statusText = confirmingSince >= 0
+                ? tr("链路就绪确认：%1 / %2 秒").arg((now - confirmingSince) / 1000).arg(_readySeconds)
+                : tr("等待链路就绪：%1").arg(waiting.join(tr("、")));
+    } else {
+        _statusText = !_flightArmed ? tr("链路监测中：%1 路视频").arg(armedVideos)
+                    : armedVideos > 0 ? tr("链路监测中：飞控 + %1 路视频").arg(armedVideos) : tr("链路监测中：飞控");
+        if (!waiting.isEmpty()) {
+            _statusText += tr("；等待：%1").arg(waiting.join(tr("、")));
+        }
+    }
+
+    // The alarm is settled whether or not anything is monitored right now.
+    const bool newFault = (faults & ~alarmSources) != 0;
+    alarmSources |= faults;
+    const auto describeAlarmSources = [this, alarmSources]() {
+        QStringList reasons;
+        if (alarmSources & 1) { reasons << tr("飞控心跳中断"); }
+        for (int i = 0; i < _channels.size(); ++i) {
+            if (alarmSources & (quint64(1) << (i + 1))) { reasons << tr("%1视频无新帧").arg(_channels[i].name); }
+        }
+        return reasons.join(tr("；"));
+    };
+    const auto endAlarm = [this](const QString &text) {
+        _alarmActive = false;
+        _recoverySince = -1;
+        _pendingAcknowledgement = !_acknowledged;
+        _alarmText = text;
+        _soundPending = false;
+        if (_sound) { _sound->stop(); }
+        emit eventOccurred(_alarmText);
+    };
+    if (_alarmActive && !retired.isEmpty() && alarmSources != 0) {
+        // A switched-off source is no longer part of the alarm. Say so once, and name only what is left,
+        // so that a later recovery does not count it as recovered.
+        _alarmText = describeAlarmSources();
+        emit eventOccurred(tr("%1已停用，不再监测；仍在告警：%2").arg(retired.join(tr("、")), _alarmText));
+    }
     if (faults) {
-        const bool newFault = (faults & ~_faultMask) != 0;
         _recoverySince = -1;
         _alarmActive = true;
         _pendingAcknowledgement = true;
-        _alarmText = reasons.join(tr("；"));
+        _alarmText = describeAlarmSources();
         if (newFault) {
             _acknowledged = false;
             _lastSound = -1;
             emit eventOccurred(tr("异常断联：%1").arg(_alarmText));
         }
-        _faultMask = faults;
-    } else if (_alarmActive && flightFresh && videosFresh) {
+    } else if (_alarmActive && !retired.isEmpty() && alarmSources == 0) {
+        // Switching the failed source off ends the alarm, but it is not a recovery.
+        endAlarm(tr("告警结束：%1已停用，不再监测").arg(retired.join(tr("、"))));
+    } else if (_alarmActive && alarmSourcesFresh) {
         if (_recoverySince < 0) { _recoverySince = now; }
         if (now - _recoverySince >= _recoverySeconds * 1000) {
-            _alarmActive = false;
-            _faultMask = 0;
-            _pendingAcknowledgement = !_acknowledged;
-            _alarmText = tr("链路已恢复：%1").arg(_alarmText);
-            _soundPending = false;
-            if (_sound) { _sound->stop(); }
-            emit eventOccurred(_alarmText);
+            alarmSources = 0;
+            endAlarm(tr("链路已恢复：%1").arg(_alarmText));
         }
     } else {
         _recoverySince = -1;
     }
+    _faultMask = _alarmActive ? alarmSources : 0;
     _repeatSound(now);
-    emit stateChanged();
+    _notifyStateIfChanged();
 }
 
 void DeepSharkConnectionMonitor::_repeatSound(qint64 now)

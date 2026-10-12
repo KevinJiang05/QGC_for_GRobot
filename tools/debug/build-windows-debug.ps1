@@ -11,7 +11,7 @@ $buildDirectory = Join-Path $projectRoot 'build-v5.1.5-debug'
 $cachePath = Join-Path $buildDirectory 'CMakeCache.txt'
 $vsDevCmd = 'D:\Develop\Toolchains\VS2022BuildTools\Common7\Tools\VsDevCmd.bat'
 if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
-    throw 'Configure build-v5.1.5-debug first, following docs/debug/windows-v5.1.5-debug.md.'
+    throw 'Configure build-v5.1.5-debug first, following docs-deepshark/debug-build.md.'
 }
 if ((Get-Content -LiteralPath $cachePath -Raw) -notmatch '(?m)^CMAKE_BUILD_TYPE:STRING=Debug\r?$') {
     throw 'The development build directory must be configured for Debug.'

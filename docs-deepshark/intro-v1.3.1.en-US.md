@@ -1,6 +1,6 @@
 # QGC_GRobot / DeepShark Ground Station
 
-> This page preserves the QGC v5.0.8 / Kevin v1.3.1 introduction. See [README.md](README.md) for the current project status and the [v5.1.5 Debug guide](docs/debug/windows-v5.1.5-debug.md) for the current test candidate.
+> This page preserves the QGC v5.0.8 / Kevin v1.3.1 introduction. See [README.md](../README.md) for the current project status and the [v5.1.5 Debug guide](debug-build.md) for the current test candidate.
 
 This repository is a **QGroundControl v5.0.8 Stable** custom ground station for underwater robotics competition work and later AUV/ROV experiments. The current internal Windows release is **QGC_KevinJiang v1.3.1**. The project keeps the native QGC ArduPilot, MAVLink, parameter, mode, telemetry, and control stack intact, then layers a DeepShark video panel, a YOLO object-detection overlay, and device-configuration tools through the QGC custom build mechanism.
 
@@ -136,7 +136,7 @@ For a Windows installer, use the standardized release script:
 .\tools\release\build-windows-release.ps1 -Version 1.3.2
 ```
 
-The script writes step logs, `release-state.json`, and `release-report.md`. Distribute only after the final report succeeds and version, dependencies, hash, and in-place-upgrade checks pass. See `docs/releases/windows-release-runbook.md`; the current v1.3.1 notes are in `docs/releases/v1.3.1.md`.
+The script writes step logs, `release-state.json`, and `release-report.md`. Distribute only after the final report succeeds and version, dependencies, hash, and in-place-upgrade checks pass. See `docs-deepshark/release-runbook.md`; the current v1.3.1 notes are in `docs-deepshark/releases/v1.3.1.md`.
 
 ## RTSP Workflow
 

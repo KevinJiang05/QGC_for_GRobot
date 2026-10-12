@@ -1,9 +1,9 @@
 # Kevin v2.0.0 / QGroundControl v5.1.5 Windows Debug 候选版
 
 本候选基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），保留 DeepShark 定制功能。
-升级前检查点为 `db9c9159631a271457a7d6c395deb50e2cf3c304`；长期开发分支统一为 `main`，版本及回退节点使用 tag 记录，见 [仓库维护说明](../development/repository-maintenance.md)。
+升级前检查点为 `db9c9159631a271457a7d6c395deb50e2cf3c304`；长期开发分支统一为 `main`，版本及回退节点使用 tag 记录，见 [仓库维护说明](repository.md)。
 
-已执行的验证、此前失败/超时的修复及全量 lint 的保留问题，记录在内部文档 `docs/internal/audits/upstream_v5.1.5_debug_validation_2026-10-05.md`（不随本仓库发布）。
+已执行的验证、此前失败/超时的修复及全量 lint 的保留问题，记录在内部文档 `docs-internal/audits/upstream_v5.1.5_debug_validation_2026-10-05.md`（不随本仓库发布）。
 
 ## 启动
 
@@ -94,7 +94,7 @@ AI 页面的 Python 路径填 `D:\Develop\envs\yolo\Scripts\python.exe`，桥接
 `StopDeepSharkQGC.cmd --list` 可先查看将停止的旧版、新 Debug 及相关子进程。
 
 升级遗漏的修复范围和证据记录在内部文档
-`docs/internal/audits/upstream_v5.1.5_migration_repairs_2026-10-06.md`（不随本仓库发布）。
+`docs-internal/audits/upstream_v5.1.5_migration_repairs_2026-10-06.md`（不随本仓库发布）。
 
 ## 简明实测清单
 

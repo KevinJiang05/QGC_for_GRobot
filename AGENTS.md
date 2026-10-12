@@ -4,22 +4,22 @@
 
 本仓库是 QGroundControl `v5.1.5` 的定制版（DeepShark 水下机器人）。下方 `# AGENTS.md` 起是上游的通用说明，保留原文以便合并上游；与本节冲突时以本节为准。
 
-- 定制功能在 `custom/`，新功能默认放这里；改了上游目录的文件要在 `docs/development/upstream_patch_inventory_2026-10-11.md` 登记。任务从相关的 `custom/` 代码读起，不必先读上游说明里的三个 "Critical Files"。
-- 分支和各目录的用途见 `docs/development/repository-maintenance.md`。提清理或重构建议前，先查 `docs/internal/audits/` 里是否已有决定。`docs/internal/` 放审计、交接和排查记录，已忽略，不随本仓库发布。
-- 构建用 `tools/debug/build-windows-debug.ps1`，在既有的 `build-v5.1.5-debug/` 上增量编译，说明见 `docs/debug/windows-v5.1.5-debug.md`。不新建构建目录，不全量重编；同一目录同一时间只跑一个构建或一套测试。上游的 `just` 配方默认用 `build/` 目录，不适用于本仓库。
+- 定制功能在 `custom/`，新功能默认放这里；改了上游目录的文件要在 `docs-deepshark/upstream-patches.md` 登记。任务从相关的 `custom/` 代码读起，不必先读上游说明里的三个 "Critical Files"。
+- 分支和各目录的用途见 `docs-deepshark/repository.md`。提清理或重构建议前，先查 `docs-internal/audits/` 里是否已有决定。`docs-internal/` 放审计和排查记录，已忽略，不随本仓库发布；实机数据和排查记录放 `docs-internal/research/日期_主题/`，每个文件夹一份 `notes.md`，不放进被跟踪的路径。本项目自己的公开文档在 `docs-deepshark/`，`docs/` 是上游的用户文档站。
+- 构建用 `tools/debug/build-windows-debug.ps1`，在既有的 `build-v5.1.5-debug/` 上增量编译，说明见 `docs-deepshark/debug-build.md`。不新建构建目录，不全量重编；同一目录同一时间只跑一个构建或一套测试。上游的 `just` 配方默认用 `build/` 目录，不适用于本仓库。
 - 测试用 `ctest --test-dir build-v5.1.5-debug -C Debug --output-on-failure -R <名称>`。运行前要设置 Qt 和 GStreamer 的插件路径（`QT_PLUGIN_PATH`、`QT_QPA_PLATFORM_PLUGIN_PATH`、`QML_IMPORT_PATH`、`GST_PLUGIN_*`）以及 `QT_QPA_FONTDIR=C:\Windows\Fonts`；缺少字体目录时，QML 测试会因字体警告失败。界面测试需要原生窗口，直接运行测试程序并加 `--unittest:<名称> --onscreen`。
-- 静态检查用 `.venv/Scripts/pre-commit.exe`，缓存目录的设置见 `docs/debug/windows-v5.1.5-debug.md`。
+- 静态检查用 `.venv/Scripts/pre-commit.exe`，缓存目录的设置见 `docs-deepshark/debug-build.md`。
 
 ## Windows 发布与打包
 
 - 准备 Windows 安装包时，优先使用 `tools/release/build-windows-release.ps1 -Version <版本号>`，避免每次重新推导或手工拼接构建命令。
 - Codex 主要负责监督发布过程：检查 `release-state.json`、各步骤日志和最终 `release-report.md`，确认版本、依赖、安装包哈希及覆盖升级契约。
-- 若脚本不可用或执行失败，先参考 `docs/releases/windows-release-runbook.md` 和对应步骤日志定位原因；确有必要时再采用手工命令，并说明与标准流程的差异。
+- 若脚本不可用或执行失败，先参考 `docs-deepshark/release-runbook.md` 和对应步骤日志定位原因；确有必要时再采用手工命令，并说明与标准流程的差异。
 - 最终报告未显示成功或关键校验未通过时，应明确提示风险，不建议分发该安装包。
 
 ## 复核触发项
 
-改动会改变以下内容的行为时，交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）；只改注释、文案或测试的不算。依据是 `docs/internal/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
+改动会改变以下内容的行为时，交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）；只改注释、文案或测试的不算。依据是 `docs-internal/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
 
 - 向载具下发执行器或解锁类指令的路径：推进器输出直测与回中（`custom/src/ThrusterDirectControlController.*`、`custom/src/DeepShark/ThrusterMappingTool.qml`）、解锁、上锁与急停入口、手柄到控制量的映射。
 - 放宽或绕过安全限制的开关和判断："禁用安全限制"（`disableSetupSafetyRestrictions`、`ArmedSetupOverrideCapability`），以及 ArduSub 解锁检查和失联保护相关的参数页。

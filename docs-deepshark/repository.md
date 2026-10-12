@@ -19,8 +19,9 @@
 | `src/`、`cmake/`、`resources/`、`test/`、`translations/`、`deploy/`、`android/` | 官方工程与必要适配，保留上游结构 |
 | `custom/`、`branding/` | Kevin/DeepShark 定制功能和品牌资源 |
 | `tools/` | AI 桥接、RTSP、诊断、Debug 启动和正式发布工具 |
-| `docs/` | 项目文档，以及继承的官方用户文档 |
-| `docs/internal/` | 审计、交接和排查记录，已忽略，不随本仓库发布；它是单独的本地 Git 仓库 |
+| `docs/` | 继承的官方用户文档站，保持上游结构 |
+| `docs-deepshark/` | 本项目的公开文档：调试构建、发布流程、仓库维护、上游补丁登记和各版本发布说明 |
+| `docs-internal/` | 审计、排查记录和实机数据，已忽略，不随本仓库发布；它是单独的本地 Git 仓库 |
 | `software/` | 已追踪的相关固件和设备工具；本地设备配置已忽略，整理前须核对用途 |
 | `build-v5.1.5-debug/` | 当前候选与增量编译目录，已忽略；实测期间保留路径和缓存 |
 | `build-debug-ai/`、`build-release/`、`build-mavlink-diagnostics/` | 旧版本构建和诊断产物，已忽略；当前仍有回退用途 |
@@ -81,4 +82,4 @@
 
 此前目录/分支治理核查时，程序 SHA256 为 `33a74e82312eeb775be364f4149003d71d5998344e5d908a74982411293598db`，与当时的验证记录一致；该哈希不代表随后重新编译的 `2.0.0` 程序。核查开始时，未暂存的实际内容改动仅为双击启动入口、对应 PowerShell 参数和启动说明；此次目录/分支治理不代表新增实机验收。
 
-实测入口和项目验证记录见 [Debug 使用说明](../debug/windows-v5.1.5-debug.md) 与内部文档 `docs/internal/audits/upstream_v5.1.5_debug_validation_2026-10-05.md`（不随本仓库发布）。
+实测入口和项目验证记录见 [Debug 使用说明](debug-build.md) 与内部文档 `docs-internal/audits/upstream_v5.1.5_debug_validation_2026-10-05.md`（不随本仓库发布）。

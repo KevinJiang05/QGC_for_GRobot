@@ -8,7 +8,7 @@ QGC_KevinJiang is an internal GRobot ground control application maintained by Ke
 - Stable v1.4.0 upstream base: QGroundControl v5.0.8
 - Maintainer: Jiang Zhongze / KevinJiang1018@gmail.com
 - Distribution: Windows installer published through GitHub Releases
-- Development branch: `main`; single-maintainer branch and directory rules are documented in [Repository maintenance](docs/development/repository-maintenance.md).
+- Development branch: `main`; single-maintainer branch and directory rules are documented in [Repository maintenance](docs-deepshark/repository.md).
 
 ## Main Features
 
@@ -50,8 +50,9 @@ Upstream project:
 
 ## Documentation
 
-- Repository and directory maintenance: [docs/development/repository-maintenance.md](docs/development/repository-maintenance.md)
-- Release notes: [docs/releases/v1.4.0.md](docs/releases/v1.4.0.md)
+- Project documentation index: [docs-deepshark/README.md](docs-deepshark/README.md)
+- Repository and directory maintenance: [docs-deepshark/repository.md](docs-deepshark/repository.md)
+- Release notes: [docs-deepshark/releases/v1.4.0.md](docs-deepshark/releases/v1.4.0.md)
 - Original QGroundControl user documentation: https://docs.qgroundcontrol.com/
 - Original QGroundControl developer documentation: https://dev.qgroundcontrol.com/
 

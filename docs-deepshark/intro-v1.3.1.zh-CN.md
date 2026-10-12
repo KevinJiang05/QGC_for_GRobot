@@ -1,6 +1,6 @@
 # QGC_GRobot / DeepShark 地面站
 
-> 本文保留 QGC v5.0.8 / Kevin v1.3.1 阶段的历史介绍。当前版本与工程状态以 [README.md](README.md) 为准；新版实测请使用 [v5.1.5 Debug 说明](docs/debug/windows-v5.1.5-debug.md)。
+> 本文保留 QGC v5.0.8 / Kevin v1.3.1 阶段的历史介绍。当前版本与工程状态以 [README.md](../README.md) 为准；新版实测请使用 [v5.1.5 Debug 说明](debug-build.md)。
 
 本仓库是在 **QGroundControl v5.0.8 Stable** 基础上，为水下机器人比赛和后续 AUV/ROV 实验开发的定制地面站。当前内部 Windows 发行版本为 **QGC_KevinJiang v1.3.1**。项目保留 QGC 原生 ArduPilot、MAVLink、参数、模式、遥测和控制链路，通过 QGC custom build 机制叠加 DeepShark 专用视频面板、YOLO 目标检测叠加层和设备配置工具。
 
@@ -136,7 +136,7 @@ Get-Process QGC_KevinJiang -ErrorAction SilentlyContinue |
 .\tools\release\build-windows-release.ps1 -Version 1.3.2
 ```
 
-脚本会产生逐步日志、`release-state.json` 和 `release-report.md`。只有最终报告成功且版本、依赖、哈希和覆盖升级契约通过时，才建议分发。完整流程见 `docs/releases/windows-release-runbook.md`；当前 v1.3.1 发布说明见 `docs/releases/v1.3.1.zh-CN.md`。
+脚本会产生逐步日志、`release-state.json` 和 `release-report.md`。只有最终报告成功且版本、依赖、哈希和覆盖升级契约通过时，才建议分发。完整流程见 `docs-deepshark/release-runbook.md`；当前 v1.3.1 发布说明见 `docs-deepshark/releases/v1.3.1.zh-CN.md`。
 
 ## RTSP 使用流程
 

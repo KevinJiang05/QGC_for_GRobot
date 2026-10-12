@@ -253,11 +253,9 @@ Qt*-linux*.tar.*
 # Retired initialized submodule retained for previous builds
 /src/FirmwarePlugin/APM/ArduPilot-Parameter-Repository/
 
-# Debug candidate source tooling and documentation are not build outputs.
+# Debug candidate source tooling is not a build output.
 !tools/debug/
 !tools/debug/*.ps1
-!docs/debug/
-!docs/debug/*.md
 
-# Internal working notes (audits, handoffs, captures). Kept in a separate local repository.
-/docs/internal/
+# Internal working notes (audits, investigations, field data). Kept in a separate local repository.
+/docs-internal/

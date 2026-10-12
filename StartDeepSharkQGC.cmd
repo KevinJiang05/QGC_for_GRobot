@@ -18,7 +18,7 @@ if not exist "%QGC_LAUNCHER%" (
 
 if not exist "%QGC_EXE%" (
     echo QGroundControl v5.1.5 Debug was not found: "%QGC_EXE%"
-    echo Build the candidate using docs\debug\windows-v5.1.5-debug.md.
+    echo Build the candidate using docs-deepshark\debug-build.md.
     pause
     exit /b 1
 )

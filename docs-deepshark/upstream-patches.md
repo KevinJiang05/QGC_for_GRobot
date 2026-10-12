@@ -229,7 +229,7 @@
 登记是否完整，用下面的命令核对（输出应为空）：
 
 ```bash
-git diff v5.1.5 --diff-filter=M --name-only | while read f; do grep -qF -- "\`$f\`" docs/development/upstream_patch_inventory_2026-10-11.md || echo "未登记: $f"; done
+git diff v5.1.5 --diff-filter=M --name-only | while read f; do grep -qF -- "\`$f\`" docs-deepshark/upstream-patches.md || echo "未登记: $f"; done
 ```
 
 ## 6. 升级时要核对的隐性依赖

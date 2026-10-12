@@ -9,7 +9,7 @@ logs and validation report.
 Run from the repository root:
 
 ```powershell
-.\tools\release\build-windows-release.ps1 -Version 2.0.0
+.\tools\release\build-windows-release.ps1 -Version 2.0.1
 ```
 
 Use a new semantic version for every normal release. Rebuilding an existing
@@ -49,7 +49,7 @@ version changes, installer creation, or dependency installation.
 ## Preflight only
 
 ```powershell
-.\tools\release\build-windows-release.ps1 -Version 2.0.0 -PreflightOnly
+.\tools\release\build-windows-release.ps1 -Version 2.0.1 -PreflightOnly
 ```
 
 Preflight verifies the source inputs, Visual Studio environment, CMake, and
@@ -101,8 +101,8 @@ The release entrypoint uses the generated install script with
 If step 8 fails after installer creation, retry only verification:
 
 ```powershell
-.\tools\release\build-windows-release.ps1 -Version 2.0.0 -VerifyOnly `
-    -AuditDirectory .\dist\QGC_KevinJiang_v2.0.0\release-audit\<original-run>
+.\tools\release\build-windows-release.ps1 -Version 2.0.1 -VerifyOnly `
+    -AuditDirectory .\dist\QGC_KevinJiang_v2.0.1\release-audit\<original-run>
 ```
 
 This creates a separate audit linked to the original release. It requires

@@ -9,7 +9,7 @@
 - 固定 tag 保存回退节点。已发布 tag 不移动；正式安装包通过 GitHub Release 分发。
 - 升级前检查点是 `db9c9159631a271457a7d6c395deb50e2cf3c304`，备份 tag `backup/pre-qgc-v5.1.5` 已创建并推送，可用于完整回退源码。
 - 官方合并与定制适配已提交为 `6b044f606de525d7f978d4e64f5bcd26f112ab46` 并推送；GitHub 默认分支与本地开发分支均为 `main`，本地跟踪 `origin/main`。
-- 当前源码基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），Kevin 产品版本为 `2.0.0`；Debug 候选显示 `2.0.0 Debug (QGroundControl v5.1.5)`。
+- 当前源码基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），Kevin 产品版本为 `2.0.1`（尚未打包发布；已发布的最新安装包是 `2.0.0`）；Debug 候选显示 `2.0.1 Debug (QGroundControl v5.1.5)`。
 - 正式 `1.4.0` 发布与对应 tag 保留。Debug 和预发布 tag 不表示实机验收完成。
 
 ## 目录用途

@@ -42,7 +42,7 @@
 | P06 | **默认 TCP 链路与绕过代理**：加载链路配置时如果没有同名或同端点的配置，就创建 `GRobot_Default`（`192.168.1.200:4019`，自动连接），所以删掉后会被重建；TCP 套接字显式 `NoProxy` | 默认链路的创建发生在 `LinkManager` 加载阶段；代理是底层套接字行为 | 无配置首次启动；已有同名或同端点配置时不改用户设置；有系统代理时能连上 | 默认端点应迁到 custom 的首次运行逻辑。`NoProxy` 是否普适需要单独评估。审计条目 F11 |
 | P07 | **手柄**：旧配置迁移到新的设置结构；"禁用安全限制"下配置页可实时控制；按键分配页与校准页的界面重排；水下机器人的轴名称；按键动作对象加锁（N01）；轮询标志和载具指针加锁（N06）；连续动作按控制量记当前持有的按键：改派按键时只结算该按键仍持有的动作并丢弃为旧分配排队的事件，结束对载具的控制时结算仍持有的动作、补做已排队且有归属的松开、丢弃上一会话排队的事件（N07），配置页显示实时控制提示（F05） | 手柄核心和配置页都在上游 | `JoystickTest`、`JoystickControlTest`、`JoystickManagerTest`、`AppSettingsTest` | 迁移代码在所有用户升级完之后可以删。界面重排是产品改动。N01 的锁修的是本分支引入的并发访问，不回馈 |
 | P08 | **飞行界面与工具栏**：定制内容遮住地图时停用地图和比例尺；遥测条转置显示；`InstrumentValue*` 的空数据保护；拍摄控件横向排列；工具栏的解锁/上锁按钮；视图下拉里的退出确认和版本号 | 这些是上游的核心 QML，custom 的覆盖机制只能整文件替换 | `DeepSharkUILayoutTest`（原生窗口方式）、`FlyViewCameraCaptureUITest`、`AppCloseWarningUITest` | 布局类改动可以改成 custom 整文件覆盖，但覆盖文件同样要跟上游合并。空数据保护适合回馈上游 |
-| P09 | **输出测试工具入口**：参数页工具菜单增加"输出测试与接线记录" | 入口直接插在上游的 `ParameterEditor.qml` | `ThrusterMappingIntegrationTest`；从参数页打开工具 | 可迁成 custom 覆盖或独立入口。审计条目 T07：入口对所有载具类型可见 |
+| P09 | **输出测试工具入口**：参数页工具菜单增加"输出测试与接线记录"；工具由主窗口创建（`MainWindow.qml` 的 `showDeepSharkThrusterMappingTool()`），不由参数页创建，因为载具离线时配置视图会替换参数页，由它创建的对话框随之失效 | 入口直接插在上游的 `ParameterEditor.qml` | `ThrusterMappingIntegrationTest`；从参数页打开工具 | 可迁成 custom 覆盖或独立入口。审计条目 T07：入口对所有载具类型可见 |
 | P10 | **视频管线**：保持"禁用视频"的选择不被 ArduSub 或自动流覆盖；MPEG-TS 低延迟；接收器里解码分支、录像文件 sink 和帧探针的改动；帧在界面线程合并投递；D3D11 多路同尺寸互相覆盖的修复；单路重启不重置共享 GPU 资源；接收器状态标志改为原子；销毁前等工作线程结束（N02） | 行为都在上游的接收器、sink 和硬件缓冲里，custom 的四路视频也用同一条管线 | `GStreamerTest`、`GStreamerGstQgcTest`、`GStreamerD3DTest`、`DeepSharkVideoControllerTest`、`DeepSharkVideoResizeTest`；实机四路播放、断线恢复、录像 | 升级时冲突最重的一块。多路覆盖修复、N02 的等待、MPEG-TS 延迟适合回馈上游。审计条目 F02、F06、F18、N02、N08 |
 | P11 | **相机信息请求上下文的生命周期**：上下文改为挂在 `Vehicle` 下，避免相机管理器销毁后回调访问已释放内存 | 上游缺陷 | `QGCCameraManagerTest` | 值得回馈上游（审计 F19 的结论） |
 | P12 | **MockLink**：工作对象留在链路线程，断开时同步停止；去掉 `Q_ASSERT`；ArduPilot 整型参数按数值存储；参数名长度按字段长度校验 | 测试基础设施在上游目录 | 所有用 MockLink 的测试，重点 `InitialConnectTest`、`ThrusterMappingIntegrationTest` | 线程模型的改动要先确认新基线是否已自行修复。审计条目 T07 的登记要求 |
@@ -243,7 +243,9 @@ git diff v5.1.5 --diff-filter=M --name-only | while read f; do grep -qF -- "\`$f
   （分组 `DeepSharkServoOutputMapping`）。改键名要两边一起改。
 - `tools/ai_detection/yolo_to_qgc_udp.py` 的 `MAX_DETECTIONS_PER_PACKET` 要与 `custom/src/AIDetectionReceiver.cc` 的 `kMaxDetectionsPerPacket` 一致；
   `run_yolo_to_qgc_auto.py` 直接读 QGC 配置文件里的 `Video\CameraNUrl`、`Video\CameraNEnabled`。
-- `src/QmlControls/ParameterEditor.qml` 和两个设置页 JSON 用资源路径引用 `custom/` 里的 QML，路径随上游的 QML 模块布局变化。
+- `src/QmlControls/ParameterEditor.qml`、`src/MainWindow/MainWindow.qml` 和两个设置页 JSON 用资源路径引用 `custom/` 里的 QML，路径随上游的 QML 模块布局变化。
+- `custom/src/ThrusterDirectControlController.cc` 的 `_writeFunction()` 在直测和恢复流程里写 `SERVOn_FUNCTION` 时，临时清掉该参数元数据上的"需要重启载具"标记，写完再恢复，以免上游弹出"立即重启载具"的对话框（v5.1.5 新增，由 `Fact::setRawValue()` 经 `containerRawValueChanged` 同步触发）。
+  上游如果把这个提示改成延迟触发，或改用别的判断来源，对话框会重新出现在直测中途。`ThrusterMappingIntegrationTest` 的严格日志检查会因多出的提示而失败。
 - 反过来，`custom/src/DeepSharkPlugin.cc` 的拦截器用 `:/Custom` 加上游资源路径来覆盖上游 QML，并依赖引擎销毁钩子把拦截器摘掉
   （`QGCApplication.cc` 的关闭流程调用它）。上游的资源布局或引擎创建销毁流程变了，覆盖会失效或寿命出错。
 - `QGCQVideoSinkController.cc` 用了 Qt 的私有头文件 `qquickvideooutput_p.h`，并读取自定义 sink 的 `frames-delivered` 属性。

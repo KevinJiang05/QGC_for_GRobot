@@ -161,6 +161,21 @@ ApplicationWindow {
         showTool(qsTr("Vehicle Configuration"), "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml", "/qmlimages/Gears.svg")
     }
 
+    // The output test tool is created here and not by the page that offers it. The setup view replaces
+    // that page when the vehicle goes away, for example when the flight controller reboots, and a dialog
+    // whose creating page is gone no longer runs any of its handlers: it could not even be closed.
+    function showDeepSharkThrusterMappingTool() {
+        var component = Qt.createComponent("qrc:/Custom/qml/QGroundControl/Controls/DeepSharkThrusterMappingTool.qml")
+        var dialog = component.status === Component.Ready ? component.createObject(mainWindow) : null
+        if (!dialog) {
+            console.warn("Output testing tool could not be loaded:", component.errorString())
+            QGroundControl.showMessageDialog(mainWindow, qsTr("输出测试与接线记录"),
+                                             qsTr("输出测试工具加载失败，请重启软件后重试。详细原因已记录到应用日志。"))
+            return
+        }
+        dialog.open()
+    }
+
     function showVehicleConfigParametersPage() {
         showVehicleConfig()
         toolDrawerLoader.item.showParametersPanel()

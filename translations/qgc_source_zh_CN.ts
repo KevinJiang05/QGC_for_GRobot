@@ -15934,7 +15934,7 @@ Is this really what you want?</source>
     <message>
       <location filename="../src/QmlControls/ParameterEditor.qml" line="109"/>
       <source>Mission Planner Files (*.param)</source>
-      <translation>Mission Planner 文件（*.param）</translation>
+      <translation>Mission Planner 文件 (*.param)</translation>
     </message>
     <message>
       <location filename="../src/QmlControls/ParameterEditor.qml" line="164"/>
@@ -19127,7 +19127,7 @@ sudo apt-get 移除调制解调器管理器</translation>
     <message>
       <location filename="../src/AutoPilotPlugins/Common/ScriptingComponent.qml" line="22"/>
       <source>Lua Scripts (*.lua)</source>
-      <translation>Lua 脚本（*.lua）</translation>
+      <translation>Lua 脚本 (*.lua)</translation>
     </message>
     <message>
       <location filename="../src/AutoPilotPlugins/Common/ScriptingComponent.qml" line="22"/>

@@ -413,7 +413,23 @@ void ThrusterDirectControlController::_writeFunction(int value)
         return;
     }
     _parameterOperation = WritingParameter;
+    // A test or a recovery disables the function only to put the original one back, so these writes call
+    // for no reboot themselves. The parameter is flagged as needing one, and every write of such a parameter
+    // raises a prompt that offers to reboot the vehicle at once. Accepting it in the middle of a test
+    // reboots a vehicle whose output is disabled or still driven. The prompt is raised from within the
+    // write, so clearing the flag around the write is enough. A function that is saved on purpose keeps
+    // its prompt. A vehicle that was started while the function was disabled is another matter: the
+    // firmware then gives a motor function that no output carries to its default output, and putting the
+    // function back here does not undo that. The tool does not detect it yet.
+    FactMetaData* const metaData = _functionFact->metaData();
+    const bool suppressRebootPrompt = !functionSaveBusy() && metaData && metaData->vehicleRebootRequired();
+    if (suppressRebootPrompt) {
+        metaData->setVehicleRebootRequired(false);
+    }
     _functionFact->setRawValue(value);
+    if (suppressRebootPrompt) {
+        metaData->setVehicleRebootRequired(true);
+    }
 }
 
 void ThrusterDirectControlController::_requestParameterRead()

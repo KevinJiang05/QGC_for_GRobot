@@ -239,6 +239,57 @@ void DeepSharkUILayoutTest::_chineseSettingsPages()
     stopUI();
 }
 
+void DeepSharkUILayoutTest::_outputToolOpensFromTheParameterPage()
+{
+    ignoreLogMessage("qt.qml.propertyCache.append", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Member enabled of the object QQuickPinchArea overrides")));
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression(QStringLiteral("showAppMessage:.*Configuration tasks remain")));
+    startUI();
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+    auto* const link = MockLink::startAPMArduSubMockLink();
+    QVERIFY(link);
+    auto* const vehicles = MultiVehicleManager::instance();
+    const auto disconnect = qScopeGuard([&]() {
+        if (vehicles->activeVehicle()) {
+            link->disconnect();
+        }
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(vehicles->activeVehicle(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(vehicles->activeVehicle()->parameterManager()->parametersReady(), 10000);
+
+    // The tool is opened the way the operator opens it: from the parameter page of the complete window.
+    QVERIFY(QMetaObject::invokeMethod(_window, "showVehicleConfigParametersPage"));
+    auto* const loader = findVisibleItem(_rootItem, QStringLiteral("vehicleConfig_panelLoader"), 5000);
+    QVERIFY(loader);
+    QPointer<QObject> page;
+    QTRY_VERIFY_WITH_TIMEOUT((page = qvariant_cast<QObject*>(loader->property("item"))), 5000);
+    QVERIFY(QMetaObject::invokeMethod(page, "openDeepSharkThrusterMappingTool"));
+
+    QPointer<QObject> directControl;
+    QTRY_VERIFY_WITH_TIMEOUT((directControl = _window->findChild<QObject*>(QStringLiteral("thrusterDirectControl"))), 5000);
+    QPointer<QObject> tool = directControl;
+    while (tool && !tool->inherits("QQuickPopup")) {
+        tool = tool->parent();
+    }
+    QVERIFY(tool);
+    QTRY_VERIFY_WITH_TIMEOUT(tool->property("opened").toBool(), 5000);
+
+    // The vehicle goes away while the tool is open, as it does when the flight controller reboots. The
+    // setup view replaces the parameter page then. The tool has to outlive the page that opened it: it
+    // must keep working and the operator must be able to close it.
+    link->disconnect();
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicles->activeVehicle(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(qvariant_cast<QObject*>(loader->property("item")) != page.data(), 5000);
+    QVERIFY(tool);
+    QSignalSpy rendered(_window, &QQuickWindow::frameSwapped);
+    QTRY_VERIFY_WITH_TIMEOUT(rendered.count() >= 5, 10000);
+    QVERIFY(QMetaObject::invokeMethod(tool, "_reject"));
+    QTRY_VERIFY_WITH_TIMEOUT(!tool || !tool->property("visible").toBool(), 5000);
+}
+
 void DeepSharkUILayoutTest::_armedConnectKeepsDisarmAvailable()
 {
     ignoreLogMessage("qt.qml.propertyCache.append", QtWarningMsg,

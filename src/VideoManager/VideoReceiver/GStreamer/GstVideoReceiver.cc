@@ -167,13 +167,21 @@ void GstVideoReceiver::start(uint32_t timeout)
             break;
         }
 
-        // leaky=downstream (2) + tiny depth: the live-display branch must drop the oldest
-        // buffer on backpressure, not stall the streaming thread. Recording branch (below)
-        // keeps default non-leaky semantics so every frame reaches the muxer.
+        // leaky=downstream (2): the live-display branch must drop the oldest buffer on
+        // backpressure, not stall the streaming thread. Recording branch (below) keeps default
+        // non-leaky semantics so every frame reaches the muxer.
+        // This queue holds encoded data, and it knows nothing about keyframes: what it drops may be one,
+        // and the pictures that depend on it are then damaged until the next one. With the upstream depth
+        // of 2 buffers a burst is enough for that. On a vehicle with three H.265 cameras the picture broke
+        // up about twice a minute on a link without loss, the decoder reporting the first frame of a group
+        // out of order each time; with this depth it did not in a quarter of an hour. That the queue
+        // dropped those keyframes was not observed directly. The limit is 100 buffers or 16 MiB,
+        // whichever is reached first. A queue that is kept empty adds no delay, but a backlog is no longer
+        // shed after two buffers: it can hold seconds of video before it drops.
         g_object_set(decoderQueue,
                      "leaky", 2,
-                     "max-size-buffers", 2,
-                     "max-size-bytes", 0,
+                     "max-size-buffers", 100,
+                     "max-size-bytes", 16 * 1024 * 1024,
                      "max-size-time", G_GUINT64_CONSTANT(0),
                      nullptr);
 

@@ -5,7 +5,10 @@
 #include "Fact.h"
 #include "Joystick.h"
 #include "ParameterManager.h"
+#include "AppMessages.h"
+#include "JoystickManagerSettings.h"
 #include "QGCLoggingCategory.h"
+#include "SettingsManager.h"
 #include "Vehicle.h"
 
 QGC_LOGGING_CATEGORY(JoystickConfigControllerLog, "AutoPilotPlugins.JoystickConfigController")
@@ -30,6 +33,8 @@ JoystickConfigController::JoystickConfigController(QObject *parent)
 
     connect(this, &RemoteControlCalibrationController::calibratingChanged, this,
             &JoystickConfigController::_updateConfigurationVehicleControl);
+    connect(this, &RemoteControlCalibrationController::transmitterModeChanged, this,
+            &JoystickConfigController::_applyTransmitterMode);
     if (_vehicle) {
         connect(_vehicle, &Vehicle::setupSafetyRestrictionsDisabledChanged, this,
                 &JoystickConfigController::_updateConfigurationVehicleControl);
@@ -62,6 +67,67 @@ void JoystickConfigController::start(void)
     RemoteControlCalibrationController::start();
     _updateConfigurationVehicleControl();
     _joystick->_startPollingForConfiguration();
+}
+
+void JoystickConfigController::_applyTransmitterMode()
+{
+    // Upstream stores the mode only when a calibration is completed, so a mode that was merely selected was
+    // gone as soon as the page was left. A change of mode needs no new calibration: the axis assignments
+    // are stored as for mode 2 and remapped when they are loaded. The selection is therefore stored at
+    // once, and the assignments in use are remapped the way a restart would remap them.
+    if (!_joystick || calibrating()) {
+        return;
+    }
+    Fact *const storedMode = _joystick->settings()->transmitterMode();
+    const int previousMode = storedMode->rawValue().toInt();
+    const int newMode = transmitterMode();
+    if ((previousMode == newMode) || (previousMode < 1) || (previousMode > 4)) {
+        return;
+    }
+    if (_vehicle && _vehicle->armed()) {
+        // The sticks would change their meaning under the operator's hands.
+        setTransmitterMode(previousMode);
+        QGC::showAppMessage(tr("请先上锁，再切换摇杆模式。"));
+        return;
+    }
+
+    bool controlsVehicle = false;
+    {
+        // A scan reads the assignments while it holds this lock.
+        const QMutexLocker pollingState(&_joystick->_pollingStateMutex);
+        // The vehicle reports that it is armed some time after it was armed, so the check above does not
+        // cover a joystick that is enabled for a vehicle. This page suspends its control while it is open,
+        // but that is not enough: the page closes by itself when the armed state arrives, and control
+        // would come back with the new assignments without anyone having asked for it. Control has to be
+        // turned off first.
+        controlsVehicle = _joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle) &&
+                          _joystick->settings()->calibrated()->rawValue().toBool();
+        if (!controlsVehicle) {
+            // Assignments that an invalidated calibration left behind are remapped as well, so that the
+            // monitor never shows them under the name of another mode. They stay without effect.
+            _joystick->_remapFunctionsInFunctionMapToNewTransmittedMode(previousMode, 2);
+            _joystick->_remapFunctionsInFunctionMapToNewTransmittedMode(2, newMode);
+        }
+    }
+    if (controlsVehicle) {
+        setTransmitterMode(previousMode);
+        QGC::showAppMessage(tr("手柄控制处于启用状态。请先取消“启用手柄控制”，再切换摇杆模式，然后重新启用。"));
+        return;
+    }
+    // The assignments belong to the joystick, the permission to control belongs to each vehicle. A vehicle
+    // that still has it would be controlled with the new assignments the moment it becomes the active one,
+    // for instance when this one disconnects. So the permission ends for all of them, and each vehicle is
+    // controlled again once the operator enables the joystick for it.
+    Fact *const enabledVehicles = SettingsManager::instance()->joystickManagerSettings()->joystickEnabledVehiclesIds();
+    const bool otherVehiclesWereEnabled = !enabledVehicles->rawValue().toString().isEmpty();
+    if (otherVehiclesWereEnabled) {
+        enabledVehicles->setRawValue(QString());
+    }
+    storedMode->setRawValue(newMode);
+    _readStoredCalibrationValues();
+    if (otherVehiclesWereEnabled) {
+        QGC::showAppMessage(tr("摇杆模式已切换。其他机器人上的手柄控制也已停用，需要在各自连接后重新启用。"));
+    }
 }
 
 void JoystickConfigController::_updateConfigurationVehicleControl()

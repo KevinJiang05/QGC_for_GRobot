@@ -1174,4 +1174,130 @@ void JoystickControlTest::_releaseOfAPressFromAnEarlierSessionIsNotCompleted()
     QVERIFY(releaseAndSettle(2));
 }
 
+void JoystickControlTest::_transmitterModeAppliesWithoutCalibration()
+{
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Transmitter mode fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+    auto* const manager = JoystickManager::instance();
+    Fact* const storedMode = joystick->settings()->transmitterMode();
+    const QVariant previousMode = storedMode->rawValue();
+    const auto restoreMode = qScopeGuard([&]() {
+        if (joystick) {
+            joystick->settings()->transmitterMode()->setRawValue(previousMode);
+        }
+    });
+    storedMode->setRawValue(2);
+    const auto axisFor = [&](Joystick::AxisFunction_t function) {
+        return joystick->_getJoystickAxisForAxisFunction(function);
+    };
+    const auto mainAxes = [&]() {
+        return QList<int>{axisFor(Joystick::rollFunction), axisFor(Joystick::pitchFunction),
+                          axisFor(Joystick::yawFunction), axisFor(Joystick::throttleFunction)};
+    };
+    const QList<int> mode2Axes{0, 1, 2, 3};
+    // Mode 1 has pitch and throttle on the other stick each; roll and yaw stay where they are.
+    const QList<int> mode1Axes{0, 3, 2, 1};
+    QCOMPARE(mainAxes(), mode2Axes);
+
+    JoystickConfigController controller;
+    controller.setProperty("joystick", QVariant::fromValue(joystick.data()));
+    QCOMPARE(controller.transmitterMode(), 2);
+
+    // The joystick is sending its sticks to the vehicle, and one of them is deflected. The vehicle is not
+    // known to be armed, which is all the ground station can know right after an arm command. The sticks
+    // must keep their meaning: nothing is stored, nothing is remapped, and the packets stay as they were.
+    QVERIFY(mock->setAxis(1, 32767));
+    mavlink_message_t message{};
+    mavlink_manual_control_t before{};
+    QTRY_VERIFY_WITH_TIMEOUT(_mockLink->lastReceivedMavlinkMessage(MAVLINK_MSG_ID_MANUAL_CONTROL, message) &&
+                                 (mavlink_msg_manual_control_decode(&message, &before), before.x != 0),
+                             5000);
+    QVERIFY(!_vehicle->armed());
+    const auto packetsKeepTheirMeaning = [&]() {
+        const int packetCount = _mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_MANUAL_CONTROL);
+        if (!QTest::qWaitFor(
+                [&]() {
+                    return _mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_MANUAL_CONTROL) >= packetCount + 3;
+                },
+                5000)) {
+            return false;
+        }
+        mavlink_manual_control_t after{};
+        return _mockLink->lastReceivedMavlinkMessage(MAVLINK_MSG_ID_MANUAL_CONTROL, message) &&
+               (mavlink_msg_manual_control_decode(&message, &after), after.x == before.x && after.z == before.z);
+    };
+    expectAppMessage(QRegularExpression(QStringLiteral("手柄控制处于启用状态")));
+    controller.setTransmitterMode(1);
+    verifyExpectedLogMessage();
+    QCOMPARE(controller.transmitterMode(), 2);
+    QCOMPARE(storedMode->rawValue().toInt(), 2);
+    QCOMPARE(mainAxes(), mode2Axes);
+    QVERIFY(packetsKeepTheirMeaning());
+
+    // The configuration page suspends control of the vehicle while it is open. That is not the same as
+    // control being off: the page closes by itself when the armed state arrives, and the joystick is back
+    // at once. A selection made in between is refused too, so the packets that follow the page mean what
+    // they meant before it.
+    joystick->_startPollingForConfiguration();
+    QVERIFY(!joystick->_configurationAllowsVehicleControl.load());
+    expectAppMessage(QRegularExpression(QStringLiteral("手柄控制处于启用状态")));
+    controller.setTransmitterMode(1);
+    verifyExpectedLogMessage();
+    QCOMPARE(controller.transmitterMode(), 2);
+    QCOMPARE(storedMode->rawValue().toInt(), 2);
+    QCOMPARE(mainAxes(), mode2Axes);
+    joystick->_stopPollingForConfiguration();
+    QVERIFY(packetsKeepTheirMeaning());
+
+    // With joystick control turned off a selection is enough: it is stored and the sticks are remapped,
+    // with no calibration. Loading the stored settings again, as a restart does, gives the assignments
+    // that are already in use.
+    QVERIFY(mock->setAxis(1, 0));
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    QVERIFY(!joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+    joystick->_saveFromCalibrationDataIntoSettings();
+    // Another vehicle still has the joystick enabled. It would be controlled with the new assignments the
+    // moment it becomes the active one, so the change ends that permission as well.
+    Fact* const enabledVehicles =
+        SettingsManager::instance()->joystickManagerSettings()->joystickEnabledVehiclesIds();
+    enabledVehicles->setRawValue(QStringLiteral("77"));
+    expectAppMessage(QRegularExpression(QStringLiteral("其他机器人上的手柄控制也已停用")));
+    controller.setTransmitterMode(1);
+    verifyExpectedLogMessage();
+    QVERIFY(enabledVehicles->rawValue().toString().isEmpty());
+    QVERIFY(!manager->activeJoystickEnabledForActiveVehicle());
+    QCOMPARE(storedMode->rawValue().toInt(), 1);
+    QCOMPARE(controller.transmitterMode(), 1);
+    QCOMPARE(mainAxes(), mode1Axes);
+    joystick->_loadFromSettingsIntoCalibrationData();
+    QVERIFY(joystick->settings()->calibrated()->rawValue().toBool());
+    QCOMPARE(mainAxes(), mode1Axes);
+
+    // A calibration that was invalidated leaves its assignments behind. They follow the mode too, so the
+    // monitor does not show them under the name of another mode; the joystick stays uncalibrated.
+    joystick->settings()->calibrated()->setRawValue(false);
+    controller.setTransmitterMode(2);
+    QCOMPARE(storedMode->rawValue().toInt(), 2);
+    QCOMPARE(mainAxes(), mode2Axes);
+    QVERIFY(!joystick->settings()->calibrated()->rawValue().toBool());
+    joystick->settings()->calibrated()->setRawValue(true);
+
+    // A vehicle that is known to be armed refuses the selection whether or not the joystick controls it.
+    _vehicle->setArmed(true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(_vehicle->armed(), 5000);
+    expectAppMessage(QRegularExpression(QStringLiteral("请先上锁，再切换摇杆模式")));
+    controller.setTransmitterMode(1);
+    verifyExpectedLogMessage();
+    QCOMPARE(controller.transmitterMode(), 2);
+    QCOMPARE(storedMode->rawValue().toInt(), 2);
+    QCOMPARE(mainAxes(), mode2Axes);
+    _vehicle->setArmed(false, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->armed(), 5000);
+}
+
 UT_REGISTER_TEST(JoystickControlTest, TestLabel::Unit, TestLabel::Joystick)

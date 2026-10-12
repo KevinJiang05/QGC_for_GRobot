@@ -184,6 +184,14 @@ ColumnLayout {
                             onActivated: (index) => controller.transmitterMode = index + 1
 
                             Component.onCompleted: currentIndex = controller.transmitterMode - 1
+
+                            // The controller can refuse a selection, and then the box has to show the mode in use.
+                            Connections {
+                                target: controller
+                                function onTransmitterModeChanged() {
+                                    transmitterModeComboBox.currentIndex = controller.transmitterMode - 1
+                                }
+                            }
                         }
 
                         QGCCheckBox {

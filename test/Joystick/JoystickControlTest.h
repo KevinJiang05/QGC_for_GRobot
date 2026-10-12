@@ -26,6 +26,7 @@ private slots:
     void _heldActionIsNotSettledOnAnotherDevice();
     void _releaseWithoutADispatchedPressIsNotCompleted();
     void _releaseOfAPressFromAnEarlierSessionIsNotCompleted();
+    void _transmitterModeAppliesWithoutCalibration();
 
 private:
     /// Connects an ArduSub mock vehicle and lets a calibrated mock joystick control it.

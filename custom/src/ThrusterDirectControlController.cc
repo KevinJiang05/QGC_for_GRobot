@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "Fact.h"
+#include "MAVLinkProtocol.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "Vehicle.h"
@@ -18,6 +19,12 @@ namespace {
 // number of neutrals a session may send while it waits for neutral to be confirmed, whatever the reason
 // for sending another one. The best-effort neutrals around a link loss are not counted here.
 constexpr int kNeutralSendAttempts = 4;
+// Consecutive output reports at the neutral value that confirm neutral. One would do when the reply before
+// it really is the reply to the neutral; the second one is margin for a reply that is not.
+constexpr int kNeutralReportsNeeded = 2;
+// How much further the vehicle's clock may have moved between two reports than the clock here. A report
+// can be late and the next one on time, which looks like that by the delay of the first.
+constexpr qint64 kVehicleClockSlackUsec = 3000000;
 constexpr int kReissueChecks = 8;
 constexpr int kReissueCheckIntervalMs = 500;
 
@@ -42,12 +49,14 @@ ThrusterDirectControlController::ThrusterDirectControlController(QObject* parent
     _testDurationTimer.setSingleShot(true);
     _commandTimer.setSingleShot(true);
     _parameterTimeoutTimer.setSingleShot(true);
+    _outputReportTimer.setSingleShot(true);
     _reissueTimer.setSingleShot(true);
 
     connect(&_settleTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_settleFinished);
     connect(&_testDurationTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_testDurationFinished);
     connect(&_commandTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_commandTimedOut);
     connect(&_parameterTimeoutTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_parameterTimedOut);
+    connect(&_outputReportTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_outputReportTimedOut);
     connect(&_reissueTimer, &QTimer::timeout, this, &ThrusterDirectControlController::_checkOutputBeforeReissue);
 }
 
@@ -74,9 +83,13 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
     });
     connect(vehicle->vehicleLinkManager(), &VehicleLinkManager::allLinksRemoved, this,
             &ThrusterDirectControlController::_vehicleUnavailable);
+    connect(vehicle->vehicleLinkManager(), &VehicleLinkManager::primaryLinkChanged, this,
+            &ThrusterDirectControlController::_outputReportSourceChanged);
     connect(vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged, this, [this](bool lost) {
         if (lost) {
             _vehicleUnavailable();
+            // The vehicle may restart before it is heard again, and its clock with it.
+            _forgetOutputReports();
         } else {
             _reissueChecksLeft = kReissueChecks;
             _checkOutputBeforeReissue();
@@ -87,6 +100,28 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
             abort(functionSaveBusy() ? tr("保存准备期间飞控被解锁，未修改功能参数") : tr("直发期间飞控被解锁"));
         }
     });
+    connect(MAVLinkProtocol::instance(), &MAVLinkProtocol::messageReceived, this,
+            [this](LinkInterface* link, const mavlink_message_t& message) {
+                // Only the flight controller's own report of its first sixteen outputs is evidence here, and only
+                // from the link the commands go out on. Reports of one link arrive in the order they were made;
+                // those of two links do not, and the vehicle's signal for a message does not say which link it
+                // came from.
+                if (message.msgid != MAVLINK_MSG_ID_SERVO_OUTPUT_RAW || !_vehicle || message.sysid != _vehicle->id() ||
+                    message.compid != _vehicle->defaultComponentId() ||
+                    link != _vehicle->vehicleLinkManager()->primaryLink().lock().get()) {
+                    return;
+                }
+                mavlink_servo_output_raw_t report{};
+                mavlink_msg_servo_output_raw_decode(&message, &report);
+                if (report.port != 0) {
+                    return;
+                }
+                _outputsReported(report.time_usec,
+                                 {report.servo1_raw, report.servo2_raw, report.servo3_raw, report.servo4_raw,
+                                  report.servo5_raw, report.servo6_raw, report.servo7_raw, report.servo8_raw,
+                                  report.servo9_raw, report.servo10_raw, report.servo11_raw, report.servo12_raw,
+                                  report.servo13_raw, report.servo14_raw, report.servo15_raw, report.servo16_raw});
+            });
 
     ParameterManager* manager = vehicle->parameterManager();
     connect(manager, &ParameterManager::_paramSetSuccess, this, [this](int componentId, const QString& name) {
@@ -178,6 +213,24 @@ bool ThrusterDirectControlController::parameterExists(int componentId, const QSt
     return _vehicle && _vehicle->parameterManager()->parameterExists(componentId, name);
 }
 
+bool ThrusterDirectControlController::outputReportsAvailable() const
+{
+    return _outputClockMoved && _outputReportTaken.isValid() && _outputReportTaken.elapsed() <= _outputReportMaxAgeMs;
+}
+
+QString ThrusterDirectControlController::outputReportProblem() const
+{
+    if (outputReportsAvailable()) {
+        return QString();
+    }
+    if (_outputReportArrival.isValid() && _outputReportArrival.elapsed() <= _outputReportMaxAgeMs) {
+        return tr(
+            "飞控上报的输出值（SERVO_OUTPUT_RAW）还不能用来确认回中：上报里的飞控时间要接着上一条往前走才算数。"
+            "请稍后再试；一直如此的话，断开并重新连接载具");
+    }
+    return tr("没有收到飞控上报的输出值（SERVO_OUTPUT_RAW），测试结束后无法确认回中");
+}
+
 bool ThrusterDirectControlController::_vehicleUsable(bool requireDisarmed) const
 {
     if (_manualAdapter) {
@@ -206,6 +259,8 @@ QString ThrusterDirectControlController::stateName() const
             return QStringLiteral("testing");
         case WaitingNeutralAck:
             return QStringLiteral("waitingNeutralAck");
+        case ConfirmingNeutral:
+            return QStringLiteral("confirmingNeutral");
         case WaitingRestore:
             return QStringLiteral("waitingRestore");
         case SavingFunction:
@@ -223,6 +278,10 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
 {
     if (_state != Idle || output < 1 || output > 16 || originalFunction < 0 || !_validPwm(testPwm) ||
         !_validPwm(neutralPwm) || testDurationMs < 1 || testDurationMs > 5000 || !_vehicleUsable(true)) {
+        return false;
+    }
+    // Without output reports the test could be started but never be confirmed as ended.
+    if (!outputReportsAvailable()) {
         return false;
     }
     if (!_manualAdapter) {
@@ -245,7 +304,6 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
     _testDurationMs = testDurationMs;
     _stopRequested = false;
     _recovering = false;
-    _neutralAcksNeeded = 1;
     _failureReason.clear();
     emit detailsChanged();
 
@@ -291,8 +349,8 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
     _cancelReissue();
     _unconfirmedOutput = output;
     _unconfirmedNeutralPwm = neutralPwm;
-    // Nothing is known about the PWM commands that led here, so one of them may still be answered late.
-    _neutralAcksNeeded = 2;
+    _testEffectCanBeSeen = false;
+    _testEffectSeen = false;
     _stopRequested = true;
     _recovering = true;
     _failureReason = reason;
@@ -533,7 +591,6 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
             _requireRecovery(tr("PWM 指令与另一条未完成指令冲突，未确认回中"));
         } else if (failureCode == Vehicle::MavCmdResultFailureNoResponseToCommand) {
             _failureReason = tr("测试 PWM 指令无回执");
-            _neutralAcksNeeded = 2;
             emit detailsChanged();
             _beginNeutral();
         } else if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
@@ -543,7 +600,12 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
                 _setState(Testing);
             }
         } else if (failureCode == Vehicle::MavCmdResultCommandResultOnly) {
-            _requestRestore(tr("飞控拒绝测试 PWM 指令"));
+            // The refusal may answer an earlier command while this test PWM is on the output, so the
+            // session ends through neutral like any other.
+            _failureReason = tr("飞控拒绝测试 PWM 指令");
+            _stopRequested = true;
+            emit detailsChanged();
+            _beginNeutral();
         } else {
             _requireRecovery(tr("PWM 指令结果不明确，未确认回中"));
         }
@@ -551,23 +613,113 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
     }
     if (_state == WaitingNeutralAck) {
         if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
-            if (_neutralAcksNeeded > 1) {
-                // This reply may belong to an earlier unanswered PWM command, so neutral is requested again.
-                // That request counts against the same budget as every other neutral of the session.
-                --_neutralAcksNeeded;
-                _retryNeutralOrRequireRecovery(tr("PWM 回中只得到一次回执，无法排除它属于更早的指令；请恢复异常通道"));
-                return;
-            }
-            // What is left is the parameter, which the recovery record covers. A parameter failure after
-            // this point must not lead to another PWM on an output that may have its function back.
-            _forgetUnconfirmedNeutral();
-            _requestRestore(QString());
+            // This reply may belong to an earlier PWM command. Reports that arrive from here on have to
+            // show the output at neutral before the function is written back.
+            _neutralReportsSeen = 0;
+            _setState(ConfirmingNeutral);
+            _outputReportTimer.start(_outputReportTimeoutMs);
         } else if (failureCode == Vehicle::MavCmdResultFailureDuplicateCommand) {
             // The queue rejected the command without sending it; repeating at once would be rejected again.
             _requireRecovery(tr("PWM 回中指令与另一条未完成指令冲突，请恢复异常通道"));
         } else {
             _retryNeutralOrRequireRecovery(tr("PWM 回中未确认，请保持上锁后恢复异常通道"));
         }
+    }
+}
+
+void ThrusterDirectControlController::_outputsReported(quint32 timeUsec, const std::array<int, 16>& pwm)
+{
+    _outputReportArrival.start();
+    if (!_outputReportSeen) {
+        // The first report of a source only says where the vehicle's clock is.
+        _outputReportSeen = true;
+        _outputReportTimeUsec = timeUsec;
+        _outputReportPwm = pwm;
+        _outputReportTaken.start();
+        return;
+    }
+    // Reports are taken in the order of the vehicle's own clock, 32 bits of microseconds that wrap after 71
+    // minutes. A report that is not later than the latest one taken is a repeated or an older one. It is
+    // evidence of nothing, and it never moves the mark back, whatever time has passed: the old reports that
+    // follow it would then pass for new ones. A vehicle that restarted is taken up again when its link was
+    // lost and came back, or when the reports come from another link, and not by waiting.
+    const quint32 ahead = timeUsec - _outputReportTimeUsec;
+    if (ahead == 0 || ahead >= 0x80000000u) {
+        return;
+    }
+    // In that order every earlier time is also a later one, half the clock's range away. The vehicle's
+    // clock cannot have run that much faster than the one here, so such a report belongs to another run of
+    // the clock. Nothing that was seen before it can be combined with what comes after it.
+    if (static_cast<qint64>(ahead) > _outputReportTaken.nsecsElapsed() / 1000 + kVehicleClockSlackUsec) {
+        if (busy() && _output >= 1) {
+            _requireRecovery(tr("飞控输出上报里的时间发生跳变，无法确认 SERVO%1 回中；请恢复异常通道").arg(_output));
+        }
+        return;
+    }
+    _outputClockMoved = true;
+    _outputReportTimeUsec = timeUsec;
+    _outputReportPwm = pwm;
+    _outputReportTaken.start();
+    if (_output < 1) {
+        return;
+    }
+    const bool testPwmMayBeLive = !_recovering && (_state == WaitingTestAck || _state == Testing ||
+                                                   _state == WaitingNeutralAck || _state == ConfirmingNeutral);
+    if (testPwmMayBeLive && _testEffectCanBeSeen && pwm[_output - 1] == _testPwm) {
+        _testEffectSeen = true;
+    }
+    if (_state != ConfirmingNeutral) {
+        return;
+    }
+    if (pwm[_output - 1] != _neutralPwm) {
+        // A report made just before the vehicle applied the neutral still shows the old value. The wait
+        // goes on; if it ends without confirmation, neutral is sent again.
+        _neutralReportsSeen = 0;
+        return;
+    }
+    if (++_neutralReportsSeen < kNeutralReportsNeeded) {
+        return;
+    }
+    _outputReportTimer.stop();
+    if (!_recovering && !_testEffectSeen) {
+        // The output is at neutral now, but its reports never showed the test PWM. The reply to the test PWM
+        // may have been another command's, and the test PWM may still arrive. Finishing here would write the
+        // function back and clear the record ahead of it. The operator's recovery is the way out: by then
+        // the command has had the time a person takes, not the fraction of a second this session had.
+        _requireRecovery(tr("飞控上报 SERVO%1 在中位，但测试期间没有上报过测试值，无法排除测试指令还没有执行；"
+                            "请恢复异常通道")
+                             .arg(_output));
+        return;
+    }
+    // What is left is the parameter, which the recovery record covers. A parameter failure after this
+    // point must not lead to another PWM on an output that may have its function back.
+    // A recovery ends here without having seen what led to it. What it does not rule out is a PWM command of
+    // the earlier run that is still on its way after all the time until the operator started the recovery.
+    _forgetUnconfirmedNeutral();
+    _requestRestore(QString());
+}
+
+void ThrusterDirectControlController::_forgetOutputReports()
+{
+    _outputReportSeen = false;
+    _outputClockMoved = false;
+    _outputReportTaken.invalidate();
+}
+
+void ThrusterDirectControlController::_outputReportSourceChanged()
+{
+    // Reports of the new source are not in one order with those of the old one.
+    _forgetOutputReports();
+    if (busy() && _output >= 1) {
+        _requireRecovery(
+            tr("载具的主链路已切换，输出上报换了来源，无法确认 SERVO%1 回中；请恢复异常通道").arg(_output));
+    }
+}
+
+void ThrusterDirectControlController::_outputReportTimedOut()
+{
+    if (_state == ConfirmingNeutral) {
+        _retryNeutralOrRequireRecovery(tr("飞控没有上报该输出已回到中位，未确认回中；请恢复异常通道"));
     }
 }
 
@@ -709,6 +861,7 @@ void ThrusterDirectControlController::setTimingsForTest(int settleMs, int comman
     _manualAdapter = !_vehicleBound;
     _settleMs = qMax(1, settleMs);
     _commandTimeoutMs = qMax(1, commandTimeoutMs);
+    _outputReportTimeoutMs = _commandTimeoutMs;
     _parameterTimeoutMs = qMax(1, parameterTimeoutMs);
     _restoreParameterTimeoutMs = _parameterTimeoutMs;
 }
@@ -726,6 +879,15 @@ void ThrusterDirectControlController::handleCommandResult(int ackResult, int fai
         _handleCommandResult(ackResult, failureCode, _commandToken);
     }
 }
+
+void ThrusterDirectControlController::observeOutputReport(quint32 timeUsec, int pwm)
+{
+    if (_manualAdapter) {
+        std::array<int, 16> outputs{};
+        outputs.fill(pwm);
+        _outputsReported(timeUsec, outputs);
+    }
+}
 #endif
 
 void ThrusterDirectControlController::_settleFinished()
@@ -734,12 +896,21 @@ void ThrusterDirectControlController::_settleFinished()
         _requireRecovery(tr("载具连接或直测状态发生变化"));
         return;
     }
+    if (!_recovering && !outputReportsAvailable()) {
+        // Nothing was sent to the output yet, so the function can simply be written back.
+        _requestRestore(tr("飞控的输出上报中断，未发送测试 PWM"));
+        return;
+    }
     _output = _pendingOutput;
     _pendingOutput = -1;
     emit detailsChanged();
     if (_recovering) {
         _beginNeutral();
     } else {
+        // The test PWM counts as having reached the output once a report shows it, and only if the report
+        // before it showed something else. A test PWM equal to neutral needs no such proof.
+        _testEffectCanBeSeen = _outputReportPwm[_output - 1] != _testPwm;
+        _testEffectSeen = _testPwm == _neutralPwm;
         _setState(WaitingTestAck);
         _sendPwm(_testPwm);
     }
@@ -754,7 +925,6 @@ void ThrusterDirectControlController::_commandTimedOut()
 {
     if (_state == WaitingTestAck) {
         _failureReason = tr("测试 PWM 指令无回执");
-        _neutralAcksNeeded = 2;
         _stopRequested = true;
         emit detailsChanged();
         if (_manualAdapter || !_vehicle ||
@@ -829,6 +999,8 @@ void ThrusterDirectControlController::_retryNeutralOrRequireRecovery(const QStri
     }
     --_neutralAttemptsLeft;
     _commandTimer.stop();
+    _outputReportTimer.stop();
+    _setState(WaitingNeutralAck);
     _sendPwm(_neutralPwm);
 }
 
@@ -969,6 +1141,7 @@ void ThrusterDirectControlController::_stopTimers()
     _settleTimer.stop();
     _testDurationTimer.stop();
     _commandTimer.stop();
+    _outputReportTimer.stop();
     _stopParameterWait();
 }
 
@@ -990,7 +1163,9 @@ void ThrusterDirectControlController::_clearSession()
     _recovering = false;
     _functionSaveWriteStarted = false;
     _neutralAttemptsLeft = 0;
-    _neutralAcksNeeded = 1;
+    _neutralReportsSeen = 0;
+    _testEffectCanBeSeen = false;
+    _testEffectSeen = false;
     _forgetUnconfirmedNeutral();
     _failureReason.clear();
     emit detailsChanged();

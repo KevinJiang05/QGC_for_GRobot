@@ -177,6 +177,11 @@ QGCPopupDialog {
                         .arg(directControl.output)
                         .arg(root.directServoNeutralPwm)
                 break
+            case "confirmingNeutral":
+                root.directServoStatusText = qsTr("收到接受回执，正在核对飞控上报的 SERVO%1 输出是否回到 %2 PWM；尚未确认回中。")
+                        .arg(directControl.output)
+                        .arg(root.directServoNeutralPwm)
+                break
             case "waitingRestore":
                 root.directServoStatusText = root.directServoFact
                         ? qsTr("正在恢复 %1=%2。").arg(root.directServoFact.name).arg(directControl.originalFunction)
@@ -190,8 +195,8 @@ QGCPopupDialog {
             root.directServoFact = null
             root.directServoNeutralPwm = 1500
             root.directServoStatusText = failureReason.length > 0
-                    ? qsTr("SERVO%1 已确认恢复；本次%2提前结束：%3。").arg(output).arg(root.directServoOperationText()).arg(failureReason)
-                    : qsTr("SERVO%1 已回中，并确认恢复原功能参数。").arg(output)
+                    ? qsTr("SERVO%1 的原功能参数已恢复（飞控上报该输出在中位后写回）；本次%2提前结束：%3。").arg(output).arg(root.directServoOperationText()).arg(failureReason)
+                    : qsTr("飞控上报 SERVO%1 的输出已回到中位，原功能参数已恢复并回读确认。").arg(output)
             root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("%1已结束").arg(root.directServoOperationText()))
         }
 
@@ -857,6 +862,7 @@ QGCPopupDialog {
         case "waitingTestAck": return qsTr("等待测试回执")
         case "testing": return qsTr("正在输出")
         case "waitingNeutralAck": return qsTr("等待回中回执")
+        case "confirmingNeutral": return qsTr("核对输出回中")
         case "waitingRestore": return qsTr("正在恢复参数")
         case "savingFunction": return qsTr("保存并回读功能")
         case "recoveryNeeded": return qsTr("需要人工恢复")
@@ -944,6 +950,14 @@ QGCPopupDialog {
         var originalFunction = Number(fact.rawValue)
         if (!Number.isInteger(originalFunction) || originalFunction < 0) {
             root.directServoStatusText = qsTr("%1 当前值无效，无法安全备份。").arg(root.servoParamName(outputNumber))
+            return
+        }
+
+        var outputReportProblem = directControl.outputReportProblem()
+        if (outputReportProblem !== "") {
+            root.directServoStatusText = qsTr("%1。未开始%2，未修改飞控参数。")
+                    .arg(outputReportProblem)
+                    .arg(root.directServoOperationText())
             return
         }
 

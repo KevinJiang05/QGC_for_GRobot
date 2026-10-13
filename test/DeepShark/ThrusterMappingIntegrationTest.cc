@@ -214,6 +214,12 @@ QString csvText(QObject* dialog)
     return result.toString();
 }
 
+bool outputReportsArrive(ThrusterDirectControlController* controller)
+{
+    // A controller sees the reports that arrive after it was bound to the vehicle.
+    return controller && QTest::qWaitFor([controller]() { return controller->outputReportsAvailable(); }, 3000);
+}
+
 QString portName(QObject* dialog, int output)
 {
     QVariant result;
@@ -232,9 +238,15 @@ void ThrusterMappingIntegrationTest::_connectFixture(quint64 uid)
     _servoAckPolicy = AcceptServoAck;
     _holdArmingUpdates = false;
     _holdArmingHeartbeats = false;
+    _lostServoPwm = -1;
+    _heldServoPwm = -1;
+    _heldServoCommands.clear();
+    _mockOutputs.fill(1500);
     _mockLink = MockLink::startAPMArduSubMockLink();
     QVERIFY(_mockLink);
     connect(_mockLink, &QObject::destroyed, this, [this]() { _mockLink = nullptr; });
+    _commandWatch = connect(_mockLink, &MockLink::writeBytesQueuedSignal, this,
+                            &ThrusterMappingIntegrationTest::_applyServoCommands);
     // Only this owned MockLink is intercepted. Parameter writes/reads and commands
     // still traverse the real protocol, Vehicle and command queue.
     QVERIFY(QObject::disconnect(_mockLink, &LinkInterface::bytesReceived, MAVLinkProtocol::instance(),
@@ -248,7 +260,73 @@ void ThrusterMappingIntegrationTest::_connectFixture(quint64 uid)
     QCOMPARE(_vehicle->vehicleUID(), uid);
 }
 
+void ThrusterMappingIntegrationTest::_applyServoCommands(const QByteArray& bytes)
+{
+    mavlink_message_t receiveBuffer{};
+    mavlink_status_t receiveStatus{};
+    mavlink_message_t message{};
+    mavlink_status_t status{};
+    for (const char byte : bytes) {
+        if (mavlink_frame_char_buffer(&receiveBuffer, &receiveStatus, static_cast<uint8_t>(byte), &message, &status) !=
+                MAVLINK_FRAMING_OK ||
+            message.msgid != MAVLINK_MSG_ID_COMMAND_LONG) {
+            continue;
+        }
+        mavlink_command_long_t command{};
+        mavlink_msg_command_long_decode(&message, &command);
+        const int output = static_cast<int>(command.param1);
+        const int pwm = static_cast<int>(command.param2);
+        if (command.command != MAV_CMD_DO_SET_SERVO || output < 1 || output > 16 || pwm == _lostServoPwm) {
+            continue;
+        }
+        if (pwm == _heldServoPwm) {
+            _heldServoCommands.append({output, pwm});
+        } else {
+            _mockOutputs[output - 1] = pwm;
+        }
+    }
+}
+
+void ThrusterMappingIntegrationTest::_releaseHeldServoCommands()
+{
+    for (const auto& command : std::as_const(_heldServoCommands)) {
+        _mockOutputs[command.first - 1] = command.second;
+    }
+    _heldServoCommands.clear();
+}
+
+void ThrusterMappingIntegrationTest::_reportMockOutputs(LinkInterface* link)
+{
+    if (!_outputsReported || !_mockLink || !_vehicle) {
+        return;
+    }
+    if (_outputClockRuns) {
+        _mockOutputTimeUsec += 20000;
+    }
+    _deliverOutputReport(link, _mockOutputTimeUsec, _mockOutputs);
+    ++_mockOutputReportsSent;
+}
+
+void ThrusterMappingIntegrationTest::_deliverOutputReport(LinkInterface* link, quint32 timeUsec,
+                                                          const std::array<int, 16>& outputs)
+{
+    // Also used on its own, to deliver a report that was made earlier than it arrives.
+    mavlink_message_t report{};
+    mavlink_msg_servo_output_raw_pack_chan(
+        static_cast<uint8_t>(_vehicle->id()), MAV_COMP_ID_AUTOPILOT1, _mockLink->outgoingMavlinkChannel(), &report,
+        timeUsec, 0, outputs[0], outputs[1], outputs[2], outputs[3], outputs[4], outputs[5], outputs[6], outputs[7],
+        outputs[8], outputs[9], outputs[10], outputs[11], outputs[12], outputs[13], outputs[14], outputs[15]);
+    MAVLinkProtocol::instance()->receiveBytes(link, encodedMessage(report));
+}
+
 void ThrusterMappingIntegrationTest::_filterMockResponse(LinkInterface* link, const QByteArray& bytes)
+{
+    _forwardMockResponse(link, bytes);
+    // An output report follows every packet of the mock, so reports stop when the mock goes silent.
+    _reportMockOutputs(link);
+}
+
+void ThrusterMappingIntegrationTest::_forwardMockResponse(LinkInterface* link, const QByteArray& bytes)
 {
     mavlink_message_t receiveBuffer{};
     mavlink_status_t receiveStatus{};
@@ -302,6 +380,9 @@ void ThrusterMappingIntegrationTest::cleanup()
 {
     VehicleTestManualConnect::cleanup();
     QObject::disconnect(_responseFilter);
+    QObject::disconnect(_commandWatch);
+    _outputsReported = true;
+    _outputClockRuns = true;
 }
 
 void ThrusterMappingIntegrationTest::_abortWaitsForPendingPwmAck()
@@ -317,6 +398,7 @@ void ThrusterMappingIntegrationTest::_abortWaitsForPendingPwmAck()
     _mockLink->clearReceivedMavCommandCounts();
     _mockLink->clearReceivedMavlinkMessageCounts();
     _servoAckPolicy = HoldServoAck;
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
     QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 1, 2000);
     QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingTestAck);
@@ -357,6 +439,7 @@ void ThrusterMappingIntegrationTest::_parameterRejectionCannotConfirmDisable()
     });
     _mockLink->setParamSetFailureMode(MockLink::FailParamSetParamError);
     _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
     QTRY_COMPARE_WITH_TIMEOUT(recoveryRequired.count(), 1, 4000);
     QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
@@ -388,6 +471,7 @@ void ThrusterMappingIntegrationTest::_missingNeutralAckKeepsQmlRecoveryJournal()
     QVERIFY(fixture.dialog->property("canStartDirectTest").toBool());
     _servoAckPolicy = HoldServoAck;
     _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(outputReportsArrive(fixture.controller()));
     QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "startDirectServoTest", Q_ARG(QVariant, QVariant(1))));
     QTRY_VERIFY2_WITH_TIMEOUT(controller->state() == ThrusterDirectControlController::RecoveryNeeded,
                               qPrintable(controllerDiagnostics(controller, _mockLink)), 15000);
@@ -432,6 +516,7 @@ void ThrusterMappingIntegrationTest::_linkLossAndReturnSendNeutralAgain()
     controller.setTimingsForTest(1, 2000, 1000);
     traceController(&controller, _mockLink);
     QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
     QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::Testing,
                               qPrintable(controllerDiagnostics(&controller, _mockLink)), 3000);
@@ -477,6 +562,7 @@ void ThrusterMappingIntegrationTest::_linkReturnLeavesAReassignedOutputAlone()
     QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
     QSignalSpy reissued(&controller, &ThrusterDirectControlController::neutralReissued);
     QSignalSpy skipped(&controller, &ThrusterDirectControlController::neutralReissueSkipped);
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
     QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::Testing,
                               qPrintable(controllerDiagnostics(&controller, _mockLink)), 3000);
@@ -527,6 +613,7 @@ void ThrusterMappingIntegrationTest::_linkLossLeavesALiveReassignedOutputAlone()
     QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
     QSignalSpy reissued(&controller, &ThrusterDirectControlController::neutralReissued);
     QSignalSpy skipped(&controller, &ThrusterDirectControlController::neutralReissueSkipped);
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
     QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::Testing,
                               qPrintable(controllerDiagnostics(&controller, _mockLink)), 3000);
@@ -589,6 +676,7 @@ void ThrusterMappingIntegrationTest::_delayedReissueChecksTheOutputAgain()
         }
         return count;
     };
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
     QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::Testing,
                               qPrintable(controllerDiagnostics(&controller, _mockLink)), 3000);
@@ -631,6 +719,7 @@ void ThrusterMappingIntegrationTest::_lateTestReplyIsNotTakenForNeutral()
     traceController(&controller, _mockLink);
     QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
     QSignalSpy completed(&controller, &ThrusterDirectControlController::recoveryCompleted);
+    QSignalSpy pwmRequests(&controller, &ThrusterDirectControlController::servoPwmRequested);
     const auto neutralsSent = [&sent]() {
         int count = 0;
         for (const auto& command : sentCommands(sent, MAV_CMD_DO_SET_SERVO)) {
@@ -640,9 +729,20 @@ void ThrusterMappingIntegrationTest::_lateTestReplyIsNotTakenForNeutral()
         }
         return count;
     };
+    // How many PWM commands the session had sent when it started to write the function back.
+    int pwmRequestsAtRestore = -1;
+    connect(&controller, &ThrusterDirectControlController::stateChanged, this,
+            [&controller, &pwmRequests, &pwmRequestsAtRestore]() {
+                if (controller.state() == ThrusterDirectControlController::WaitingRestore) {
+                    pwmRequestsAtRestore = pwmRequests.count();
+                }
+            });
 
-    // The reply to the test PWM does not arrive in time, so the session moves on to neutral.
+    // The test PWM reaches the output, but its reply does not arrive in time, so the session moves on to
+    // neutral. That neutral is lost on the way: the output keeps the test PWM.
     _servoAckPolicy = HoldServoAck;
+    _lostServoPwm = 1500;
+    QVERIFY(outputReportsArrive(&controller));
     QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
     QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::WaitingNeutralAck,
                               qPrintable(controllerDiagnostics(&controller, _mockLink)), 8000);
@@ -650,12 +750,147 @@ void ThrusterMappingIntegrationTest::_lateTestReplyIsNotTakenForNeutral()
     QVERIFY(_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_DO_SET_SERVO));
 
     // Now the late reply to the test PWM comes in. The vehicle's queue hands it to the pending neutral,
-    // because a reply names the command only. It must not be taken as "neutral confirmed": the session
-    // asks for neutral once more, and only that reply lets it write the function back.
+    // because a reply names the command only. It must not be taken as "neutral confirmed": the output still
+    // reports the test PWM, so the function stays disabled and neutral is sent again.
     _servoAckPolicy = AcceptServoAck;
     _mockLink->sendUnexpectedCommandAck(MAV_CMD_DO_SET_SERVO, MAV_RESULT_ACCEPTED);
-    QTRY_VERIFY2_WITH_TIMEOUT(completed.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)), 8000);
+    QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::ConfirmingNeutral,
+                              qPrintable(controllerDiagnostics(&controller, _mockLink)), 5000);
+    QCOMPARE(_mockOutputs[0], 1550);
+    // Reports from before the test, when the output was at neutral, arrive only now. They are older than
+    // what the session has already taken, so they are not what it is waiting for.
+    std::array<int, 16> outputsBeforeTheTest{};
+    outputsBeforeTheTest.fill(1500);
+    for (quint32 report = 0; report < 4; ++report) {
+        _deliverOutputReport(_mockLink, _mockOutputTimeUsec - 60000000 + report * 500000, outputsBeforeTheTest);
+    }
+    QCOMPARE(controller.state(), ThrusterDirectControlController::ConfirmingNeutral);
+    QCOMPARE(pwmRequestsAtRestore, -1);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0);
+    // The second neutral arrives, and the vehicle answers it. Only then do the reports show neutral.
+    _lostServoPwm = -1;
+    QTRY_VERIFY2_WITH_TIMEOUT(completed.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)), 12000);
+    QCOMPARE(pwmRequestsAtRestore, 3);
     QCOMPARE(neutralsSent(), 2);
+    QCOMPARE(_mockOutputs[0], 1500);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+}
+
+void ThrusterMappingIntegrationTest::_testNeedsOutputReports()
+{
+    // A vehicle that does not report its outputs: a test could be started but never be confirmed as ended.
+    _outputsReported = false;
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    controller.setTimingsForTest(1, 2000, 1000);
+    QVERIFY(freshMockTraffic(_mockLink, _vehicle));
+    _mockLink->clearReceivedMavCommandCounts();
+    _mockLink->clearReceivedMavlinkMessageCounts();
+    QVERIFY(!controller.outputReportsAvailable());
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Idle);
+    QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+
+    // Reports whose time stands still cannot be put in order, so they cannot confirm anything either. The
+    // test is refused before the function is touched, not left unconfirmed after it has run.
+    _outputClockRuns = false;
+    _outputsReported = true;
+    const int reportsBefore = _mockOutputReportsSent;
+    QTRY_VERIFY_WITH_TIMEOUT(_mockOutputReportsSent >= reportsBefore + 5, 5000);
+    QVERIFY(!controller.outputReportsAvailable());
+    QVERIFY(!controller.outputReportProblem().isEmpty());
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
+
+    // Once usable reports arrive the same test starts, and ends on its own.
+    _outputClockRuns = true;
+    QVERIFY(outputReportsArrive(&controller));
+    QSignalSpy completed(&controller, &ThrusterDirectControlController::recoveryCompleted);
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
+    QTRY_VERIFY2_WITH_TIMEOUT(completed.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)), 8000);
+    QCOMPARE(_mockOutputs[0], 1500);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+}
+
+void ThrusterMappingIntegrationTest::_neutralWithoutOutputReportsKeepsTheOutput()
+{
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    controller.setTimingsForTest(1, 500, 1000);
+    traceController(&controller, _mockLink);
+    QSignalSpy recoveryRequired(&controller, &ThrusterDirectControlController::recoveryRequired);
+    QSignalSpy completed(&controller, &ThrusterDirectControlController::recoveryCompleted);
+    _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(outputReportsArrive(&controller));
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
+    QTRY_VERIFY2_WITH_TIMEOUT(controller.state() == ThrusterDirectControlController::Testing,
+                              qPrintable(controllerDiagnostics(&controller, _mockLink)), 3000);
+
+    // The reports stop. Every neutral is accepted, and none of them can be confirmed: the vehicle does not
+    // say what the output holds. The function stays disabled and the output is kept for manual recovery.
+    _outputsReported = false;
+    controller.finishTest();
+    QTRY_VERIFY2_WITH_TIMEOUT(recoveryRequired.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)),
+                              10000);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
+    QCOMPARE(completed.count(), 0);
+    // One test PWM, then every neutral attempt.
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 5);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0);
+    QCOMPARE(controller.unconfirmedOutputForTest(), 1);
+
+    // With reports back, a recovery confirms neutral and writes the function back.
+    _outputsReported = true;
+    QVERIFY(outputReportsArrive(&controller));
+    QVERIFY(controller.beginRecovery(1, 33, QStringLiteral("manual recovery"), 1500));
+    QTRY_VERIFY2_WITH_TIMEOUT(completed.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)), 8000);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+}
+
+void ThrusterMappingIntegrationTest::_testPwmStillOnItsWayIsNotClearedByNeutralReports()
+{
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    controller.setTimingsForTest(1, 2000, 1000);
+    traceController(&controller, _mockLink);
+    QSignalSpy recoveryRequired(&controller, &ThrusterDirectControlController::recoveryRequired);
+    QSignalSpy completed(&controller, &ThrusterDirectControlController::recoveryCompleted);
+
+    // The test PWM is held up on its way to the output, and a reply arrives all the same, as the late reply
+    // of an earlier command would. The session takes the test for started and, when its time is up, sends
+    // neutral, which is answered too. The vehicle reports the output at neutral, truthfully: it has not
+    // left neutral yet.
+    _heldServoPwm = 1550;
+    QVERIFY(outputReportsArrive(&controller));
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
+    QTRY_VERIFY2_WITH_TIMEOUT(recoveryRequired.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)),
+                              10000);
+
+    // Those reports do not show that the test PWM is over. Writing the function back and clearing the
+    // record here would leave nothing to end it when it arrives.
+    QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
+    QVERIFY(recoveryRequired.constFirst().constFirst().toString().contains(QStringLiteral("没有上报过测试值")));
+    QCOMPARE(completed.count(), 0);
+    QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0);
+    QCOMPARE(controller.unconfirmedOutputForTest(), 1);
+    QCOMPARE(_mockOutputs[0], 1500);
+
+    // Now it arrives. The session is still open, and the operator's recovery ends it.
+    _heldServoPwm = -1;
+    _releaseHeldServoCommands();
+    QCOMPARE(_mockOutputs[0], 1550);
+    QVERIFY(controller.beginRecovery(1, 33, QStringLiteral("manual recovery"), 1500));
+    QTRY_VERIFY2_WITH_TIMEOUT(completed.count() == 1, qPrintable(controllerDiagnostics(&controller, _mockLink)), 8000);
+    QCOMPARE(_mockOutputs[0], 1500);
     QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
 }
 
@@ -820,6 +1055,7 @@ void ThrusterMappingIntegrationTest::_freshBackupOverridesStaleCache()
     fixture.dialog->setProperty("testEnabled", true);
     _servoAckPolicy = HoldServoAck;
     _mockLink->clearReceivedMavCommandCounts();
+    QVERIFY(outputReportsArrive(fixture.controller()));
     QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "startDirectServoTest", Q_ARG(QVariant, QVariant(1))));
     QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 1, 3000);
     QVERIFY(settings->property("recoveryPending").toBool());
@@ -856,6 +1092,7 @@ void ThrusterMappingIntegrationTest::_backupReadFailureDoesNotCreateRecoveryJour
     _mockLink->clearReceivedMavCommandCounts();
     _mockLink->clearReceivedMavlinkMessageCounts();
     QSignalSpy failedRead(_vehicle->parameterManager(), &ParameterManager::_paramRequestReadFailure);
+    QVERIFY(outputReportsArrive(fixture.controller()));
     QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "startDirectServoTest", Q_ARG(QVariant, QVariant(1))));
     QTRY_VERIFY_WITH_TIMEOUT(!failedRead.isEmpty(), 3000);
     QTRY_COMPARE_WITH_TIMEOUT(controller->state(), ThrusterDirectControlController::Idle, 3000);
@@ -944,6 +1181,7 @@ void ThrusterMappingIntegrationTest::_recoveryJournalIsStoredBeforeDisable()
     connect(controller, &ThrusterDirectControlController::recoveryCompleted, this,
             [&afterRecovery, storedJournal]() { afterRecovery = storedJournal(); });
 
+    QVERIFY(outputReportsArrive(fixture.controller()));
     QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "startDirectServoTest", Q_ARG(QVariant, QVariant(1))));
     QTRY_VERIFY2_WITH_TIMEOUT(!afterRecovery.isEmpty(), qPrintable(controllerDiagnostics(controller, _mockLink)), 15000);
     QCOMPARE(atDisable, (QVariantList{true, 1, 33}));
@@ -1042,8 +1280,10 @@ void ThrusterMappingIntegrationTest::_recordWithoutSerialNumberNeedsManualConfir
     QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "recoverPendingServoFunction"));
     QTRY_VERIFY2_WITH_TIMEOUT(controller->state() == ThrusterDirectControlController::Idle,
                               qPrintable(controllerDiagnostics(controller, _mockLink)), 5000);
-    // A recovery knows nothing about earlier PWM commands, so it asks for neutral twice.
-    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 2);
+    // A recovery knows nothing about earlier PWM commands. One neutral is enough all the same, because it is
+    // the vehicle's report of the output that confirms it, not the reply.
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 1);
+    QCOMPARE(_mockOutputs[0], 1500);
     QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
     QVERIFY(!settings->property("recoveryPending").toBool());
 }

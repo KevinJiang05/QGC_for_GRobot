@@ -8,17 +8,24 @@ class ThrusterDirectControlControllerTest : public UnitTest
 
 private slots:
     void _happyPathRestoresOriginalFunction();
-    void _rejectedTestCommandRestoresWithoutTesting();
+    void _rejectedTestCommandEndsThroughNeutral();
     void _commandAndRestoreTimeoutRequireRecovery();
     void _lostNeutralIsSentAgain();
     void _neutralAttemptsAreBounded();
     void _duplicateNeutralGoesStraightToRecovery();
     void _recoveryRemembersItsOutput();
     void _confirmedNeutralForgetsTheOutput();
-    void _unansweredTestPwmNeedsTwoAcceptedNeutrals();
-    void _secondNeutralConfirmationStaysWithinTheBudget();
+    void _acceptedNeutralAloneDoesNotConfirm();
+    void _unconfirmedOutputStaysWithinTheNeutralBudget();
+    void _outputReportsCountOncePerVehicleTime();
+    void _vehicleClockWrapIsNotAStepBack();
+    void _restartedVehicleClockIsNotTrustedDuringASession();
+    void _implausibleClockJumpEndsTheConfirmation();
+    void _waitingDoesNotQualifyAnOlderStream();
+    void _testNeedsReportsWhoseClockMovesOn();
+    void _reportsThatStopBeforeTheTestPwmCancelTheTest();
     void _abortRestoresBeforeOutputStarts();
-    void _noResponseSendsNeutralBeforeRestoringDisabled();
+    void _unseenTestPwmIsNotFinishedByNeutralReports();
     void _abortWaitsForPendingCommandResult();
     void _recoveryConfirmsNeutralBeforeParameterRestore();
     void _abortDuringRecoverySettlingStillConfirmsNeutral();

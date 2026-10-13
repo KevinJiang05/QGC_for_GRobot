@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
+#include <array>
 
 class Fact;
 class Vehicle;
@@ -33,6 +35,7 @@ public:
         WaitingTestAck,
         Testing,
         WaitingNeutralAck,
+        ConfirmingNeutral,
         WaitingRestore,
         SavingFunction,
         RecoveryNeeded,
@@ -62,6 +65,11 @@ public:
     Q_INVOKABLE bool bindVehicle(Vehicle* vehicle);
     Q_INVOKABLE Fact* getParameterFact(int componentId, const QString& name, bool reportMissing = false);
     Q_INVOKABLE bool parameterExists(int componentId, const QString& name) const;
+    /// Whether the vehicle currently reports the values of its outputs in a way that can confirm neutral:
+    /// reports keep arriving and the vehicle's clock in them moves on.
+    Q_INVOKABLE bool outputReportsAvailable() const;
+    /// Why not, for the operator; empty when they are available.
+    Q_INVOKABLE QString outputReportProblem() const;
     Q_INVOKABLE bool beginTest(int output, int originalFunction, int testPwm, int neutralPwm, int testDurationMs);
     Q_INVOKABLE bool beginRecovery(int output, int originalFunction, const QString& reason, int neutralPwm = 1500);
     Q_INVOKABLE bool beginFunctionSave(int output, int expectedOriginal, int newFunction);
@@ -77,6 +85,9 @@ public:
     void setTimingsForTest(int settleMs, int commandTimeoutMs, int parameterTimeoutMs);
     void observeParameterState(double rawValue, bool pendingWrites);
     void handleCommandResult(int ackResult, int failureCode = 0);
+    void observeOutputReport(quint32 timeUsec, int pwm);
+    void setOutputReportMaxAgeForTest(int maxAgeMs) { _outputReportMaxAgeMs = maxAgeMs; }
+    void changeOutputReportSourceForTest() { _outputReportSourceChanged(); }
     int unconfirmedOutputForTest() const { return _unconfirmedOutput; }
 #endif
 
@@ -102,6 +113,7 @@ private slots:
     void _testDurationFinished();
     void _commandTimedOut();
     void _parameterTimedOut();
+    void _outputReportTimedOut();
 
 private:
     void _setState(State state);
@@ -116,6 +128,9 @@ private:
     void _rejectBeforeWrite(const QString& reason);
     void _sendPwm(int pwm);
     void _handleCommandResult(int ackResult, int failureCode, quint64 token);
+    void _outputsReported(quint32 timeUsec, const std::array<int, 16>& pwm);
+    void _outputReportSourceChanged();
+    void _forgetOutputReports();
     void _vehicleUnavailable();
     bool _vehicleUsable(bool requireDisarmed) const;
     void _stopParameterWait();
@@ -167,9 +182,21 @@ private:
     int _testDurationMs = 1000;
     int _expectedParameterValue = -1;
     int _neutralAttemptsLeft = 0;
-    // A command reply names the command only. When an earlier PWM command for this output ended without
-    // a reply, its late reply could be handed to a pending neutral, so one more accepted neutral is needed.
-    int _neutralAcksNeeded = 1;
+    // A command reply names the command only, so the reply to an earlier PWM command can be taken for the
+    // reply to a neutral. Neutral therefore counts as confirmed only when the vehicle, after such a reply,
+    // reports the output itself at the neutral value.
+    int _neutralReportsSeen = 0;
+    // The same goes for the reply to the test PWM: it does not show that the test PWM has reached the
+    // output. A test that was not seen on the output may still be on its way when the output reports
+    // neutral, so such a session does not finish on its own.
+    bool _testEffectCanBeSeen = false;       ///< The output reported another value right before the test PWM was sent
+    bool _testEffectSeen = false;            ///< A later report showed the test PWM
+    bool _outputReportSeen = false;
+    bool _outputClockMoved = false;          ///< A report later than the first one of this source was taken
+    quint32 _outputReportTimeUsec = 0;       ///< Vehicle clock of the latest report that was taken
+    std::array<int, 16> _outputReportPwm{};  ///< Outputs in that report
+    QElapsedTimer _outputReportTaken;        ///< Since that report arrived
+    QElapsedTimer _outputReportArrival;      ///< Since any report last arrived, usable or not
     // Output that may still hold a test PWM after the session fell back to manual recovery.
     int _unconfirmedOutput = -1;
     int _unconfirmedNeutralPwm = 1500;
@@ -180,10 +207,14 @@ private:
     int _commandTimeoutMs = 4500;
     int _parameterTimeoutMs = 8000;
     int _restoreParameterTimeoutMs = 12000;
+    int _outputReportTimeoutMs = 5000;
+    // Output reports arrive about twice a second; the longest gap seen on a vehicle was two seconds.
+    int _outputReportMaxAgeMs = 5000;
 
     QTimer _settleTimer;
     QTimer _testDurationTimer;
     QTimer _commandTimer;
     QTimer _parameterTimeoutTimer;
+    QTimer _outputReportTimer;
     QTimer _reissueTimer;
 };

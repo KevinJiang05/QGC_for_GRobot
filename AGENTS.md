@@ -21,7 +21,7 @@
 
 改动会改变以下内容的行为时，交给另一方做独立复核（各自按自己的全局规则发起；Claude 侧对应"完整"档）；只改注释、文案或测试的不算。依据是 `docs-internal/audits/full_review_2026-10-10.md` 的 S0 定义：可能导致非预期的执行器动作或失控。
 
-复核有上限：同一主题最多两轮（一轮复核，一轮确认必改项的处理），多处改动攒成一轮送。两轮之后仍有必改项的，把剩余问题和代价报给用户，由用户决定是否继续，不自行追加。不使用高价模型（Claude 侧见其全局规则：只用 `gpt-6.1-sol`，最高到 `max`）。
+复核有上限：同一主题最多两轮（一轮复核，一轮确认必改项的处理），多处改动攒成一轮送。两轮之后仍有必改项的，把剩余问题和代价报给用户，由用户决定是否继续，不自行追加。模型和档位按各自的全局规则选。
 
 - 向载具下发执行器或解锁类指令的路径：推进器输出直测与回中（`custom/src/ThrusterDirectControlController.*`、`custom/src/DeepShark/ThrusterMappingTool.qml`）、解锁、上锁与急停入口、手柄到控制量的映射。
 - 放宽或绕过安全限制的开关和判断："禁用安全限制"（`disableSetupSafetyRestrictions`、`ArmedSetupOverrideCapability`），以及 ArduSub 解锁检查和失联保护相关的参数页。

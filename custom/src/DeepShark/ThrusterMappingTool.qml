@@ -83,6 +83,15 @@ QGCPopupDialog {
     readonly property string directServoState: directControl.stateName
     readonly property string directServoFailureReason: directControl.failureReason
     property bool   recoveryDiscardConfirmation: false
+    // A recovery of an output that keeps taking direct PWM commands with its original function finishes
+    // only on the operator's word; see ThrusterDirectControlController::recoveryNeedsOperatorConfirmation().
+    property bool   recoveryOperatorConfirmation: false
+    property bool   recoverySessionActive: false
+    // What the operator has to check about the other outputs after a session. It stays until the next
+    // session ends without it, whatever the status line shows in between.
+    property string outputMappingNotice: ""
+    property int    outputMappingNoticeOutput: -1
+    property bool   outputMappingNoticeAfterRecovery: false
     // A record without a serial number cannot be matched to a vehicle. The operator may vouch for it,
     // for this session only, unless that is switched off in the application settings.
     property bool   recoveryManualConfirmed: false
@@ -191,16 +200,26 @@ QGCPopupDialog {
         }
 
         onRecoveryCompleted: (output, failureReason) => {
+            var afterRecovery = root.recoverySessionActive
+            root.recoverySessionActive = false
             root.clearRecoveryJournal()
             root.directServoFact = null
             root.directServoNeutralPwm = 1500
+            root.checkOutputMapping(output, afterRecovery)
             root.directServoStatusText = failureReason.length > 0
                     ? qsTr("SERVO%1 的原功能参数已恢复（飞控上报该输出在中位后写回）；本次%2提前结束：%3。").arg(output).arg(root.directServoOperationText()).arg(failureReason)
                     : qsTr("飞控上报 SERVO%1 的输出已回到中位，原功能参数已恢复并回读确认。").arg(output)
             root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("%1已结束").arg(root.directServoOperationText()))
         }
 
+        onOutputFunctionsRefreshed: {
+            if (root.outputMappingNoticeOutput >= 1 && !root.directServoBusy()) {
+                root.updateOutputMappingNotice(root.outputMappingNoticeOutput, root.outputMappingNoticeAfterRecovery)
+            }
+        }
+
         onRecoveryRequired: (reason) => {
+            root.recoverySessionActive = false
             root.closeAfterSafeShutdown = false
             root.directServoStatusText = qsTr("恢复尚未确认：%1。请保持飞控上锁并使用“恢复异常通道”。").arg(reason)
         }
@@ -832,9 +851,59 @@ QGCPopupDialog {
         mappingSettings.sync()
     }
 
+    // The function of one output was written back and read back. That says nothing about the others. A flight
+    // controller that is started while a motor function has no output gives that function to a default
+    // output, in memory only; with the original output restored, two outputs then carry the same motor.
+    function outputsSharingFunctionOf(output) {
+        var fact = directControl.getParameterFact(-1, root.servoParamName(output), false)
+        var sharedFunction = fact ? Number(fact.rawValue) : NaN
+        var others = []
+        if (!directControl.functionRefusesDirectPwm(sharedFunction)) {
+            return others
+        }
+        for (var other = 1; other <= 16; other++) {
+            var otherFact = other === output ? null : directControl.getParameterFact(-1, root.servoParamName(other), false)
+            if (otherFact && Number(otherFact.rawValue) === sharedFunction) {
+                others.push(other)
+            }
+        }
+        return others
+    }
+
+    function updateOutputMappingNotice(output, afterRecovery) {
+        var others = root.outputsSharingFunctionOf(output)
+        if (others.length > 0) {
+            var fact = directControl.getParameterFact(-1, root.servoParamName(output), false)
+            root.outputMappingNotice = qsTr("注意：SERVO%1 与 SERVO%2 现在是同一个电机功能（%3），会输出同一个信号。飞控如果在 SERVO%1 被禁用的状态下启动过，会把这个电机功能临时补到默认输出上。请在推进器不带负载的情况下重启飞控，再核对全部输出功能：临时补上的会消失；仍然存在的，改回它原来的功能。核对前不要下水。")
+                    .arg(output)
+                    .arg(others.join("、SERVO"))
+                    .arg(fact ? fact.rawValue : "")
+            // The tool stays open with this on it.
+            root.closeAfterSafeShutdown = false
+        } else if (afterRecovery) {
+            root.outputMappingNotice = qsTr("SERVO%1 的回中和功能参数已确认恢复，其他输出没有发现相同的电机功能。这只说明这一路：如果出现异常期间飞控重启或掉电过，请再核对一遍全部输出功能，必要时重启飞控后复查，然后再下水。").arg(output)
+        } else {
+            root.outputMappingNotice = ""
+        }
+    }
+
+    function checkOutputMapping(output, afterRecovery) {
+        root.outputMappingNoticeOutput = output
+        root.outputMappingNoticeAfterRecovery = afterRecovery
+        root.updateOutputMappingNotice(output, afterRecovery)
+        if (afterRecovery) {
+            // What led to a recovery may have been a restart of the flight controller, and the functions of
+            // the other outputs were read before it. Ask again; the notice is worked out again when the
+            // answers are in.
+            directControl.refreshOutputFunctions()
+        }
+    }
+
     function clearRecoveryJournal() {
         discardRecoveryConfirmTimer.stop()
         root.recoveryDiscardConfirmation = false
+        recoveryOperatorConfirmTimer.stop()
+        root.recoveryOperatorConfirmation = false
         mappingSettings.recoveryPending = false
         mappingSettings.recoveryVehicleId = -1
         mappingSettings.recoveryVehicleUid = ""
@@ -1018,14 +1087,29 @@ QGCPopupDialog {
             return
         }
 
+        var operatorConfirms = directControl.recoveryNeedsOperatorConfirmation(mappingSettings.recoveryFunction)
+        if (operatorConfirms && !root.recoveryOperatorConfirmation) {
+            root.recoveryOperatorConfirmation = true
+            root.directServoStatusText = qsTr("SERVO%1 的原功能（%2）在恢复后仍接受直接 PWM 指令。软件会先回中并核对飞控上报的输出，但无法排除更早的测试指令还在路上、恢复之后才到达。请确认这一路所接的设备已经停止，再点一次“确认设备已停止并恢复”。")
+                    .arg(mappingSettings.recoveryOutput)
+                    .arg(mappingSettings.recoveryFunction)
+            recoveryOperatorConfirmTimer.restart()
+            return
+        }
+        recoveryOperatorConfirmTimer.stop()
+        root.recoveryOperatorConfirmation = false
+
         root.directServoOperation = mappingSettings.recoveryOperation
         root.directServoNeutralPwm = mappingSettings.recoveryNeutralPwm
         root.testSessionOwned = true
         root.directServoFact = fact
+        root.recoverySessionActive = true
         root.directServoStatusText = qsTr("正在恢复异常通道 SERVO%1。").arg(mappingSettings.recoveryOutput)
         if (!directControl.beginRecovery(mappingSettings.recoveryOutput,
                                          mappingSettings.recoveryFunction,
-                                         qsTr("人工恢复"), root.directServoNeutralPwm)) {
+                                         operatorConfirms ? qsTr("人工恢复，操作员确认设备已停止") : qsTr("人工恢复"),
+                                         root.directServoNeutralPwm, operatorConfirms)) {
+            root.recoverySessionActive = false
             root.directServoFact = null
             root.directServoStatusText = qsTr("恢复状态初始化失败，未修改飞控参数。")
         }
@@ -1304,6 +1388,14 @@ QGCPopupDialog {
         repeat:     false
         onTriggered: root.recoveryDiscardConfirmation = false
     }
+
+    Timer {
+        id:         recoveryOperatorConfirmTimer
+        interval:   15000
+        repeat:     false
+        onTriggered: root.recoveryOperatorConfirmation = false
+    }
+
 
     Timer {
         id:         manualRecoveryConfirmTimer
@@ -1612,6 +1704,15 @@ QGCPopupDialog {
         }
 
         QGCLabel {
+            objectName: "outputMappingNotice"
+            Layout.fillWidth: true
+            visible:          root.outputMappingNotice.length > 0
+            wrapMode:         Text.WordWrap
+            text:             root.outputMappingNotice
+            color:            root._qgcPal.warningText
+        }
+
+        QGCLabel {
             objectName: "outputFunctionSaveStatus"
             Layout.fillWidth: true
             visible: root.functionSaveStatusText.length > 0
@@ -1638,7 +1739,7 @@ QGCPopupDialog {
 
             QGCButton {
                 objectName: "outputRecovery"
-                text:       qsTr("恢复异常通道")
+                text:       root.recoveryOperatorConfirmation ? qsTr("确认设备已停止并恢复") : qsTr("恢复异常通道")
                 enabled:    root.vehicleReady && root.recoveryMatchesSession() && root.recoveryPermitted
                                 && root.activeVehicle && !root.activeVehicle.armed && !root.directServoBusy()
                                 && !root.disarmRequested && !root.disarmUnconfirmed && !root.armingRequested

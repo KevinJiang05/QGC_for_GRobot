@@ -138,6 +138,7 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
     });
     connect(manager, &ParameterManager::_paramRequestReadSuccess, this,
             [this](int componentId, const QString& name, int) {
+                _outputFunctionRead(name);
                 if (_reissueCheckFact && componentId == _reissueCheckFact->componentId() &&
                     name == _reissueCheckFact->name()) {
                     // Disabled only if the vehicle said so during this read and the ground value agrees.
@@ -180,6 +181,7 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
             });
     connect(manager, &ParameterManager::_paramRequestReadFailure, this,
             [this](int componentId, const QString& name, int) {
+                _outputFunctionRead(name);
                 if (_reissueCheckFact && componentId == _reissueCheckFact->componentId() &&
                     name == _reissueCheckFact->name()) {
                     _outputCheckedForReissue(false);
@@ -320,8 +322,39 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
     return true;
 }
 
+bool ThrusterDirectControlController::functionRefusesDirectPwm(int function)
+{
+    // Motor 1 to 8 and 9 to 12. ArduPilot's DO_SET_SERVO handler writes an output only if its function is
+    // one of a short list (disabled, manual, gripper, sprayer, RC pass-through); for every other function,
+    // these included, it refuses. Checked against ArduPilot f3a6fa9d, AP_ServoRelayEvents::do_set_servo().
+    // The list here is kept to what the tool is used for rather than to everything outside that list.
+    return (function >= 33 && function <= 40) || (function >= 82 && function <= 85);
+}
+
+void ThrusterDirectControlController::refreshOutputFunctions()
+{
+    if (!_vehicle || busy() || !_vehicleUsable(false)) {
+        return;
+    }
+    ParameterManager* const manager = _vehicle->parameterManager();
+    for (int output = 1; output <= 16; ++output) {
+        const QString name = QStringLiteral("SERVO%1_FUNCTION").arg(output);
+        if (manager->parameterExists(-1, name)) {
+            _outputFunctionReads.insert(name);
+            manager->refreshParameter(-1, name);
+        }
+    }
+}
+
+void ThrusterDirectControlController::_outputFunctionRead(const QString& name)
+{
+    if (_outputFunctionReads.remove(name) && _outputFunctionReads.isEmpty()) {
+        emit outputFunctionsRefreshed();
+    }
+}
+
 bool ThrusterDirectControlController::beginRecovery(int output, int originalFunction, const QString& reason,
-                                                    int neutralPwm)
+                                                    int neutralPwm, bool operatorConfirmed)
 {
     if (busy() || output < 1 || output > 16 || originalFunction < 0 || !_validPwm(neutralPwm) ||
         !_vehicleUsable(true)) {
@@ -351,6 +384,7 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
     _unconfirmedNeutralPwm = neutralPwm;
     _testEffectCanBeSeen = false;
     _testEffectSeen = false;
+    _operatorConfirmedRecovery = operatorConfirmed;
     _stopRequested = true;
     _recovering = true;
     _failureReason = reason;
@@ -691,10 +725,19 @@ void ThrusterDirectControlController::_outputsReported(quint32 timeUsec, const s
                              .arg(_output));
         return;
     }
+    if (_recovering && !_operatorConfirmedRecovery && recoveryNeedsOperatorConfirmation(_originalFunction)) {
+        // A recovery has not seen what led to it, so it cannot rule out a PWM command of the earlier run that
+        // is still on its way. For a motor that does not matter: once the function is back, the flight
+        // controller refuses such a command. This output keeps taking PWM commands with its original
+        // function, so nothing here can say that it will stay at neutral. Only the operator can accept that.
+        _requireRecovery(tr("飞控上报 SERVO%1 在中位。这一路的原功能（%2）在恢复后仍接受直接 PWM 指令，"
+                            "软件无法排除更早的测试指令还在路上；请确认所接设备已停止，再人工确认恢复")
+                             .arg(_output)
+                             .arg(_originalFunction));
+        return;
+    }
     // What is left is the parameter, which the recovery record covers. A parameter failure after this
     // point must not lead to another PWM on an output that may have its function back.
-    // A recovery ends here without having seen what led to it. What it does not rule out is a PWM command of
-    // the earlier run that is still on its way after all the time until the operator started the recovery.
     _forgetUnconfirmedNeutral();
     _requestRestore(QString());
 }
@@ -1161,6 +1204,7 @@ void ThrusterDirectControlController::_clearSession()
     _expectedParameterValue = -1;
     _stopRequested = false;
     _recovering = false;
+    _operatorConfirmedRecovery = false;
     _functionSaveWriteStarted = false;
     _neutralAttemptsLeft = 0;
     _neutralReportsSeen = 0;

@@ -649,7 +649,7 @@ void ThrusterDirectControlControllerTest::_unseenTestPwmIsNotFinishedByNeutralRe
     // Now the test PWM arrives. The session is still waiting for a recovery, which ends it properly.
     reportOutput(controller, 1550, 2);
     QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
-    QVERIFY(controller.beginRecovery(3, 0, QStringLiteral("manual recovery"), 1500));
+    QVERIFY(controller.beginRecovery(3, 0, QStringLiteral("manual recovery"), 1500, true));
     controller.observeParameterState(0, false);
     QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 3, 100);
     controller.handleCommandResult(MAV_RESULT_ACCEPTED);
@@ -717,7 +717,7 @@ void ThrusterDirectControlControllerTest::_recoveryConfirmsNeutralBeforeParamete
     QCOMPARE(controller.originalFunction(), 0);
     QVERIFY(!controller.beginTest(5, 0, 1550, 1500, 1000));
 
-    QVERIFY(controller.beginRecovery(5, 0, QStringLiteral("retry"), 1520));
+    QVERIFY(controller.beginRecovery(5, 0, QStringLiteral("retry"), 1520, true));
     controller.observeParameterState(0, false);
     QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 5, 100);
     // The history of this output holds PWM commands without a reply, so an accepted reply is not trusted
@@ -773,6 +773,63 @@ void ThrusterDirectControlControllerTest::_abortDuringRecoverySettlingStillConfi
     QCOMPARE(controller.state(), ThrusterDirectControlController::Idle);
     QCOMPARE(recoveryCompleted.count(), 1);
     QCOMPARE(recoveryCompleted.constFirst().at(1).toString(), QStringLiteral("user closed"));
+}
+
+void ThrusterDirectControlControllerTest::_recoveryOfAnOutputThatKeepsTakingPwmNeedsTheOperator()
+{
+    // With its function written back, a motor output refuses a direct PWM command that arrives late. An
+    // output whose function is "disabled", manual, a gripper or an RC pass-through keeps taking them.
+    for (const int function : {33, 40, 82, 85}) {
+        QVERIFY(ThrusterDirectControlController::functionRefusesDirectPwm(function));
+        QVERIFY(!ThrusterDirectControlController::recoveryNeedsOperatorConfirmation(function));
+    }
+    for (const int function : {0, 1, 28, 32, 41, 51, 81, 86}) {
+        QVERIFY(!ThrusterDirectControlController::functionRefusesDirectPwm(function));
+        QVERIFY(ThrusterDirectControlController::recoveryNeedsOperatorConfirmation(function));
+    }
+
+    ThrusterDirectControlController controller;
+    controller.setTimingsForTest(1, 1000, 1000);
+    QSignalSpy functionWrites(&controller, &ThrusterDirectControlController::functionWriteRequested);
+    QSignalSpy pwmRequests(&controller, &ThrusterDirectControlController::servoPwmRequested);
+    QSignalSpy recoveryCompleted(&controller, &ThrusterDirectControlController::recoveryCompleted);
+    QSignalSpy recoveryRequired(&controller, &ThrusterDirectControlController::recoveryRequired);
+    reportOutput(controller, 1500);
+
+    // A recovery has not seen what led to it. Neutral is sent and the output reports neutral, but for an
+    // output that keeps taking PWM commands that does not say it will stay there, so nothing is written
+    // back and the output is not forgotten.
+    QVERIFY(controller.beginRecovery(5, 0, QStringLiteral("manual recovery"), 1500));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 1, 1000);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    reportOutput(controller, 1500);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
+    QCOMPARE(recoveryRequired.count(), 1);
+    QVERIFY(recoveryRequired.constFirst().constFirst().toString().contains(QStringLiteral("人工确认")));
+    QCOMPARE(recoveryCompleted.count(), 0);
+    QCOMPARE(functionWrites.count(), 1);
+    QCOMPARE(controller.unconfirmedOutputForTest(), 5);
+
+    // With the operator's word it finishes, after the same neutral and the same reports.
+    QVERIFY(controller.beginRecovery(5, 0, QStringLiteral("operator confirmed"), 1500, true));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 2, 1000);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::ConfirmingNeutral);
+    reportOutput(controller, 1500);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingRestore);
+    controller.observeParameterState(0, false);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Idle);
+    QCOMPARE(recoveryCompleted.count(), 1);
+
+    // A motor output needs no such word.
+    QVERIFY(controller.beginRecovery(5, 35, QStringLiteral("manual recovery"), 1500));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 3, 1000);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    reportOutput(controller, 1500);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingRestore);
 }
 
 void ThrusterDirectControlControllerTest::_elapsedTestWaitsForAckWithoutRestartingDuration()

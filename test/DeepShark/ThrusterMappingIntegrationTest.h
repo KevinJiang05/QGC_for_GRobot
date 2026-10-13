@@ -32,6 +32,8 @@ private slots:
     void _unfinishedRecoveryIsAnnouncedOnConnect();
     void _recoveryJournalIsStoredBeforeDisable();
     void _recordWithoutSerialNumberNeedsManualConfirmation();
+    void _recoveryOfAnOutputThatKeepsTakingPwmAsksTheOperator();
+    void _restoredMotorFunctionOnAnotherOutputIsReported();
     void _wiringRecordsAreScopedToVehicleUid();
     void _unknownUidRecordsStayInSession();
     void _functionSaveReadsBackAndRejectsStaleValues_data();

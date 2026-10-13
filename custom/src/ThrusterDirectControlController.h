@@ -3,6 +3,7 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <array>
@@ -71,7 +72,19 @@ public:
     /// Why not, for the operator; empty when they are available.
     Q_INVOKABLE QString outputReportProblem() const;
     Q_INVOKABLE bool beginTest(int output, int originalFunction, int testPwm, int neutralPwm, int testDurationMs);
-    Q_INVOKABLE bool beginRecovery(int output, int originalFunction, const QString& reason, int neutralPwm = 1500);
+    Q_INVOKABLE bool beginRecovery(int output, int originalFunction, const QString& reason, int neutralPwm = 1500,
+                                   bool operatorConfirmed = false);
+    /// Whether the flight controller refuses a direct PWM command for an output with this function. With its
+    /// function written back, such an output cannot be moved by a PWM command that arrives late.
+    Q_INVOKABLE static bool functionRefusesDirectPwm(int function);
+    /// Whether a recovery of an output with this original function finishes only on the operator's word.
+    Q_INVOKABLE static bool recoveryNeedsOperatorConfirmation(int originalFunction)
+    {
+        return !functionRefusesDirectPwm(originalFunction);
+    }
+    /// Asks the vehicle again for the function of every output. The answers arrive in the parameter facts,
+    /// and outputFunctionsRefreshed() follows the last of them, whether it was an answer or a failure.
+    Q_INVOKABLE void refreshOutputFunctions();
     Q_INVOKABLE bool beginFunctionSave(int output, int expectedOriginal, int newFunction);
     Q_INVOKABLE void abort(const QString& reason);
     Q_INVOKABLE void finishTest();
@@ -107,6 +120,7 @@ signals:
     /// neutral was sent on its own.
     void neutralReissueSkipped(int output);
     void functionSaveFinished(int output, bool success, const QString& message);
+    void outputFunctionsRefreshed();
 
 private slots:
     void _settleFinished();
@@ -130,6 +144,7 @@ private:
     void _handleCommandResult(int ackResult, int failureCode, quint64 token);
     void _outputsReported(quint32 timeUsec, const std::array<int, 16>& pwm);
     void _outputReportSourceChanged();
+    void _outputFunctionRead(const QString& name);
     void _forgetOutputReports();
     void _vehicleUnavailable();
     bool _vehicleUsable(bool requireDisarmed) const;
@@ -160,6 +175,7 @@ private:
 
     QPointer<Vehicle> _vehicle;
     QPointer<Fact> _functionFact;
+    QSet<QString> _outputFunctionReads;  ///< Functions asked for by refreshOutputFunctions() and not yet answered
     QPointer<Fact> _reissueCheckFact; ///< Function parameter being read back before a neutral is sent on a link return
     QMetaObject::Connection _reissueCheckUpdate;
     QVariant _reissueCheckValue; ///< What the vehicle reported for it during that read
@@ -167,6 +183,7 @@ private:
     bool _manualAdapter = false;
     bool _stopRequested = false;
     bool _recovering = false;
+    bool _operatorConfirmedRecovery = false;
     bool _commandPending = false;
     bool _functionSaveWriteStarted = false;
     quint64 _commandToken = 0;

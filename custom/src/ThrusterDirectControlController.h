@@ -120,7 +120,8 @@ signals:
     /// neutral was sent on its own.
     void neutralReissueSkipped(int output);
     void functionSaveFinished(int output, bool success, const QString& message);
-    void outputFunctionsRefreshed();
+    /// \param complete Every output function was read back; otherwise the facts may still hold older values.
+    void outputFunctionsRefreshed(bool complete);
 
 private slots:
     void _settleFinished();
@@ -144,7 +145,8 @@ private:
     void _handleCommandResult(int ackResult, int failureCode, quint64 token);
     void _outputsReported(quint32 timeUsec, const std::array<int, 16>& pwm);
     void _outputReportSourceChanged();
-    void _outputFunctionRead(const QString& name);
+    void _outputFunctionRead(int componentId, const QString& name, bool success);
+    void _outputEvidenceLost(const QString& reason);
     void _forgetOutputReports();
     void _vehicleUnavailable();
     bool _vehicleUsable(bool requireDisarmed) const;
@@ -176,6 +178,7 @@ private:
     QPointer<Vehicle> _vehicle;
     QPointer<Fact> _functionFact;
     QSet<QString> _outputFunctionReads;  ///< Functions asked for by refreshOutputFunctions() and not yet answered
+    bool _outputFunctionReadFailed = false;
     QPointer<Fact> _reissueCheckFact; ///< Function parameter being read back before a neutral is sent on a link return
     QMetaObject::Connection _reissueCheckUpdate;
     QVariant _reissueCheckValue; ///< What the vehicle reported for it during that read
@@ -208,6 +211,9 @@ private:
     // neutral, so such a session does not finish on its own.
     bool _testEffectCanBeSeen = false;       ///< The output reported another value right before the test PWM was sent
     bool _testEffectSeen = false;            ///< A later report showed the test PWM
+    // The reports of this session can no longer be put in one order: their clock jumped, or they changed
+    // their source. The session still sends its neutrals, but it does not finish on reports any more.
+    bool _outputEvidenceVoid = false;
     bool _outputReportSeen = false;
     bool _outputClockMoved = false;          ///< A report later than the first one of this source was taken
     quint32 _outputReportTimeUsec = 0;       ///< Vehicle clock of the latest report that was taken

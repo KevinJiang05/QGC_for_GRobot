@@ -20,7 +20,8 @@ private slots:
     void _outputReportsCountOncePerVehicleTime();
     void _vehicleClockWrapIsNotAStepBack();
     void _restartedVehicleClockIsNotTrustedDuringASession();
-    void _implausibleClockJumpEndsTheConfirmation();
+    void _clockJumpDuringATestStillSendsNeutral();
+    void _changedReportSourceDuringATestStillSendsNeutral();
     void _waitingDoesNotQualifyAnOlderStream();
     void _testNeedsReportsWhoseClockMovesOn();
     void _reportsThatStopBeforeTheTestPwmCancelTheTest();

@@ -34,6 +34,7 @@ private slots:
     void _recordWithoutSerialNumberNeedsManualConfirmation();
     void _recoveryOfAnOutputThatKeepsTakingPwmAsksTheOperator();
     void _restoredMotorFunctionOnAnotherOutputIsReported();
+    void _outputFunctionsThatWereNotReadBackAreNotReportedAsChecked();
     void _wiringRecordsAreScopedToVehicleUid();
     void _unknownUidRecordsStayInSession();
     void _functionSaveReadsBackAndRejectsStaleValues_data();

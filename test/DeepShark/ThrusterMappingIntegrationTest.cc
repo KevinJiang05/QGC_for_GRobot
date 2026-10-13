@@ -1352,7 +1352,7 @@ void ThrusterMappingIntegrationTest::_recoveryOfAnOutputThatKeepsTakingPwmAsksTh
     QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
     QVERIFY(fixture.dialog->property("recoveryOperatorConfirmation").toBool());
     QVERIFY(
-        fixture.dialog->property("directServoStatusText").toString().contains(QStringLiteral("仍接受直接 PWM 指令")));
+        fixture.dialog->property("directServoStatusText").toString().contains(QStringLiteral("不在软件能自动恢复的范围内")));
     QVERIFY(recover->property("text").toString().contains(QStringLiteral("确认设备已停止")));
     QVERIFY(settings->property("recoveryPending").toBool());
 
@@ -1365,8 +1365,9 @@ void ThrusterMappingIntegrationTest::_recoveryOfAnOutputThatKeepsTakingPwmAsksTh
     QCOMPARE(_mockOutputs[0], 1500);
     QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 0);
     QVERIFY(!fixture.dialog->property("recoveryOperatorConfirmation").toBool());
-    // What a recovery has confirmed is this one output, and the tool says so.
-    QVERIFY(fixture.dialog->property("outputMappingNotice").toString().contains(QStringLiteral("这只说明这一路")));
+    // What a recovery has confirmed is this one output, and the tool says so once it has read the others back.
+    QTRY_VERIFY_WITH_TIMEOUT(
+        fixture.dialog->property("outputMappingNotice").toString().contains(QStringLiteral("这只说明这一路")), 10000);
     // After a recovery the tool reads the functions of all outputs again. Let that finish on this link.
     QTRY_COMPARE_WITH_TIMEOUT(outputFunctionsRead.count(), 1, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 5000);
@@ -1402,7 +1403,8 @@ void ThrusterMappingIntegrationTest::_restoredMotorFunctionOnAnotherOutputIsRepo
         journal.setValue(QStringLiteral("recoveryOperation"), QStringLiteral("thruster"));
     }
     // A flight controller that starts while a motor function has no output gives that function to a default
-    // output, in memory only. Here that output is SERVO2, and the ground station read its function before.
+    // output, in memory only. Which output that is does not matter to the tool; here the same function is
+    // simply put on SERVO2 behind the ground station's back, which read SERVO2's function before.
     QVERIFY(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO2_FUNCTION")).toInt() != 33);
     mavlink_param_union_t filledIn{};
     filledIn.param_int16 = 33;
@@ -1443,6 +1445,78 @@ void ThrusterMappingIntegrationTest::_restoredMotorFunctionOnAnotherOutputIsRepo
     QVERIFY(notice->property("text").toString().contains(QStringLiteral("SERVO1 与 SERVO2")));
     // After a recovery the tool reads the functions of all outputs again. Let that finish on this link.
     QTRY_COMPARE_WITH_TIMEOUT(outputFunctionsRead.count(), 1, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 5000);
+}
+
+void ThrusterMappingIntegrationTest::_outputFunctionsThatWereNotReadBackAreNotReportedAsChecked()
+{
+    auto* const allowManual = SettingsManager::instance()->appSettings()->allowManualOutputRecovery();
+    const QVariant previousAllow = allowManual->rawValue();
+    const auto restoreAllow = qScopeGuard([&]() { allowManual->setRawValue(previousAllow); });
+    allowManual->setRawValue(true);
+    ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Timeout \".*WaitForParamResponseState\"")));
+    ignoreLogMessage("API.QGCApplication.AppMessage", QtDebugMsg,
+                     QRegularExpression(QStringLiteral("showAppMessage:.*Parameter read failed")));
+
+    _connectFixture();
+    QVERIFY(_vehicle && _mockLink);
+    Fact* const function = _vehicle->parameterManager()->getParameter(-1, QStringLiteral("SERVO1_FUNCTION"));
+    QVERIFY(function);
+    expectAppMessage(rebootNotice());
+    function->setRawValue(0);
+    QTRY_COMPARE_WITH_TIMEOUT(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(),
+                              0, 5000);
+    verifyExpectedLogMessage();
+    {
+        QSettings journal;
+        journal.beginGroup(QStringLiteral("DeepSharkServoOutputMapping"));
+        journal.setValue(QStringLiteral("recoveryPending"), true);
+        journal.setValue(QStringLiteral("recoveryVehicleId"), _vehicle->id());
+        journal.setValue(QStringLiteral("recoveryVehicleUid"), QString());
+        journal.setValue(QStringLiteral("recoveryOutput"), 1);
+        journal.setValue(QStringLiteral("recoveryFunction"), 33);
+        journal.setValue(QStringLiteral("recoveryTimestamp"), QStringLiteral("2026-10-12 20:00"));
+        journal.setValue(QStringLiteral("recoveryNeutralPwm"), 1500);
+        journal.setValue(QStringLiteral("recoveryOperation"), QStringLiteral("thruster"));
+    }
+
+    MappingDialogFixture fixture;
+    QVERIFY2(fixture.dialog, qPrintable(fixture.error));
+    QVERIFY(freshMockTraffic(_mockLink, _vehicle));
+    auto* controller = fixture.controller();
+    auto* settings = fixture.settings();
+    QVERIFY(controller && settings);
+    controller->setTimingsForTest(1, 2000, 1000);
+    QSignalSpy outputFunctionsRead(controller, &ThrusterDirectControlController::outputFunctionsRefreshed);
+    traceController(controller, _mockLink);
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "confirmRecoveryVehicleManually"));
+    QVERIFY(outputReportsArrive(controller));
+
+    // The recovery works, but one of the reads of the other outputs' functions that follow it gets no
+    // answer. The operator had asked for the tool to close when it is done.
+    connect(controller, &ThrusterDirectControlController::recoveryCompleted, this,
+            [this]() { _mockLink->setParamRequestReadFailureMode(MockLink::FailParamRequestReadNoResponse); });
+    connect(_vehicle->parameterManager(), &ParameterManager::_paramRequestReadFailure, this,
+            [this](int, const QString&, int) {
+                _mockLink->setParamRequestReadFailureMode(MockLink::FailParamRequestReadNone);
+            });
+    fixture.dialog->setProperty("closeAfterSafeShutdown", true);
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "recoverPendingServoFunction"));
+    QTRY_VERIFY2_WITH_TIMEOUT(!settings->property("recoveryPending").toBool(),
+                              qPrintable(controllerDiagnostics(controller, _mockLink)), 8000);
+
+    // Until the answers are in, the tool says that the other outputs have not been checked, and it stays.
+    QVERIFY(fixture.dialog->property("outputMappingNotice").toString().contains(QStringLiteral("尚未核对")));
+    QVERIFY(!fixture.dialog->property("closeAfterSafeShutdown").toBool());
+    // With one of them missing it does not say that no other output carries the motor.
+    QTRY_COMPARE_WITH_TIMEOUT(outputFunctionsRead.count(), 1, 30000);
+    QCOMPARE(outputFunctionsRead.constFirst().constFirst().toBool(), false);
+    const QString notice = fixture.dialog->property("outputMappingNotice").toString();
+    QVERIFY(notice.contains(QStringLiteral("没有核对它们")));
+    QVERIFY(!notice.contains(QStringLiteral("没有相同的电机功能")));
+    _mockLink->setParamRequestReadFailureMode(MockLink::FailParamRequestReadNone);
     QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 5000);
 }
 

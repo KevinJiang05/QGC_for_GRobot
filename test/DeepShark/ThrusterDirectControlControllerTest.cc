@@ -419,35 +419,77 @@ void ThrusterDirectControlControllerTest::_restartedVehicleClockIsNotTrustedDuri
     QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingRestore);
 }
 
-void ThrusterDirectControlControllerTest::_implausibleClockJumpEndsTheConfirmation()
+void ThrusterDirectControlControllerTest::_clockJumpDuringATestStillSendsNeutral()
 {
     ThrusterDirectControlController controller;
     controller.setTimingsForTest(1, 1000, 1000);
     QSignalSpy functionWrites(&controller, &ThrusterDirectControlController::functionWriteRequested);
     QSignalSpy pwmRequests(&controller, &ThrusterDirectControlController::servoPwmRequested);
     QSignalSpy recoveryRequired(&controller, &ThrusterDirectControlController::recoveryRequired);
+    QSignalSpy recoveryCompleted(&controller, &ThrusterDirectControlController::recoveryCompleted);
 
     controller.observeOutputReport(3000000000u, 1500);
     controller.observeOutputReport(3000500000u, 1500);
-    QVERIFY(controller.beginTest(5, 35, 1570, 1500, 1000));
+    QVERIFY(controller.beginTest(5, 35, 1570, 1500, 5000));
     controller.observeParameterState(0, false);
     QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 1, 1000);
     controller.handleCommandResult(MAV_RESULT_ACCEPTED);
     controller.observeOutputReport(3001000000u, 1570);
-    controller.finishTest();
-    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
-    QCOMPARE(controller.state(), ThrusterDirectControlController::ConfirmingNeutral);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Testing);
 
     // On a 32-bit clock a time this far back is, by the clock's own order, twenty minutes ahead. The vehicle's
-    // clock did not run twenty minutes in this instant, so the report is from another run of the clock. What
-    // was seen of the test before it cannot be combined with reports after it: the session stops confirming.
+    // clock did not run twenty minutes in this instant, so the report is from another run of the clock, and
+    // what was seen of the test before it cannot be combined with reports after it. The output holds the
+    // test PWM all the same: the test ends at once, through neutral.
     controller.observeOutputReport(1000000, 1500);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingNeutralAck);
+    QCOMPARE(pwmRequests.count(), 2);
+    QCOMPARE(pwmRequests.at(1).at(0).toInt(), 5);
+    QCOMPARE(pwmRequests.at(1).at(1).toInt(), 1500);
+    QCOMPARE(recoveryRequired.count(), 0);
+
+    // The neutral is answered and the vehicle's own clock goes on to report neutral. That would have
+    // finished the session. It no longer does: nothing is written back and the output is kept.
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::ConfirmingNeutral);
+    controller.observeOutputReport(3001500000u, 1500);
+    controller.observeOutputReport(3002000000u, 1500);
     QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
     QCOMPARE(recoveryRequired.count(), 1);
     QVERIFY(recoveryRequired.constFirst().constFirst().toString().contains(QStringLiteral("跳变")));
-    controller.observeOutputReport(1500000, 1500);
-    controller.observeOutputReport(2000000, 1500);
+    QCOMPARE(recoveryCompleted.count(), 0);
+    QCOMPARE(functionWrites.count(), 1);
+    QCOMPARE(controller.unconfirmedOutputForTest(), 5);
+}
+
+void ThrusterDirectControlControllerTest::_changedReportSourceDuringATestStillSendsNeutral()
+{
+    ThrusterDirectControlController controller;
+    controller.setTimingsForTest(1, 200, 1000);
+    QSignalSpy functionWrites(&controller, &ThrusterDirectControlController::functionWriteRequested);
+    QSignalSpy pwmRequests(&controller, &ThrusterDirectControlController::servoPwmRequested);
+    QSignalSpy recoveryRequired(&controller, &ThrusterDirectControlController::recoveryRequired);
+
+    reportOutput(controller, 1500);
+    QVERIFY(controller.beginTest(5, 35, 1570, 1500, 5000));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 1, 1000);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    reportOutput(controller, 1570, 1);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Testing);
+
+    // The reports come from another link from now on. They are not in one order with the earlier ones, so
+    // they cannot finish this session; the test PWM is ended all the same.
+    controller.changeOutputReportSourceForTest();
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingNeutralAck);
+    QCOMPARE(pwmRequests.count(), 2);
+    QCOMPARE(pwmRequests.at(1).at(1).toInt(), 1500);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    // The first report of the new source places its clock, the next two show neutral.
+    reportOutput(controller, 1500, 3);
     QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
+    QCOMPARE(recoveryRequired.count(), 1);
+    QVERIFY(recoveryRequired.constFirst().constFirst().toString().contains(QStringLiteral("主链路")));
     QCOMPARE(functionWrites.count(), 1);
     QCOMPARE(controller.unconfirmedOutputForTest(), 5);
 }

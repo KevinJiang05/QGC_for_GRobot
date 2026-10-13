@@ -212,9 +212,14 @@ QGCPopupDialog {
             root.requestSafeDisarm(root.closeAfterSafeShutdown, qsTr("%1已结束").arg(root.directServoOperationText()))
         }
 
-        onOutputFunctionsRefreshed: {
-            if (root.outputMappingNoticeOutput >= 1 && !root.directServoBusy()) {
-                root.updateOutputMappingNotice(root.outputMappingNoticeOutput, root.outputMappingNoticeAfterRecovery)
+        onOutputFunctionsRefreshed: (complete) => {
+            if (root.outputMappingNoticeOutput < 1) {
+                return
+            }
+            if (!complete) {
+                root.outputMappingNotice = qsTr("SERVO%1 的回中和功能参数已恢复，但没能把其他输出的功能全部重新读回来，所以没有核对它们。请手动刷新参数，核对全部输出功能（特别是有没有另一路也是同一个电机功能）之后再下水。").arg(root.outputMappingNoticeOutput)
+            } else if (!root.directServoBusy()) {
+                root.updateOutputMappingNotice(root.outputMappingNoticeOutput, root.outputMappingNoticeAfterRecovery, true)
             }
         }
 
@@ -870,7 +875,7 @@ QGCPopupDialog {
         return others
     }
 
-    function updateOutputMappingNotice(output, afterRecovery) {
+    function updateOutputMappingNotice(output, afterRecovery, readBack) {
         var others = root.outputsSharingFunctionOf(output)
         if (others.length > 0) {
             var fact = directControl.getParameterFact(-1, root.servoParamName(output), false)
@@ -880,8 +885,10 @@ QGCPopupDialog {
                     .arg(fact ? fact.rawValue : "")
             // The tool stays open with this on it.
             root.closeAfterSafeShutdown = false
+        } else if (afterRecovery && !readBack) {
+            root.outputMappingNotice = qsTr("SERVO%1 的回中和功能参数已恢复。正在重新读取其他输出的功能，尚未核对；请等这一行更新。").arg(output)
         } else if (afterRecovery) {
-            root.outputMappingNotice = qsTr("SERVO%1 的回中和功能参数已确认恢复，其他输出没有发现相同的电机功能。这只说明这一路：如果出现异常期间飞控重启或掉电过，请再核对一遍全部输出功能，必要时重启飞控后复查，然后再下水。").arg(output)
+            root.outputMappingNotice = qsTr("SERVO%1 的回中和功能参数已恢复；刚重新读回的其他输出里没有相同的电机功能。这只说明这一路：如果出现异常期间飞控重启或掉电过，请再核对一遍全部输出功能，必要时重启飞控后复查，然后再下水。").arg(output)
         } else {
             root.outputMappingNotice = ""
         }
@@ -890,11 +897,12 @@ QGCPopupDialog {
     function checkOutputMapping(output, afterRecovery) {
         root.outputMappingNoticeOutput = output
         root.outputMappingNoticeAfterRecovery = afterRecovery
-        root.updateOutputMappingNotice(output, afterRecovery)
+        root.updateOutputMappingNotice(output, afterRecovery, false)
         if (afterRecovery) {
             // What led to a recovery may have been a restart of the flight controller, and the functions of
             // the other outputs were read before it. Ask again; the notice is worked out again when the
-            // answers are in.
+            // answers are in. Until the operator has read it the tool does not close by itself.
+            root.closeAfterSafeShutdown = false
             directControl.refreshOutputFunctions()
         }
     }
@@ -1090,7 +1098,7 @@ QGCPopupDialog {
         var operatorConfirms = directControl.recoveryNeedsOperatorConfirmation(mappingSettings.recoveryFunction)
         if (operatorConfirms && !root.recoveryOperatorConfirmation) {
             root.recoveryOperatorConfirmation = true
-            root.directServoStatusText = qsTr("SERVO%1 的原功能（%2）在恢复后仍接受直接 PWM 指令。软件会先回中并核对飞控上报的输出，但无法排除更早的测试指令还在路上、恢复之后才到达。请确认这一路所接的设备已经停止，再点一次“确认设备已停止并恢复”。")
+            root.directServoStatusText = qsTr("SERVO%1 的原功能（%2）不在软件能自动恢复的范围内（只有电机功能恢复后飞控会拒绝迟到的直接 PWM 指令）。软件会先回中并核对飞控上报的输出，但无法排除更早的测试指令还在路上、恢复之后才到达。请确认这一路所接的设备已经停止，再点一次“确认设备已停止并恢复”。")
                     .arg(mappingSettings.recoveryOutput)
                     .arg(mappingSettings.recoveryFunction)
             recoveryOperatorConfirmTimer.restart()

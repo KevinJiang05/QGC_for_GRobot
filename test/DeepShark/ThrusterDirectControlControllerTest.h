@@ -31,6 +31,7 @@ private slots:
     void _recoveryConfirmsNeutralBeforeParameterRestore();
     void _abortDuringRecoverySettlingStillConfirmsNeutral();
     void _recoveryOfAnOutputThatKeepsTakingPwmNeedsTheOperator();
+    void _withRestrictionsOffTheOperatorDecides();
     void _elapsedTestWaitsForAckWithoutRestartingDuration();
     void _parameterFailureKeepsRecoveryRequired();
     void _inProgressDoesNotCompleteCommand();

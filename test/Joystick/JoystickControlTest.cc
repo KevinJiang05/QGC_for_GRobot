@@ -1287,6 +1287,26 @@ void JoystickControlTest::_transmitterModeAppliesWithoutCalibration()
     QVERIFY(!joystick->settings()->calibrated()->rawValue().toBool());
     joystick->settings()->calibrated()->setRawValue(true);
 
+    // With the setup safety restrictions off the configuration page controls the vehicle on purpose, and the
+    // operator who switched them off also decides about the mode: it changes with the joystick enabled, and
+    // the joystick stays enabled.
+    auto* const overrideSetting = SettingsManager::instance()->appSettings()->disableSetupSafetyRestrictions();
+    const QVariant previousOverride = overrideSetting->rawValue();
+    const auto restoreOverride = qScopeGuard([&]() { overrideSetting->setRawValue(previousOverride); });
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+    overrideSetting->setRawValue(true);
+    QVERIFY(_vehicle->setupSafetyRestrictionsDisabled());
+    controller.setTransmitterMode(1);
+    QCOMPARE(storedMode->rawValue().toInt(), 1);
+    QCOMPARE(mainAxes(), mode1Axes);
+    QVERIFY(manager->activeJoystickEnabledForActiveVehicle());
+    controller.setTransmitterMode(2);
+    QCOMPARE(storedMode->rawValue().toInt(), 2);
+    QCOMPARE(mainAxes(), mode2Axes);
+    overrideSetting->setRawValue(false);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+
     // A vehicle that is known to be armed refuses the selection whether or not the joystick controls it.
     _vehicle->setArmed(true, false);
     QTRY_VERIFY_WITH_TIMEOUT(_vehicle->armed(), 5000);

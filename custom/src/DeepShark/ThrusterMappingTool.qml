@@ -42,9 +42,13 @@ QGCPopupDialog {
     readonly property bool vehicleReady: vehicleContextMatches
                                                 && activeVehicle.parameterManager.parametersReady
                                                 && !activeVehicle.vehicleLinkManager.communicationLost
+    // "Disable safety restrictions" in the application settings. With it on, the tool keeps to what cannot
+    // be done at all and leaves the rest to the operator.
+    readonly property bool restrictionsOff: vehicleContextMatches && activeVehicle.setupSafetyRestrictionsDisabled
     readonly property bool testPathAvailable: vehicleReady
                                                 && !directControl.busy && !mappingSettings.recoveryPending
-                                                && !disarmRequested && !disarmUnconfirmed && !armingRequested
+                                                && (restrictionsOff
+                                                    || (!disarmRequested && !disarmUnconfirmed && !armingRequested))
                                                 && !armCommandPending && runningOutput === -1
                                                 && !activeVehicle.parameterManager.pendingWrites
     readonly property bool canPrepareMotorTest: testEnabled && testMode === 0 && testPathAvailable && cooldownRemaining === 0
@@ -86,6 +90,7 @@ QGCPopupDialog {
     // A recovery of an output that keeps taking direct PWM commands with its original function finishes
     // only on the operator's word; see ThrusterDirectControlController::recoveryNeedsOperatorConfirmation().
     property bool   recoveryOperatorConfirmation: false
+    property bool   recoveryForceConfirmation: false
     property bool   recoverySessionActive: false
     // What the operator has to check about the other outputs after a session. It stays until the next
     // session ends without it, whatever the status line shows in between.
@@ -160,6 +165,7 @@ QGCPopupDialog {
     ThrusterDirectControlController {
         id: directControl
         objectName: "thrusterDirectControl"
+        operatorOverride: root.restrictionsOff
 
         onStateChanged: {
             switch (directControl.stateName) {
@@ -912,6 +918,7 @@ QGCPopupDialog {
         root.recoveryDiscardConfirmation = false
         recoveryOperatorConfirmTimer.stop()
         root.recoveryOperatorConfirmation = false
+        root.recoveryForceConfirmation = false
         mappingSettings.recoveryPending = false
         mappingSettings.recoveryVehicleId = -1
         mappingSettings.recoveryVehicleUid = ""
@@ -1031,7 +1038,7 @@ QGCPopupDialog {
         }
 
         var outputReportProblem = directControl.outputReportProblem()
-        if (outputReportProblem !== "") {
+        if (outputReportProblem !== "" && !root.restrictionsOff) {
             root.directServoStatusText = qsTr("%1。未开始%2，未修改飞控参数。")
                     .arg(outputReportProblem)
                     .arg(root.directServoOperationText())
@@ -1051,6 +1058,10 @@ QGCPopupDialog {
             root.clearRecoveryJournal()
             root.directServoFact = null
             root.directServoStatusText = qsTr("直接输出状态初始化失败，未修改飞控参数。")
+        } else if (outputReportProblem !== "") {
+            root.directServoStatusText = qsTr("%1。安全限制已关闭，照常开始%2；结束后软件无法自动确认回中，请用“人工确认完成”收尾。")
+                    .arg(outputReportProblem)
+                    .arg(root.directServoOperationText())
         }
     }
 
@@ -1120,6 +1131,51 @@ QGCPopupDialog {
             root.recoverySessionActive = false
             root.directServoFact = null
             root.directServoStatusText = qsTr("恢复状态初始化失败，未修改飞控参数。")
+        }
+    }
+
+    // With the safety restrictions off the operator may finish a recovery on their own word: neutral is sent,
+    // and the function is written back once the flight controller has accepted it, without waiting for its
+    // output reports. Whether the record belongs to this vehicle is also the operator's to say.
+    function forceCompleteRecovery() {
+        if (!mappingSettings.recoveryPending || !root.restrictionsOff) {
+            return
+        }
+        if (!root.vehicleReady || root.directServoBusy() || root.activeVehicle.armed) {
+            root.directServoStatusText = qsTr("请保持载具在线且上锁，并等当前操作结束，再人工确认完成。")
+            return
+        }
+        var fact = directControl.getParameterFact(-1, root.servoParamName(mappingSettings.recoveryOutput), false)
+        if (!fact) {
+            root.directServoStatusText = qsTr("缺少恢复记录对应的参数，无法恢复。")
+            return
+        }
+        if (!root.recoveryForceConfirmation) {
+            root.recoveryForceConfirmation = true
+            root.directServoStatusText = qsTr("“人工确认完成”不等飞控上报输出：软件发一次回中，飞控接受后就把 SERVO%1 写回功能 %2 并清掉记录。请确认这一路所接的设备已经停止，再点一次。")
+                    .arg(mappingSettings.recoveryOutput)
+                    .arg(mappingSettings.recoveryFunction)
+            recoveryOperatorConfirmTimer.restart()
+            return
+        }
+        recoveryOperatorConfirmTimer.stop()
+        root.recoveryForceConfirmation = false
+        root.recoveryOperatorConfirmation = false
+
+        root.directServoOperation = mappingSettings.recoveryOperation
+        root.directServoNeutralPwm = mappingSettings.recoveryNeutralPwm
+        root.testSessionOwned = true
+        root.directServoFact = fact
+        root.recoverySessionActive = true
+        root.directServoStatusText = qsTr("正在按人工确认恢复 SERVO%1。").arg(mappingSettings.recoveryOutput)
+        if (!directControl.beginOperatorRecovery(mappingSettings.recoveryOutput,
+                                                 mappingSettings.recoveryFunction,
+                                                 qsTr("人工确认完成（安全限制已关闭，未等飞控上报输出）"),
+                                                 root.directServoNeutralPwm)) {
+            root.recoverySessionActive = false
+            root.directServoFact = null
+            root.directServoStatusText = qsTr("无法开始恢复：飞控仍有未完成的参数写入或 PWM 指令，或 SERVO%1 当前既不是 Disabled 也不是记录的原功能。")
+                    .arg(mappingSettings.recoveryOutput)
         }
     }
 
@@ -1401,7 +1457,10 @@ QGCPopupDialog {
         id:         recoveryOperatorConfirmTimer
         interval:   15000
         repeat:     false
-        onTriggered: root.recoveryOperatorConfirmation = false
+        onTriggered: {
+            root.recoveryOperatorConfirmation = false
+            root.recoveryForceConfirmation = false
+        }
     }
 
 
@@ -1669,8 +1728,11 @@ QGCPopupDialog {
                 Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 30
                 model:                  [ qsTr("电机点动 (Motor Test)"), qsTr("高级：推进器 PWM 直测"), qsTr("舵机点动") ]
                 currentIndex:           root.testMode
-                enabled:                toolLayout.settingsEditable && root.cooldownRemaining === 0
-                                            && root.activeVehicle && !root.activeVehicle.armed
+                // With the safety restrictions off only a test or a recovery that is running holds the mode.
+                enabled:                root.activeVehicle && !root.activeVehicle.armed
+                                            && (root.restrictionsOff
+                                                ? (root.vehicleReady && !root.directServoBusy() && root.runningOutput === -1)
+                                                : (toolLayout.settingsEditable && root.cooldownRemaining === 0))
                 onActivated: (index) => {
                     root.testMode = index
                     toolTabs.currentIndex = index === 1 ? 2 : 1
@@ -1752,6 +1814,14 @@ QGCPopupDialog {
                                 && root.activeVehicle && !root.activeVehicle.armed && !root.directServoBusy()
                                 && !root.disarmRequested && !root.disarmUnconfirmed && !root.armingRequested
                 onClicked:  root.recoverPendingServoFunction()
+            }
+
+            QGCButton {
+                objectName: "outputRecoveryForce"
+                visible:    root.restrictionsOff
+                text:       root.recoveryForceConfirmation ? qsTr("确认设备已停止，直接恢复") : qsTr("人工确认完成")
+                enabled:    root.vehicleReady && root.activeVehicle && !root.activeVehicle.armed && !root.directServoBusy()
+                onClicked:  root.forceCompleteRecovery()
             }
 
             QGCButton {

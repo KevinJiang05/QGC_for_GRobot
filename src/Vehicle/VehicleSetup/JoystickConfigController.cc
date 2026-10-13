@@ -91,6 +91,9 @@ void JoystickConfigController::_applyTransmitterMode()
         return;
     }
 
+    // With the setup safety restrictions off this page controls the vehicle on purpose, and the operator who
+    // switched them off decides about the mode as well. Only the armed check above remains.
+    const bool restrictionsOff = _vehicle && _vehicle->setupSafetyRestrictionsDisabled();
     bool controlsVehicle = false;
     {
         // A scan reads the assignments while it holds this lock.
@@ -100,7 +103,7 @@ void JoystickConfigController::_applyTransmitterMode()
         // but that is not enough: the page closes by itself when the armed state arrives, and control
         // would come back with the new assignments without anyone having asked for it. Control has to be
         // turned off first.
-        controlsVehicle = _joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle) &&
+        controlsVehicle = !restrictionsOff && _joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle) &&
                           _joystick->settings()->calibrated()->rawValue().toBool();
         if (!controlsVehicle) {
             // Assignments that an invalidated calibration left behind are remapped as well, so that the
@@ -119,7 +122,8 @@ void JoystickConfigController::_applyTransmitterMode()
     // for instance when this one disconnects. So the permission ends for all of them, and each vehicle is
     // controlled again once the operator enables the joystick for it.
     Fact *const enabledVehicles = SettingsManager::instance()->joystickManagerSettings()->joystickEnabledVehiclesIds();
-    const bool otherVehiclesWereEnabled = !enabledVehicles->rawValue().toString().isEmpty();
+    // With the restrictions off the joystick may be enabled for this very vehicle, and it stays so.
+    const bool otherVehiclesWereEnabled = !restrictionsOff && !enabledVehicles->rawValue().toString().isEmpty();
     if (otherVehiclesWereEnabled) {
         enabledVehicles->setRawValue(QString());
     }

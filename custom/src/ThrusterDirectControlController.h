@@ -25,6 +25,10 @@ class ThrusterDirectControlController : public QObject
     Q_PROPERTY(int pendingOutput READ pendingOutput NOTIFY detailsChanged)
     Q_PROPERTY(int originalFunction READ originalFunction NOTIFY detailsChanged)
     Q_PROPERTY(QString failureReason READ failureReason NOTIFY detailsChanged)
+    /// The operator has switched the setup safety restrictions off. What the tool refuses on its own judgement
+    /// it then leaves to the operator: a test may start without output reports, and a recovery may be finished
+    /// on the operator's word.
+    Q_PROPERTY(bool operatorOverride READ operatorOverride WRITE setOperatorOverride NOTIFY operatorOverrideChanged)
 
 public:
     enum State
@@ -61,6 +65,10 @@ public:
 
     QString failureReason() const { return _failureReason; }
 
+    bool operatorOverride() const { return _operatorOverride; }
+
+    void setOperatorOverride(bool operatorOverride);
+
     Vehicle* vehicle() const;
 
     Q_INVOKABLE bool bindVehicle(Vehicle* vehicle);
@@ -74,6 +82,10 @@ public:
     Q_INVOKABLE bool beginTest(int output, int originalFunction, int testPwm, int neutralPwm, int testDurationMs);
     Q_INVOKABLE bool beginRecovery(int output, int originalFunction, const QString& reason, int neutralPwm = 1500,
                                    bool operatorConfirmed = false);
+    /// A recovery that the operator finishes: neutral is sent, and once the vehicle has accepted it the function
+    /// is written back without waiting for output reports. Only with operatorOverride.
+    Q_INVOKABLE bool beginOperatorRecovery(int output, int originalFunction, const QString& reason,
+                                           int neutralPwm = 1500);
     /// Whether the flight controller refuses a direct PWM command for an output with this function. With its
     /// function written back, such an output cannot be moved by a PWM command that arrives late.
     Q_INVOKABLE static bool functionRefusesDirectPwm(int function);
@@ -122,6 +134,7 @@ signals:
     void functionSaveFinished(int output, bool success, const QString& message);
     /// \param complete Every output function was read back; otherwise the facts may still hold older values.
     void outputFunctionsRefreshed(bool complete);
+    void operatorOverrideChanged();
 
 private slots:
     void _settleFinished();
@@ -187,6 +200,8 @@ private:
     bool _stopRequested = false;
     bool _recovering = false;
     bool _operatorConfirmedRecovery = false;
+    bool _operatorOverride = false;
+    bool _operatorFinishesRecovery = false;
     bool _commandPending = false;
     bool _functionSaveWriteStarted = false;
     quint64 _commandToken = 0;

@@ -282,8 +282,9 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
         !_validPwm(neutralPwm) || testDurationMs < 1 || testDurationMs > 5000 || !_vehicleUsable(true)) {
         return false;
     }
-    // Without output reports the test could be started but never be confirmed as ended.
-    if (!outputReportsAvailable()) {
+    // Without output reports the test could be started but never be confirmed as ended. With the safety
+    // restrictions off that is the operator's call: the test runs and is finished by the operator.
+    if (!_operatorOverride && !outputReportsAvailable()) {
         return false;
     }
     if (!_manualAdapter) {
@@ -422,6 +423,7 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
     _testEffectCanBeSeen = false;
     _testEffectSeen = false;
     _outputEvidenceVoid = false;
+    _operatorFinishesRecovery = false;
     _operatorConfirmedRecovery = operatorConfirmed;
     _stopRequested = true;
     _recovering = true;
@@ -434,6 +436,24 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
     _startParameterWait(0, _parameterTimeoutMs);
     _writeFunction(0);
     return true;
+}
+
+bool ThrusterDirectControlController::beginOperatorRecovery(int output, int originalFunction, const QString& reason,
+                                                            int neutralPwm)
+{
+    if (!_operatorOverride || !beginRecovery(output, originalFunction, reason, neutralPwm, true)) {
+        return false;
+    }
+    _operatorFinishesRecovery = true;
+    return true;
+}
+
+void ThrusterDirectControlController::setOperatorOverride(bool operatorOverride)
+{
+    if (_operatorOverride != operatorOverride) {
+        _operatorOverride = operatorOverride;
+        emit operatorOverrideChanged();
+    }
 }
 
 bool ThrusterDirectControlController::beginFunctionSave(int output, int expectedOriginal, int newFunction)
@@ -685,6 +705,12 @@ void ThrusterDirectControlController::_handleCommandResult(int ackResult, int fa
     }
     if (_state == WaitingNeutralAck) {
         if (ackResult == MAV_RESULT_ACCEPTED && failureCode == Vehicle::MavCmdResultCommandResultOnly) {
+            if (_operatorFinishesRecovery) {
+                // The operator has taken it on that the output is at rest; see beginOperatorRecovery().
+                _forgetUnconfirmedNeutral();
+                _requestRestore(QString());
+                return;
+            }
             // This reply may belong to an earlier PWM command. Reports that arrive from here on have to
             // show the output at neutral before the function is written back.
             _neutralReportsSeen = 0;
@@ -976,7 +1002,7 @@ void ThrusterDirectControlController::_settleFinished()
         _requireRecovery(tr("载具连接或直测状态发生变化"));
         return;
     }
-    if (!_recovering && !outputReportsAvailable()) {
+    if (!_recovering && !_operatorOverride && !outputReportsAvailable()) {
         // Nothing was sent to the output yet, so the function can simply be written back.
         _requestRestore(tr("飞控的输出上报中断，未发送测试 PWM"));
         return;
@@ -1243,6 +1269,7 @@ void ThrusterDirectControlController::_clearSession()
     _stopRequested = false;
     _recovering = false;
     _operatorConfirmedRecovery = false;
+    _operatorFinishesRecovery = false;
     _functionSaveWriteStarted = false;
     _neutralAttemptsLeft = 0;
     _neutralReportsSeen = 0;

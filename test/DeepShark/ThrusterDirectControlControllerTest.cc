@@ -874,6 +874,65 @@ void ThrusterDirectControlControllerTest::_recoveryOfAnOutputThatKeepsTakingPwmN
     QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingRestore);
 }
 
+void ThrusterDirectControlControllerTest::_withRestrictionsOffTheOperatorDecides()
+{
+    ThrusterDirectControlController controller;
+    controller.setTimingsForTest(1, 200, 1000);
+    QSignalSpy functionWrites(&controller, &ThrusterDirectControlController::functionWriteRequested);
+    QSignalSpy pwmRequests(&controller, &ThrusterDirectControlController::servoPwmRequested);
+    QSignalSpy recoveryCompleted(&controller, &ThrusterDirectControlController::recoveryCompleted);
+
+    // By default a test needs output reports, and a recovery cannot be finished on the operator's word alone.
+    QVERIFY(!controller.operatorOverride());
+    QVERIFY(!controller.beginTest(5, 35, 1570, 1500, 1000));
+    QVERIFY(!controller.beginOperatorRecovery(5, 35, QStringLiteral("operator"), 1500));
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Idle);
+    QCOMPARE(functionWrites.count(), 0);
+
+    // With the setup safety restrictions off the test starts without reports. It cannot finish on its own,
+    // since nothing reports the output; it sends its neutrals and waits for the operator.
+    controller.setOperatorOverride(true);
+    QVERIFY(controller.beginTest(5, 35, 1570, 1500, 1000));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 1, 1000);
+    QCOMPARE(pwmRequests.at(0).at(1).toInt(), 1570);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    controller.finishTest();
+    for (int neutral = 1; neutral <= 4; ++neutral) {
+        QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 1 + neutral, 2000);
+        controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+        QCOMPARE(controller.state(), ThrusterDirectControlController::ConfirmingNeutral);
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(controller.state(), ThrusterDirectControlController::RecoveryNeeded, 2000);
+    QCOMPARE(functionWrites.count(), 1);
+    QCOMPARE(recoveryCompleted.count(), 0);
+
+    // The operator finishes it: one neutral, and when the vehicle has accepted it the function is written
+    // back, with no report of the output in between.
+    QVERIFY(controller.beginOperatorRecovery(5, 35, QStringLiteral("operator"), 1500));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 6, 1000);
+    QCOMPARE(pwmRequests.at(5).at(1).toInt(), 1500);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingNeutralAck);
+    controller.handleCommandResult(MAV_RESULT_ACCEPTED);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::WaitingRestore);
+    QCOMPARE(functionWrites.last().at(0).toInt(), 35);
+    QCOMPARE(controller.unconfirmedOutputForTest(), -1);
+    controller.observeParameterState(35, false);
+    QCOMPARE(controller.state(), ThrusterDirectControlController::Idle);
+    QCOMPARE(recoveryCompleted.count(), 1);
+
+    // A neutral that the vehicle does not accept is not something the operator's word replaces.
+    QVERIFY(controller.beginOperatorRecovery(5, 35, QStringLiteral("operator"), 1500));
+    controller.observeParameterState(0, false);
+    QTRY_COMPARE_WITH_TIMEOUT(pwmRequests.count(), 7, 1000);
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        controller.handleCommandResult(MAV_RESULT_FAILED, VehicleTypes::MavCmdResultFailureNoResponseToCommand);
+    }
+    QCOMPARE(controller.state(), ThrusterDirectControlController::RecoveryNeeded);
+    QCOMPARE(recoveryCompleted.count(), 1);
+}
+
 void ThrusterDirectControlControllerTest::_elapsedTestWaitsForAckWithoutRestartingDuration()
 {
     ThrusterDirectControlController controller;

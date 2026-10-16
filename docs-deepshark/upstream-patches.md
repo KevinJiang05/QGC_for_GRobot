@@ -1,6 +1,6 @@
 # QGC-GRobot 上游补丁登记表（v5.1.5 基线）
 
-> 快照日期：2026-10-11
+> 快照日期：2026-10-16
 > 上游基线：`v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`）
 > 当前分支：`main`，快照提交见本文件的提交记录
 > 取代：2026-09-02 的 v5.0.8 基线登记表（只作历史参考，不在本仓库）
@@ -15,12 +15,12 @@
 
 ## 2. 规模
 
-以 `git diff v5.1.5 --diff-filter=M` 统计，共 118 个既有文件被修改：
+以 `git diff v5.1.5 --diff-filter=M` 统计，共 134 个既有文件被修改：
 
 | 范围 | 文件数 |
 | --- | --- |
-| `src/` | 72 |
-| `test/` | 37 |
+| `src/` | 84 |
+| `test/` | 41 |
 | 构建、安装与仓库级文件 | 7 |
 | 翻译 | 2 |
 
@@ -49,6 +49,7 @@
 | P13 | **通用工具修复**：解压时用 UTF-8 设置路径名；`QGCFileHelper` 的 `toLocalPath()` 和 `isLocalPath()` 在交给 `QUrl` 之前先识别绝对路径，避免 Windows 盘符被当成 URL 的协议名 | 上游工具类 | `QGCCompressionTest`、`QGCFileHelperTest` | UTF-8 路径适合回馈上游。这两个文件同时被整文件格式化，见第 7 节 |
 | P14 | **主动断开信号和数据到达信号**：`Vehicle::connectionCloseRequested` 区分用户主动断开和心跳超时；`VehicleFactGroup::attitudeAccepted`、`altitudeRelativeAccepted` 在姿态和相对高度真正被采纳时发出，数值没变也发 | 断联预警和 3D 姿态面板要用。哪条消息被采纳只有 `Vehicle` 自己知道（它在两种姿态消息、两种高度消息之间有优先和锁存） | `DeepSharkConnectionMonitorTest`、`Attitude3DPanelTest` | 上游若提供等价信号就删 |
 | P15 | **上游测试的适配与补充**：为上面各模块补的用例；升级时为严格日志检查、Windows 路径、字体和时序做的适配；`test/CMakeLists.txt` 注册 `test/DeepShark` | 测试树在上游目录 | 各自的定向运行 | 适配类改动每次升级都要重新核对。有一处是放宽：`ParameterManagerTest` 把"首个进度信号及时到达"改成了下载完成后再检查 |
+| P16 | **状态可用性修复**：校准无响应可结束本地等待、析构恢复自己暂停的监测；真实入队的 ARM/DISARM 在终态应答与后续心跳之间保留待确认状态，供输出直测互斥使用；手柄校准失效结束旧控制；强制解锁许可随当前确认会话撤销；概要卡片经配置页导航；字段与弹窗只释放自己持有的校验错误；回放栏只断开自己的链路。另修旧目录 A 卸载与新目录 B 安装的分离及嵌套目标拒绝 | 校准、命令队列、手柄、通用控件及安装器缺少 custom 扩展点；已有登记文件仍归原组 | `APMSensorsSessionTest`、原生 `APMSensorsCalibrationUITest`/`SetupAvailabilityTest`、`ThrusterMappingIntegrationTest`、`JoystickControlTest`；`tools/release/test_nsis_upgrade.py` 隔离 fixture | 通用缺陷可拆分回馈上游。ACK 不代表物理状态；单元和 fixture 不代替实机及完整安装验收 |
 
 ## 4. 文件覆盖
 
@@ -76,6 +77,8 @@
 - `src/AppSettings/pages/Video.SettingsUI.json`
 
 ### P04 "禁用安全限制"开关（15）
+
+电机页另外修复了跨组件访问 `setupView` 的无效引用，以及已解锁进入时测试许可未初始化的问题。冷却同时约束滑块和命令定时器，禁用滑块时回中；沿用未开启覆盖时进入页面先上锁的行为。`APMSubMotorTest` 覆盖设置开/关、已上锁/已解锁进入、冷却期间外部解锁、隐藏回中和自动方向检测互斥。
 
 - `src/AppSettings/pages/General.SettingsUI.json`
 - `src/AutoPilotPlugins/APM/APMSensorsComponentController.cc`
@@ -172,7 +175,7 @@
 - `src/Utilities/Compression/QGClibarchive.cc`
 - `src/Utilities/FileSystem/QGCFileHelper.cc`
 
-### P15 上游测试的适配与补充（37）
+### P15 上游测试的适配与补充（41）
 
 为本分支的改动补用例的：
 
@@ -183,6 +186,10 @@
 - `test/Joystick/JoystickTest.cc`
 - `test/Joystick/JoystickTest.h`
 - `test/QmlUITests/AppCloseWarningUITest.cc`
+- `test/QmlUITests/APMSensorsCalibrationUITest.cc`
+- `test/QmlUITests/APMSensorsCalibrationUITest.h`
+- `test/QmlUITests/VehicleConfigUITestBase.cc`
+- `test/QmlUITests/QmlUITestBase.cc`
 - `test/QmlUITests/FlyViewCameraCaptureUITest.cc`
 - `test/QmlUITests/FlyViewCameraCaptureUITest.h`
 - `test/Settings/AppSettingsTest.cc`
@@ -223,6 +230,27 @@
 - `src/Vehicle/FactGroups/VehicleFactGroup.h`
 
 主动断开信号和相对高度的另一处到达通知在 `Vehicle.cc`、`Vehicle.h` 里，这两个文件列在 P04 下。
+
+### P16 状态可用性新增冲突面（12）
+
+相关控制器、载具、手柄、工具栏及安装器文件已分别列在 P01、P04、P07、P08；本组补齐新增加的上游文件。
+
+SA01复核补充：水平、陀螺仪、压力、简易加速度计校准在取消等待期间收到同命令ACCEPTED，无法区分启动完成与取消应答，按状态未知退出本地等待；完整加速度计与罗盘取消路径不变。控制器已列于P04，`APMSensorsSessionTest`覆盖四类迟到回执。SA04的提前互斥只覆盖QGC命令队列中的指令；ArduSub固件按钮、遥控器及其他地面站解锁仍依赖armed心跳到达，实机验收须保留该观察空窗。
+
+SA23（2026-10-17）：链接编辑弹窗的设置页异步加载，加载完成前或加载失败时禁用 Save；直接触发接受时也先检查，未就绪就保持弹窗打开，仍可取消。取消和保存已有连接时，`LinkManager` 会删除配置对象，所以先卸载绑定它的设置页（上游在这一步会打出 TypeError）。由 `SetupAvailabilityTest::_linkEditorWaitsForSettingsPage`、`_linkEditorSavesExistingLink` 覆盖。
+
+- `src/AppSettings/LinkConfigurationManager.qml`
+- `src/AutoPilotPlugins/APM/APMSensorsComponent.qml`
+- `src/FactSystem/FactControls/FactTextField.qml`
+- `src/Joystick/JoystickManager.cc`
+- `src/Joystick/JoystickManager.h`
+- `src/QmlControls/LogReplayStatusBar.qml`
+- `src/QmlControls/QGCPopupDialog.qml`
+- `src/QmlControls/QGCTextField.qml`
+- `src/Vehicle/MavCommandQueue.cc`
+- `src/Vehicle/MavCommandQueue.h`
+- `src/Vehicle/VehicleSetup/VehicleConfigView.qml`
+- `src/Vehicle/VehicleSetup/VehicleSummary.qml`
 
 ## 5. 核对命令
 

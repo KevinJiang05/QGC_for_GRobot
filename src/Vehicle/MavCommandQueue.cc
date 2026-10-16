@@ -336,6 +336,7 @@ void MavCommandQueue::sendWorker(bool commandInt, bool showError,
 
     _list.append(entry);
     _sendFromList(_list.count() - 1);
+    emit commandAdded(targetCompId, command, param1);
 }
 
 void MavCommandQueue::_sendFromList(int index)
@@ -358,6 +359,8 @@ void MavCommandQueue::_sendFromList(int index)
         qCWarning(MavCommandQueueLog) << logMsg;
 
         _list.removeAt(index);
+        emit commandFinished(commandEntry.targetCompId, commandEntry.command, MAV_RESULT_FAILED,
+                             MavCmdResultFailureNoResponseToCommand);
         if (commandEntry.ackHandlerInfo.resultHandler) {
             mavlink_command_ack_t ack = {};
             ack.result = MAV_RESULT_FAILED;
@@ -512,6 +515,7 @@ void MavCommandQueue::handleCommandAck(const mavlink_message_t& message, const m
     }
 
     MavCommandListEntry_t commandEntry = _list.takeAt(entryIndex);
+    emit commandFinished(message.compid, ack.command, ack.result, MavCmdResultCommandResultOnly);
     if (commandEntry.ackHandlerInfo.resultHandler) {
         (*commandEntry.ackHandlerInfo.resultHandler)(commandEntry.ackHandlerInfo.resultHandlerData, message.compid, ack, MavCmdResultCommandResultOnly);
     } else {

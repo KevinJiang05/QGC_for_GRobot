@@ -100,6 +100,12 @@ bool ThrusterDirectControlController::bindVehicle(Vehicle* vehicle)
             abort(functionSaveBusy() ? tr("保存准备期间飞控被解锁，未修改功能参数") : tr("直发期间飞控被解锁"));
         }
     });
+    connect(vehicle, &Vehicle::mavCommandAdded, this, [this](int componentId, int command) {
+        if (busy() && _vehicle && componentId == _vehicle->defaultComponentId() &&
+            (command == MAV_CMD_COMPONENT_ARM_DISARM || command == MAV_CMD_DO_MOTOR_TEST)) {
+            abort(tr("外部解锁、上锁或电机测试指令已发出，停止推进直测；请保持上锁后确认恢复"));
+        }
+    });
     connect(MAVLinkProtocol::instance(), &MAVLinkProtocol::messageReceived, this,
             [this](LinkInterface* link, const mavlink_message_t& message) {
                 // Only the flight controller's own report of its first sixteen outputs is evidence here, and only
@@ -246,6 +252,17 @@ bool ThrusterDirectControlController::_vehicleUsable(bool requireDisarmed) const
     return link && link->isConnected() && !link->linkConfiguration()->isHighLatency();
 }
 
+bool ThrusterDirectControlController::_actuationCommandPending() const
+{
+    if (_manualAdapter || !_vehicle) {
+        return false;
+    }
+    const int componentId = _vehicle->defaultComponentId();
+    return _vehicle->armingStateUnconfirmed() ||
+           _vehicle->isMavCommandPending(componentId, MAV_CMD_COMPONENT_ARM_DISARM) ||
+           _vehicle->isMavCommandPending(componentId, MAV_CMD_DO_MOTOR_TEST);
+}
+
 QString ThrusterDirectControlController::stateName() const
 {
     switch (_state) {
@@ -280,20 +297,35 @@ bool ThrusterDirectControlController::beginTest(int output, int originalFunction
 {
     if (_state != Idle || output < 1 || output > 16 || originalFunction < 0 || !_validPwm(testPwm) ||
         !_validPwm(neutralPwm) || testDurationMs < 1 || testDurationMs > 5000 || !_vehicleUsable(true)) {
+        _failureReason = tr("无法开始直测：工具尚未空闲、输入参数无效，或载具当前不可用/未上锁");
+        emit detailsChanged();
+        return false;
+    }
+    if (_actuationCommandPending()) {
+        _failureReason =
+            tr("解锁、上锁或电机测试尚未结束，或飞控尚未回报请求后的解锁状态；请明确上锁并等待心跳确认，再开始直测；未"
+               "修改输出");
+        emit detailsChanged();
         return false;
     }
     // Without output reports the test could be started but never be confirmed as ended. With the safety
     // restrictions off that is the operator's call: the test runs and is finished by the operator.
     if (!_operatorOverride && !outputReportsAvailable()) {
+        _failureReason = outputReportProblem();
+        emit detailsChanged();
         return false;
     }
     if (!_manualAdapter) {
         if (!_vehicle->parameterManager()->parametersReady() || _vehicle->parameterManager()->pendingWrites() ||
             _vehicle->isMavCommandPending(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO)) {
+            _failureReason = tr("参数尚未就绪，或仍有参数写入/PWM 指令未结束；无法开始直测");
+            emit detailsChanged();
             return false;
         }
         _functionFact = getParameterFact(-1, QStringLiteral("SERVO%1_FUNCTION").arg(output));
         if (!_functionFact) {
+            _failureReason = tr("缺少 SERVO%1_FUNCTION 参数，无法开始直测").arg(output);
+            emit detailsChanged();
             return false;
         }
     }
@@ -396,16 +428,30 @@ bool ThrusterDirectControlController::beginRecovery(int output, int originalFunc
 {
     if (busy() || output < 1 || output > 16 || originalFunction < 0 || !_validPwm(neutralPwm) ||
         !_vehicleUsable(true)) {
+        _failureReason = tr("无法开始恢复：工具仍在忙、输入参数无效，或载具当前不可用/未上锁");
+        emit detailsChanged();
+        return false;
+    }
+    if (_actuationCommandPending()) {
+        _failureReason =
+            tr("解锁、上锁或电机测试尚未结束，或飞控尚未回报请求后的解锁状态；请明确上锁并等待心跳确认，再恢复异常通道"
+               "；未修改输出");
+        emit detailsChanged();
         return false;
     }
     if (!_manualAdapter) {
         if (_vehicle->parameterManager()->pendingWrites() ||
             _vehicle->isMavCommandPending(_vehicle->defaultComponentId(), MAV_CMD_DO_SET_SERVO)) {
+            _failureReason = tr("仍有参数写入/PWM 指令未结束；无法开始恢复");
+            emit detailsChanged();
             return false;
         }
         _functionFact = getParameterFact(-1, QStringLiteral("SERVO%1_FUNCTION").arg(output));
         if (!_functionFact ||
             (_functionFact->rawValue().toInt() != 0 && _functionFact->rawValue().toInt() != originalFunction)) {
+            _failureReason =
+                tr("SERVO%1_FUNCTION 不可用，或当前既不是 Disabled 也不是记录的原功能；无法开始恢复").arg(output);
+            emit detailsChanged();
             return false;
         }
     }
@@ -508,9 +554,7 @@ bool ThrusterDirectControlController::_functionSaveAvailable() const
         return false;
     }
     const int componentId = _vehicle->defaultComponentId();
-    return !_vehicle->isMavCommandPending(componentId, MAV_CMD_DO_SET_SERVO) &&
-           !_vehicle->isMavCommandPending(componentId, MAV_CMD_COMPONENT_ARM_DISARM) &&
-           !_vehicle->isMavCommandPending(componentId, MAV_CMD_DO_MOTOR_TEST);
+    return !_vehicle->isMavCommandPending(componentId, MAV_CMD_DO_SET_SERVO) && !_actuationCommandPending();
 }
 
 void ThrusterDirectControlController::_functionSaveReadConfirmed(double value)
@@ -549,8 +593,18 @@ void ThrusterDirectControlController::_finishFunctionSave(bool success, const QS
 
 void ThrusterDirectControlController::_writeFunction(int value)
 {
+    // Restoration and neutral remain available while an external arm/disarm command is pending.
+    // Only opening a writable output is forbidden; a global command gate would block recovery too.
+    if (_state == WaitingDisable && _actuationCommandPending()) {
+        _requireRecovery(tr("外部解锁、上锁或电机测试指令尚未结束，未禁用输出；请保持上锁后恢复"));
+        return;
+    }
     emit functionWriteRequested(value);
     if (_manualAdapter) {
+        return;
+    }
+    if (_state == WaitingDisable && _actuationCommandPending()) {
+        _requireRecovery(tr("外部解锁、上锁或电机测试指令尚未结束，未禁用输出；请保持上锁后恢复"));
         return;
     }
     if (!_vehicleUsable(true) || !_functionFact) {
@@ -601,11 +655,13 @@ void ThrusterDirectControlController::_parameterConfirmed(double rawValue)
     }
     _stopParameterWait();
     if (_state == WaitingDisable) {
-        if (_stopRequested && !_recovering) {
+        if ((_stopRequested || _actuationCommandPending()) && !_recovering) {
             _requestRestore(_failureReason);
         } else {
             _setState(DisableSettling);
-            _settleTimer.start(_settleMs);
+            if (_state == DisableSettling) {
+                _settleTimer.start(_settleMs);
+            }
         }
     } else {
         _completeRecovery();
@@ -639,6 +695,10 @@ void ThrusterDirectControlController::_rejectBeforeWrite(const QString& reason)
 
 void ThrusterDirectControlController::_sendPwm(int pwm)
 {
+    if (_state == WaitingTestAck && (_stopRequested || _actuationCommandPending() || !_vehicleUsable(true))) {
+        _requestRestore(tr("载具状态或外部控制指令已变化，未发送测试 PWM"));
+        return;
+    }
     const quint64 token = ++_commandToken;
     _commandPending = true;
     if (_state == WaitingTestAck) {
@@ -647,6 +707,10 @@ void ThrusterDirectControlController::_sendPwm(int pwm)
     _commandTimer.start(_commandTimeoutMs);
     emit servoPwmRequested(_output, pwm);
     if (_manualAdapter) {
+        return;
+    }
+    if (_state == WaitingTestAck && (_stopRequested || _actuationCommandPending() || !_vehicleUsable(true))) {
+        _requestRestore(tr("载具状态或外部控制指令已变化，未发送测试 PWM"));
         return;
     }
     if (!_vehicleUsable(false)) {
@@ -1000,6 +1064,10 @@ void ThrusterDirectControlController::_settleFinished()
 {
     if (_state != DisableSettling || _pendingOutput < 1 || !_vehicleUsable(true)) {
         _requireRecovery(tr("载具连接或直测状态发生变化"));
+        return;
+    }
+    if (_actuationCommandPending() && !_recovering) {
+        _requestRestore(tr("外部解锁、上锁或电机测试指令尚未结束，未发送测试 PWM"));
         return;
     }
     if (!_recovering && !_operatorOverride && !outputReportsAvailable()) {

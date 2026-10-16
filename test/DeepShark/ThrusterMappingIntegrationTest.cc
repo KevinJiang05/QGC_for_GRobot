@@ -237,7 +237,9 @@ void ThrusterMappingIntegrationTest::_connectFixture(quint64 uid)
     _fixtureUid = uid;
     _servoAckPolicy = AcceptServoAck;
     _holdArmingUpdates = false;
+    _heldArmingAcks = 0;
     _holdArmingHeartbeats = false;
+    _holdMotorTestAck = false;
     _lostServoPwm = -1;
     _heldServoPwm = -1;
     _heldServoCommands.clear();
@@ -326,6 +328,22 @@ void ThrusterMappingIntegrationTest::_filterMockResponse(LinkInterface* link, co
     _reportMockOutputs(link);
 }
 
+void ThrusterMappingIntegrationTest::_deliverArmingHeartbeat(bool armed)
+{
+    // The armed/flying transition initializes the host pressure sensor, absent on ordinary desktop fixtures.
+    ignoreLogMessage("Utilities.QGCSensors", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Failed to connect to pressure backend")));
+    ignoreLogMessage("Utilities.QGCSensors", QtWarningMsg,
+                     QRegularExpression(QStringLiteral("Error Initializing Pressure Sensor")));
+    mavlink_message_t heartbeat{};
+    mavlink_msg_heartbeat_pack_chan(
+        static_cast<uint8_t>(_vehicle->id()), MAV_COMP_ID_AUTOPILOT1, _mockLink->outgoingMavlinkChannel(), &heartbeat,
+        MAV_TYPE_SUBMARINE, MAV_AUTOPILOT_ARDUPILOTMEGA,
+        static_cast<uint8_t>(MAV_MODE_FLAG_CUSTOM_MODE_ENABLED | (armed ? MAV_MODE_FLAG_SAFETY_ARMED : 0)), 0,
+        MAV_STATE_ACTIVE);
+    MAVLinkProtocol::instance()->receiveBytes(_mockLink, encodedMessage(heartbeat));
+}
+
 void ThrusterMappingIntegrationTest::_forwardMockResponse(LinkInterface* link, const QByteArray& bytes)
 {
     mavlink_message_t receiveBuffer{};
@@ -354,6 +372,10 @@ void ThrusterMappingIntegrationTest::_forwardMockResponse(LinkInterface* link, c
         mavlink_command_ack_t ack{};
         mavlink_msg_command_ack_decode(&message, &ack);
         if (_holdArmingUpdates && ack.command == MAV_CMD_COMPONENT_ARM_DISARM) {
+            ++_heldArmingAcks;
+            return;
+        }
+        if (_holdMotorTestAck && ack.command == MAV_CMD_DO_MOTOR_TEST) {
             return;
         }
         if (ack.command == MAV_CMD_DO_SET_SERVO) {
@@ -383,6 +405,296 @@ void ThrusterMappingIntegrationTest::cleanup()
     QObject::disconnect(_commandWatch);
     _outputsReported = true;
     _outputClockRuns = true;
+}
+
+void ThrusterMappingIntegrationTest::_externalActuationBlocksStart_data()
+{
+    QTest::addColumn<int>("command");
+    QTest::addColumn<int>("value");
+    QTest::newRow("external-arm") << int(MAV_CMD_COMPONENT_ARM_DISARM) << 1;
+    QTest::newRow("external-disarm") << int(MAV_CMD_COMPONENT_ARM_DISARM) << 0;
+    QTest::newRow("external-motor-test") << int(MAV_CMD_DO_MOTOR_TEST) << 1;
+}
+
+void ThrusterMappingIntegrationTest::_externalActuationBlocksStart()
+{
+    QFETCH(int, command);
+    QFETCH(int, value);
+    _connectFixture();
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    QVERIFY(outputReportsArrive(&controller));
+    _holdArmingUpdates = true;
+    _holdMotorTestAck = true;
+    _mockLink->clearReceivedMavlinkMessageCounts();
+    _vehicle->sendMavCommand(MAV_COMP_ID_AUTOPILOT1, static_cast<MAV_CMD>(command), false, value);
+    QVERIFY(_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, static_cast<MAV_CMD>(command)));
+    QVERIFY(!_vehicle->armed());
+    if (command == MAV_CMD_COMPONENT_ARM_DISARM) {
+        _deliverArmingHeartbeat(value != 0);
+        QVERIFY(_vehicle->armingStateUnconfirmed());  // A pre-ACK heartbeat cannot settle the intent.
+        if (value != 0) {
+            _deliverArmingHeartbeat(false);
+        }
+    }
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QVERIFY(!controller.beginRecovery(1, 33, QStringLiteral("pending external command"), 1500));
+    const QString pendingReason = controller.failureReason();
+    QVERIFY(!pendingReason.isEmpty());
+    // A subsequent refusal on invalid inputs must not keep displaying the earlier command barrier.
+    QVERIFY(!controller.beginTest(0, 33, 1550, 1500, 1000));
+    QVERIFY(!controller.failureReason().isEmpty());
+    QVERIFY(controller.failureReason() != pendingReason);
+    const QString testReason = controller.failureReason();
+    QVERIFY(!controller.beginRecovery(0, 33, QStringLiteral("invalid recovery output"), 1500));
+    QVERIFY(!controller.failureReason().isEmpty());
+    QVERIFY(controller.failureReason() != pendingReason);
+    QVERIFY(controller.failureReason() != testReason);
+    QCOMPARE(controller.stateName(), QStringLiteral("idle"));
+    QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
+}
+
+void ThrusterMappingIntegrationTest::_externalArmStopsBeforeTestPwm_data()
+{
+    QTest::addColumn<int>("boundary");
+    QTest::newRow("backup-confirmed") << 0;
+    QTest::newRow("before-disable-write") << 1;
+    QTest::newRow("disable-settling") << 2;
+    QTest::newRow("before-test-send") << 3;
+}
+
+void ThrusterMappingIntegrationTest::_externalArmStopsBeforeTestPwm()
+{
+    QFETCH(int, boundary);
+    _connectFixture();
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    controller.setTimingsForTest(20, 2500, 2500);
+    QVERIFY(outputReportsArrive(&controller));
+    _holdArmingUpdates = true;
+    QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
+    bool armRequested = false;
+    const auto arm = [&]() {
+        if (!armRequested) {
+            armRequested = true;
+            _vehicle->setArmed(true, false);
+        }
+    };
+    if (boundary == 0) {
+        connect(&controller, &ThrusterDirectControlController::originalFunctionConfirmed, &controller, arm);
+    } else if (boundary == 1) {
+        connect(&controller, &ThrusterDirectControlController::functionWriteRequested, &controller, [&](int value) {
+            if (value == 0)
+                arm();
+        });
+    } else {
+        connect(&controller, &ThrusterDirectControlController::stateChanged, &controller, [&]() {
+            if (controller.stateName() ==
+                (boundary == 2 ? QStringLiteral("disableSettling") : QStringLiteral("waitingTestAck"))) {
+                arm();
+            }
+        });
+    }
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
+    QTRY_VERIFY_WITH_TIMEOUT(armRequested, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        controller.stateName() == QStringLiteral("idle") || controller.stateName() == QStringLiteral("recoveryNeeded"),
+        2000);
+    QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_COMPONENT_ARM_DISARM), 1, 2000);
+    QVERIFY(_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM));
+    QVERIFY(!_vehicle->armed());
+    QVERIFY(sentCommands(sent, MAV_CMD_DO_SET_SERVO).isEmpty());
+    if (boundary == 0 || boundary == 1) {
+        QCOMPARE(_mockLink->paramValue(MAV_COMP_ID_AUTOPILOT1, QStringLiteral("SERVO1_FUNCTION")).toInt(), 33);
+    }
+}
+
+void ThrusterMappingIntegrationTest::_externalArmStillAllowsNeutral()
+{
+    _connectFixture();
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    controller.setTimingsForTest(20, 2500, 2500);
+    QVERIFY(outputReportsArrive(&controller));
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 5000));
+    QTRY_COMPARE_WITH_TIMEOUT(controller.stateName(), QStringLiteral("testing"), 2000);
+    QSignalSpy sent(_mockLink, &MockLink::writeBytesQueuedSignal);
+    _holdArmingUpdates = true;
+    _vehicle->setArmed(true, false);
+    QVERIFY(_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM));
+    QTRY_VERIFY_WITH_TIMEOUT(!sentCommands(sent, MAV_CMD_DO_SET_SERVO).isEmpty(), 2000);
+    for (const auto& command : sentCommands(sent, MAV_CMD_DO_SET_SERVO)) {
+        QCOMPARE(command.param2, 1500.0f);
+    }
+    // The ACK is not physical safety evidence. Neutral follows the normal output-report confirmation.
+    QTRY_COMPARE_WITH_TIMEOUT(_mockOutputs[0], 1500, 2000);
+}
+
+void ThrusterMappingIntegrationTest::_armAckNeedsMatchingHeartbeat()
+{
+    _connectFixture();
+    _holdArmingHeartbeats = true;
+    _vehicle->setArmed(true, false);
+    QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_COMPONENT_ARM_DISARM), 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QVERIFY(!_vehicle->armed());
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    // Binding after the ACK must not lose an intent created through another control surface.
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    QVERIFY(outputReportsArrive(&controller));
+    _mockLink->clearReceivedMavlinkMessageCounts();
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QVERIFY(!controller.beginRecovery(1, 33, QStringLiteral("ACK without heartbeat"), 1500));
+    QVERIFY(!controller.beginFunctionSave(1, 33, 34));
+    _deliverArmingHeartbeat(false);  // A heartbeat that disagrees with the request does not confirm it.
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QCOMPARE(_mockLink->receivedMavlinkMessageCount(MAVLINK_MSG_ID_PARAM_SET), 0);
+    QCOMPARE(_mockLink->receivedMavCommandCount(MAV_CMD_DO_SET_SERVO), 0);
+    _deliverArmingHeartbeat(true);
+    QVERIFY(_vehicle->armed());
+    QVERIFY(!_vehicle->armingStateUnconfirmed());
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+
+    _vehicle->setArmed(false, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    _deliverArmingHeartbeat(false);
+    QVERIFY(!_vehicle->armed());
+    QVERIFY(!_vehicle->armingStateUnconfirmed());
+    QSignalSpy backup(&controller, &ThrusterDirectControlController::originalFunctionConfirmed);
+    connect(&controller, &ThrusterDirectControlController::originalFunctionConfirmed, &controller,
+            [&]() { controller.abort(QStringLiteral("end prepared test after its read completed")); });
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
+    QTRY_COMPARE_WITH_TIMEOUT(backup.count(), 1, 2000);
+    QCOMPARE(controller.stateName(), QStringLiteral("idle"));
+    QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 2000);
+}
+
+void ThrusterMappingIntegrationTest::_armRejectionKeepsEarlierUncertainty_data()
+{
+    QTest::addColumn<bool>("earlierIntent");
+    QTest::newRow("rejected-first-arm") << false;
+    QTest::newRow("rejected-disarm-after-unconfirmed-arm") << true;
+}
+
+void ThrusterMappingIntegrationTest::_armRejectionKeepsEarlierUncertainty()
+{
+    QFETCH(bool, earlierIntent);
+    _connectFixture();
+    _holdArmingHeartbeats = true;
+    if (earlierIntent) {
+        _vehicle->setArmed(true, false);
+        QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                                 2000);
+        QVERIFY(_vehicle->armingStateUnconfirmed());
+    }
+    _holdArmingUpdates = true;
+    _vehicle->setArmed(!earlierIntent, false);
+    QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_COMPONENT_ARM_DISARM), earlierIntent ? 2 : 1,
+                              2000);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    // This local duplicate rejection belongs to no new command; it must not resolve the older request.
+    _vehicle->setArmed(!earlierIntent, false);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    QVERIFY(_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM));
+    QTRY_VERIFY_WITH_TIMEOUT(_heldArmingAcks > 0, 2000);
+    _holdArmingUpdates = false;
+    _mockLink->setArmed(earlierIntent);  // Emulate the state when the latest command was refused.
+    _mockLink->sendUnexpectedCommandAck(MAV_CMD_COMPONENT_ARM_DISARM, MAV_RESULT_DENIED);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QCOMPARE(_vehicle->armingStateUnconfirmed(), earlierIntent);
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    QVERIFY(outputReportsArrive(&controller));
+    QSignalSpy backup(&controller, &ThrusterDirectControlController::originalFunctionConfirmed);
+    connect(&controller, &ThrusterDirectControlController::originalFunctionConfirmed, &controller,
+            [&]() { controller.abort(QStringLiteral("end prepared test after its read completed")); });
+    QCOMPARE(controller.beginTest(1, 33, 1550, 1500, 1000), !earlierIntent);
+    if (!earlierIntent) {
+        QTRY_COMPARE_WITH_TIMEOUT(backup.count(), 1, 2000);
+        QCOMPARE(controller.stateName(), QStringLiteral("idle"));
+        QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 2000);
+    }
+    if (earlierIntent) {
+        _vehicle->setArmed(false, false);
+        QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                                 2000);
+        QVERIFY(_vehicle->armingStateUnconfirmed());
+        _deliverArmingHeartbeat(false);
+        QVERIFY(!_vehicle->armingStateUnconfirmed());
+    }
+}
+
+void ThrusterMappingIntegrationTest::_armTimeoutNeedsExplicitDisarm()
+{
+    _connectFixture();
+    _holdArmingUpdates = true;
+    _holdArmingHeartbeats = true;
+    expectLogMessage("Vehicle.MavCommandQueue", QtWarningMsg,
+                     QRegularExpression("Giving up sending command after max retries: MAV_CMD_COMPONENT_ARM_DISARM"));
+    _vehicle->setArmed(true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             10000);
+    verifyExpectedLogMessage();
+    QVERIFY(_mockLink->armed());
+    QVERIFY(!_vehicle->armed());
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    ThrusterDirectControlController controller;
+    QVERIFY(controller.bindVehicle(_vehicle));
+    QVERIFY(outputReportsArrive(&controller));
+    QVERIFY(!controller.beginTest(1, 33, 1550, 1500, 1000));
+    QVERIFY(!controller.beginRecovery(1, 33, QStringLiteral("arm timed out"), 1500));
+    _holdArmingUpdates = false;
+    _vehicle->setArmed(false, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    _deliverArmingHeartbeat(false);
+    QVERIFY(!_vehicle->armingStateUnconfirmed());
+    QSignalSpy backup(&controller, &ThrusterDirectControlController::originalFunctionConfirmed);
+    connect(&controller, &ThrusterDirectControlController::originalFunctionConfirmed, &controller,
+            [&]() { controller.abort(QStringLiteral("end prepared test after its read completed")); });
+    QVERIFY(controller.beginTest(1, 33, 1550, 1500, 1000));
+    QTRY_COMPARE_WITH_TIMEOUT(backup.count(), 1, 2000);
+    QCOMPARE(controller.stateName(), QStringLiteral("idle"));
+    QTRY_VERIFY_WITH_TIMEOUT(parameterWorkFinished(_vehicle->parameterManager()), 2000);
+}
+
+void ThrusterMappingIntegrationTest::_externalArmAckGapCanBeDisarmedFromTool()
+{
+    _connectFixture();
+    _holdArmingHeartbeats = true;
+    _vehicle->setArmed(true, false);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    MappingDialogFixture fixture;
+    QVERIFY2(fixture.dialog, qPrintable(fixture.error));
+    QVERIFY(freshMockTraffic(_mockLink, _vehicle));
+    auto* const safeEnd = dialogItem(fixture.dialog.get(), QStringLiteral("outputSafeEnd"));
+    QVERIFY(safeEnd);
+    QVERIFY(safeEnd->property("enabled").toBool());
+    fixture.dialog->setProperty("testEnabled", true);
+    fixture.dialog->setProperty("testMode", 1);
+    QVERIFY(!fixture.dialog->property("canStartDirectTest").toBool());
+    QVERIFY(QMetaObject::invokeMethod(fixture.dialog.get(), "beginSafeShutdown", Q_ARG(QVariant, QVariant(false)),
+                                      Q_ARG(QVariant, QVariant(QStringLiteral("explicit disarm after external arm")))));
+    QTRY_COMPARE_WITH_TIMEOUT(_mockLink->receivedMavCommandCount(MAV_CMD_COMPONENT_ARM_DISARM), 2, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!_vehicle->isMavCommandPending(MAV_COMP_ID_AUTOPILOT1, MAV_CMD_COMPONENT_ARM_DISARM),
+                             2000);
+    QVERIFY(_vehicle->armingStateUnconfirmed());
+    QVERIFY(fixture.dialog->property("disarmRequested").toBool());
+    QVERIFY(fixture.dialog->property("disarmUnconfirmed").toBool());
+    _deliverArmingHeartbeat(false);
+    QTRY_VERIFY_WITH_TIMEOUT(!fixture.dialog->property("disarmRequested").toBool(), 1000);
+    QVERIFY(!_vehicle->armingStateUnconfirmed());
+    QVERIFY(!fixture.dialog->property("disarmUnconfirmed").toBool());
 }
 
 void ThrusterMappingIntegrationTest::_abortWaitsForPendingPwmAck()

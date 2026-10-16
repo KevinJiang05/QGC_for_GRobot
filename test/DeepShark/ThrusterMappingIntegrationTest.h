@@ -14,6 +14,16 @@ class ThrusterMappingIntegrationTest : public VehicleTestManualConnect
 private slots:
     void cleanup() override;
     void _abortWaitsForPendingPwmAck();
+    void _externalActuationBlocksStart_data();
+    void _externalActuationBlocksStart();
+    void _externalArmStopsBeforeTestPwm_data();
+    void _externalArmStopsBeforeTestPwm();
+    void _externalArmStillAllowsNeutral();
+    void _armAckNeedsMatchingHeartbeat();
+    void _armRejectionKeepsEarlierUncertainty_data();
+    void _armRejectionKeepsEarlierUncertainty();
+    void _armTimeoutNeedsExplicitDisarm();
+    void _externalArmAckGapCanBeDisarmedFromTool();
     void _parameterRejectionCannotConfirmDisable();
     void _missingNeutralAckKeepsQmlRecoveryJournal();
     void _linkLossAndReturnSendNeutralAgain();
@@ -57,6 +67,7 @@ private:
     void _releaseHeldServoCommands();
     void _reportMockOutputs(LinkInterface* link);
     void _deliverOutputReport(LinkInterface* link, quint32 timeUsec, const std::array<int, 16>& outputs);
+    void _deliverArmingHeartbeat(bool armed);
 
     QMetaObject::Connection _responseFilter;
     QMetaObject::Connection _commandWatch;
@@ -75,5 +86,7 @@ private:
     bool _outputClockRuns = true;  ///< Whether the time in the reports moves on
     quint64 _fixtureUid = 0;
     bool _holdArmingUpdates = false;
+    int _heldArmingAcks = 0;
     bool _holdArmingHeartbeats = false;
+    bool _holdMotorTestAck = false;
 };

@@ -45,7 +45,9 @@ QGCPopupDialog {
     // "Disable safety restrictions" in the application settings. With it on, the tool keeps to what cannot
     // be done at all and leaves the rest to the operator.
     readonly property bool restrictionsOff: vehicleContextMatches && activeVehicle.setupSafetyRestrictionsDisabled
+    readonly property bool vehicleArmingUnconfirmed: activeVehicle !== null && activeVehicle.armingStateUnconfirmed
     readonly property bool testPathAvailable: vehicleReady
+                                                && !vehicleArmingUnconfirmed
                                                 && !directControl.busy && !mappingSettings.recoveryPending
                                                 && (restrictionsOff
                                                     || (!disarmRequested && !disarmUnconfirmed && !armingRequested))
@@ -357,7 +359,8 @@ QGCPopupDialog {
         if (root.directServoBusy()
                 || root.disarmRequested
                 || root.runningOutput !== -1
-                || root.testEnabled || root.testSessionOwned || root.armingRequested || root.armCommandPending) {
+                || root.testEnabled || root.testSessionOwned || root.armingRequested || root.armCommandPending
+                || root.vehicleArmingUnconfirmed) {
             preventClose = true
             root.beginSafeShutdown(true, qsTr("用户请求关闭输出测试工具"))
         }
@@ -1057,7 +1060,7 @@ QGCPopupDialog {
                                      Math.max(1, root.directServoTestSeconds) * 1000)) {
             root.clearRecoveryJournal()
             root.directServoFact = null
-            root.directServoStatusText = qsTr("直接输出状态初始化失败，未修改飞控参数。")
+            root.directServoStatusText = directControl.failureReason || qsTr("直接输出状态初始化失败，未修改飞控参数。")
         } else if (outputReportProblem !== "") {
             root.directServoStatusText = qsTr("%1。安全限制已关闭，照常开始%2；结束后软件无法自动确认回中，请用“人工确认完成”收尾。")
                     .arg(outputReportProblem)
@@ -1130,7 +1133,7 @@ QGCPopupDialog {
                                          root.directServoNeutralPwm, operatorConfirms)) {
             root.recoverySessionActive = false
             root.directServoFact = null
-            root.directServoStatusText = qsTr("恢复状态初始化失败，未修改飞控参数。")
+            root.directServoStatusText = directControl.failureReason || qsTr("恢复状态初始化失败，未修改飞控参数。")
         }
     }
 
@@ -1174,7 +1177,7 @@ QGCPopupDialog {
                                                  root.directServoNeutralPwm)) {
             root.recoverySessionActive = false
             root.directServoFact = null
-            root.directServoStatusText = qsTr("无法开始恢复：飞控仍有未完成的参数写入或 PWM 指令，或 SERVO%1 当前既不是 Disabled 也不是记录的原功能。")
+            root.directServoStatusText = directControl.failureReason || qsTr("无法开始恢复：飞控仍有未完成的参数写入或 PWM 指令，或 SERVO%1 当前既不是 Disabled 也不是记录的原功能。")
                     .arg(mappingSettings.recoveryOutput)
         }
     }
@@ -1317,7 +1320,7 @@ QGCPopupDialog {
             return
         }
 
-        if (root.testSessionOwned) {
+        if (root.testSessionOwned || root.vehicleArmingUnconfirmed) {
             root.requestSafeDisarm(root.closeAfterSafeShutdown, reason)
         } else if (root.closeAfterSafeShutdown) {
             root.closeAfterSafeShutdown = false
@@ -1337,8 +1340,14 @@ QGCPopupDialog {
             return
         }
 
-        if (!root.activeVehicle.armed && !forceCommand && !root.disarmUnconfirmed) {
+        if (!root.activeVehicle.armed && !forceCommand && !root.disarmUnconfirmed && !root.vehicleArmingUnconfirmed) {
             root.completeSafeShutdown()
+            return
+        }
+
+        if (root.activeVehicle.armDisarmCommandPending() && !root.disarmRequested) {
+            root.closeAfterSafeShutdown = false
+            root.testStatusText = qsTr("飞控仍在等待另一条解锁或上锁指令的回执；请等待请求结束后再次点击“安全结束”。")
             return
         }
 
@@ -1355,8 +1364,7 @@ QGCPopupDialog {
     }
 
     function completeSafeShutdown() {
-        if (root.armCommandPending) {
-            root.closeAfterSafeShutdown = false
+        if (root.armCommandPending || root.vehicleArmingUnconfirmed) {
             return
         }
         safeDisarmTimeout.stop()
@@ -1435,7 +1443,8 @@ QGCPopupDialog {
         interval:   5000
         repeat:     false
         onTriggered: {
-            if (root.disarmAckConfirmed && root.activeVehicle && !root.activeVehicle.armed) {
+            if (root.disarmAckConfirmed && root.activeVehicle && !root.activeVehicle.armed
+                    && !root.vehicleArmingUnconfirmed) {
                 root.completeSafeShutdown()
                 return
             }
@@ -1495,6 +1504,13 @@ QGCPopupDialog {
 
     Connections {
         target: root.activeVehicle
+
+        function onArmingStateUnconfirmedChanged() {
+            if (!root.vehicleArmingUnconfirmed && root.disarmRequested && root.disarmAckConfirmed
+                    && !root.activeVehicle.armed) {
+                root.completeSafeShutdown()
+            }
+        }
 
         function onMavCommandResult(vehicleId, targetComponent, command, ackResult, failureCode) {
             if (!root.activeVehicle || vehicleId !== root.activeVehicle.id) {
@@ -1666,8 +1682,10 @@ QGCPopupDialog {
 
             QGCLabel {
                 visible: root.activeVehicle !== null
-                text:    root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁")
-                color:   root.activeVehicle && root.activeVehicle.armed ? root._qgcPal.warningText : root._qgcPal.text
+                text:    root.vehicleArmingUnconfirmed ? qsTr("上锁状态待确认")
+                         : (root.activeVehicle && root.activeVehicle.armed ? qsTr("已解锁") : qsTr("已上锁"))
+                color:   root.vehicleArmingUnconfirmed || (root.activeVehicle && root.activeVehicle.armed)
+                         ? root._qgcPal.warningText : root._qgcPal.text
             }
 
             QGCButton {
@@ -1675,7 +1693,7 @@ QGCPopupDialog {
                 text:       root.disarmRequested ? qsTr("正在上锁") : qsTr("安全结束")
                 enabled:    !root.disarmRequested
                                 && (root.testEnabled || root.testSessionOwned || root.armingRequested
-                                    || root.runningOutput !== -1 || root.directServoBusy())
+                                    || root.runningOutput !== -1 || root.directServoBusy() || root.vehicleArmingUnconfirmed)
                 onClicked:  root.beginSafeShutdown(false, qsTr("用户结束测试"))
             }
         }

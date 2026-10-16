@@ -281,6 +281,29 @@ void Vehicle::_commonInit(LinkInterface* link)
     // (e.g. VehicleLinkManager::_addLink() → _updatePrimaryLink → sendMavCommand).
     _mavCmdQueue = new MavCommandQueue(this);
     connect(_mavCmdQueue, &MavCommandQueue::commandResult, this, &Vehicle::mavCommandResult);
+    connect(_mavCmdQueue, &MavCommandQueue::commandAdded, this, [this](int targetComponent, int command, float param1) {
+        if (targetComponent == _defaultComponentId && command == MAV_CMD_COMPONENT_ARM_DISARM &&
+            (param1 == 0.0f || param1 == 1.0f)) {
+            _armingCanClearOnRejection = !_armingStateUnconfirmed;
+            _armingRequestedState = param1 == 1.0f;
+            _armingCommandFinished = false;
+            _setArmingStateUnconfirmed(true);
+        }
+        emit mavCommandAdded(targetComponent, command);
+    });
+    connect(_mavCmdQueue, &MavCommandQueue::commandFinished, this,
+            [this](int targetComponent, int command, int ackResult, int failureCode) {
+                if (targetComponent != _defaultComponentId || command != MAV_CMD_COMPONENT_ARM_DISARM) {
+                    return;
+                }
+                _armingCommandFinished = true;
+                if (_armingCanClearOnRejection && failureCode == MavCmdResultCommandResultOnly &&
+                    ackResult != MAV_RESULT_ACCEPTED && ackResult != MAV_RESULT_IN_PROGRESS) {
+                    _setArmingStateUnconfirmed(false);
+                }
+                // Acceptance and no response leave the outcome unknown. If an earlier request was unknown,
+                // rejecting its replacement cannot erase it either. An explicit disarm and heartbeat can end it.
+            });
     _reqMsgCoord = new RequestMessageCoordinator(this, _mavCmdQueue);
     _messageIntervalManager = new MessageIntervalManager(this, _mavCmdQueue, _reqMsgCoord);
     connect(_messageIntervalManager, &MessageIntervalManager::mavlinkMsgIntervalsChanged,
@@ -1332,6 +1355,10 @@ void Vehicle::_handleHeartbeat(mavlink_message_t& message)
         _updateArmed(newArmed);
     }
 
+    if (_armingStateUnconfirmed && _armingCommandFinished && newArmed == _armingRequestedState) {
+        _setArmingStateUnconfirmed(false);
+    }
+
     if (heartbeat.base_mode != _base_mode || heartbeat.custom_mode != _custom_mode) {
         QString previousFlightMode;
         if (_base_mode != 0 || _custom_mode != 0){
@@ -1471,6 +1498,19 @@ void Vehicle::_activeVehicleChanged(Vehicle* newActiveVehicle)
 QGeoCoordinate Vehicle::homePosition()
 {
     return _homePosition;
+}
+
+bool Vehicle::armDisarmCommandPending() const
+{
+    return _mavCmdQueue && _mavCmdQueue->isPending(_defaultComponentId, MAV_CMD_COMPONENT_ARM_DISARM);
+}
+
+void Vehicle::_setArmingStateUnconfirmed(bool unconfirmed)
+{
+    if (_armingStateUnconfirmed != unconfirmed) {
+        _armingStateUnconfirmed = unconfirmed;
+        emit armingStateUnconfirmedChanged();
+    }
 }
 
 void Vehicle::setArmed(bool armed, bool showError)

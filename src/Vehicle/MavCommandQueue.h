@@ -66,6 +66,12 @@ public:
     static constexpr int kTestMaxWaitMs = kTestAckTimeoutMs * kMaxRetryCount * 2;
 
 signals:
+    /// A new command was queued and sent; retries do not emit this signal.
+    void commandAdded(int targetComponent, int command, float param1);
+
+    /// A queued command actually finished; local duplicate/no-link rejection does not finish an older entry.
+    void commandFinished(int targetComponent, int command, int ackResult, int failureCode);
+
     /// Emitted for every terminal ack that has no user-provided resultHandler.
     void commandResult(int vehicleId, int targetComponent, int command, int ackResult, int failureCode);
 

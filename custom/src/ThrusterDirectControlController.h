@@ -163,6 +163,7 @@ private:
     void _forgetOutputReports();
     void _vehicleUnavailable();
     bool _vehicleUsable(bool requireDisarmed) const;
+    bool _actuationCommandPending() const;
     void _stopParameterWait();
     // Writes the original function back without sending neutral; only valid before a test PWM was sent
     // or after neutral was confirmed, which is why it is not exposed to QML.

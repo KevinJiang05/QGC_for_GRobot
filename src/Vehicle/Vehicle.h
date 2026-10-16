@@ -148,6 +148,7 @@ public:
     Q_PROPERTY(QGeoCoordinate       homePosition                READ homePosition                                                   NOTIFY homePositionChanged)
     Q_PROPERTY(QGeoCoordinate       armedPosition               READ armedPosition                                                  NOTIFY armedPositionChanged)
     Q_PROPERTY(bool                 armed                       READ armed                      WRITE setArmedShowError             NOTIFY armedChanged)
+    Q_PROPERTY(bool armingStateUnconfirmed READ armingStateUnconfirmed NOTIFY armingStateUnconfirmedChanged)
     Q_PROPERTY(bool                 autoDisarm                  READ autoDisarm                                                     NOTIFY autoDisarmChanged)
     Q_PROPERTY(bool setupSafetyRestrictionsDisabled READ setupSafetyRestrictionsDisabled NOTIFY
                    setupSafetyRestrictionsDisabledChanged)
@@ -452,7 +453,13 @@ public:
 
     QGeoCoordinate homePosition();
 
-    bool armed              () const{ return _armed; }
+    bool armed() const { return _armed; }
+
+    /// An actual arm/disarm request still lacks a matching heartbeat after its command finished.
+    /// An accepted ACK or a timeout alone cannot establish the resulting arming state.
+    bool armingStateUnconfirmed() const { return _armingStateUnconfirmed; }
+
+    Q_INVOKABLE bool armDisarmCommandPending() const;
     void setArmed           (bool armed, bool showError);
     void setArmedShowError  (bool armed) { setArmed(armed, true); }
 
@@ -755,6 +762,7 @@ signals:
     void homePositionChanged            (const QGeoCoordinate& homePosition);
     void armedPositionChanged();
     void armedChanged                   (bool armed);
+    void armingStateUnconfirmedChanged();
     void setupSafetyRestrictionsDisabledChanged();
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
@@ -819,6 +827,8 @@ signals:
     ///     @param ackResult        MAV_RESULT returned in ack
     ///     @param failureCode      More detailed failure code Vehicle::MavCmdResultFailureCode_t
     void mavCommandResult               (int vehicleId, int targetComponent, int command, int ackResult, int failureCode);
+    /// A new command entered this vehicle's queue, including commands sent by another control surface.
+    void mavCommandAdded(int targetComponent, int command);
 
     // MAVlink Serial Data
     void mavlinkSerialControl           (uint8_t device, uint8_t flags, uint16_t timeout, uint32_t baudrate, QByteArray data);
@@ -861,6 +871,7 @@ private slots:
     void _gotProgressUpdate                 (float progressValue);
 
 private:
+    void _setArmingStateUnconfirmed(bool unconfirmed);
     void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     void _handlePing                    (LinkInterface* link, mavlink_message_t& message);
     void _handleHomePosition            (mavlink_message_t& message);
@@ -977,6 +988,10 @@ private:
     VehicleSupports*                _vehicleSupports                = nullptr;
 
     bool    _armed = false;         ///< true: vehicle is armed
+    bool _armingStateUnconfirmed = false;
+    bool _armingRequestedState = false;
+    bool _armingCommandFinished = false;
+    bool _armingCanClearOnRejection = false;
     uint8_t _base_mode = 0;     ///< base_mode from HEARTBEAT
     uint32_t _custom_mode = 0;  ///< custom_mode from HEARTBEAT
     uint32_t _custom_mode_user_intention = 0;  ///< custom_mode_user_intention from CURRENT_MODE

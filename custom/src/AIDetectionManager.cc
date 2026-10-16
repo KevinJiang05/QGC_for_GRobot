@@ -166,6 +166,7 @@ void AIDetectionManager::setUdpPort(int udpPort)
     if (_udpPort == clamped) {
         return;
     }
+    inputConfigurationChanged();
     _udpPort = clamped;
     _writeSetting(QString::fromLatin1(kUdpPortKey), _udpPort);
     emit udpPortChanged();
@@ -231,6 +232,10 @@ void AIDetectionManager::startDetection()
     }
 
     _deleteProcess(_detectProcess);
+    if (_inputRestartRequired) {
+        _inputRestartRequired = false;
+        emit acceptingDetectionsChanged();
+    }
     _detectProcess = new QProcess(this);
     _detectProcess->setProgram(_pythonPath());
     _detectProcess->setArguments(_detectionArguments());
@@ -274,7 +279,24 @@ void AIDetectionManager::saveSettings()
     settings.setValue(QString::fromLatin1(kOverlayEnabledKey), _overlayEnabled);
     settings.endGroup();
     settings.sync();
-    _setStatusText(tr("AI settings saved"));
+    _setStatusText(_inputRestartRequired ? tr("AI input settings changed. Restart AI detection to apply them.")
+                                         : tr("AI settings saved"));
+}
+
+void AIDetectionManager::inputConfigurationChanged()
+{
+    if (!running()) {
+        return;
+    }
+
+    // Close the receiver before changing the displayed source or UDP port. The old process can
+    // still send packets until finished(), and those packets have no session identifier.
+    if (!_inputRestartRequired) {
+        _inputRestartRequired = true;
+        emit acceptingDetectionsChanged();
+    }
+    _requestDetectionStop(false);
+    _setStatusText(tr("AI input settings changed. Restart AI detection to apply them."));
 }
 
 void AIDetectionManager::_checkFinished(int exitCode)
@@ -300,7 +322,9 @@ void AIDetectionManager::_detectFinished(int exitCode)
         process->deleteLater();
     }
 
-    if (stoppedByRequest && !restart) {
+    if (_inputRestartRequired && !restart) {
+        _setStatusText(tr("AI input settings changed. Restart AI detection to apply them."));
+    } else if (stoppedByRequest && !restart) {
         _setStatusText(tr("AI detection is stopped"));
     } else if (!restart) {
         _setStatusText(output.isEmpty()
@@ -336,13 +360,21 @@ void AIDetectionManager::_detectError(QProcess::ProcessError error)
 void AIDetectionManager::_detectStarted()
 {
     emit runningChanged();
+    if (_stopRequested) {
+        // A stop requested during Starting may precede creation of the native process handle.
+        _requestDetectionStop(_restartPending);
+        if (_inputRestartRequired && !_restartPending) {
+            _setStatusText(tr("AI input settings changed. Restart AI detection to apply them."));
+        }
+        return;
+    }
     _setStatusText(tr("AI detection is running"));
 }
 
 void AIDetectionManager::_readDetectOutput()
 {
     const QString output = QString::fromLocal8Bit(_detectProcess->readAllStandardOutput()).trimmed();
-    if (!output.isEmpty()) {
+    if (!output.isEmpty() && !_inputRestartRequired && !_stopRequested) {
         _setStatusText(output.right(300));
     }
 }

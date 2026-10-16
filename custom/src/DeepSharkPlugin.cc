@@ -90,18 +90,32 @@ void DeepSharkPlugin::_initAIDetection()
         auto *receiver = new AIDetectionReceiver(app);
         auto *manager = new AIDetectionManager(app);
         receiver->setPort(static_cast<quint16>(manager->udpPort()));
-        connect(manager, &AIDetectionManager::udpPortChanged, receiver, [manager, receiver]() {
+        const auto syncReceiver = [manager, receiver]() {
             if (!manager->running()) {
                 receiver->setPort(static_cast<quint16>(manager->udpPort()));
-            }
-        });
-        connect(manager, &AIDetectionManager::runningChanged, receiver, [manager, receiver]() {
-            if (manager->running()) {
-                receiver->setPort(static_cast<quint16>(manager->udpPort()));
-            } else {
                 receiver->clearDetections();
             }
-        });
+            receiver->setEnabled(manager->acceptingDetections());
+        };
+        connect(manager, &AIDetectionManager::udpPortChanged, receiver, syncReceiver);
+        connect(manager, &AIDetectionManager::runningChanged, receiver, syncReceiver);
+        connect(manager, &AIDetectionManager::acceptingDetectionsChanged, receiver, syncReceiver);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera1UrlChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera2UrlChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera3UrlChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera4UrlChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera1EnabledChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera2EnabledChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera3EnabledChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
+        connect(_videoSettings, &DeepSharkVideoSettings::camera4EnabledChanged, manager,
+                &AIDetectionManager::inputConfigurationChanged);
         connect(app, &QCoreApplication::aboutToQuit, receiver, [receiver]() {
             receiver->setEnabled(false);
         });

@@ -16,6 +16,7 @@ class AIDetectionManager : public QObject
     Q_OBJECT
 
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+    Q_PROPERTY(bool acceptingDetections READ acceptingDetections NOTIFY acceptingDetectionsChanged)
     Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayEnabledChanged)
     Q_PROPERTY(QString pythonPath READ pythonPath WRITE setPythonPath NOTIFY pythonPathChanged)
     Q_PROPERTY(QString modelPath READ modelPath WRITE setModelPath NOTIFY modelPathChanged)
@@ -33,6 +34,8 @@ public:
     ~AIDetectionManager();
 
     bool running() const;
+
+    bool acceptingDetections() const { return !_inputRestartRequired; }
     bool overlayEnabled() const { return _overlayEnabled; }
     void setOverlayEnabled(bool overlayEnabled);
     QString pythonPath() const { return _pythonPathValue; }
@@ -58,9 +61,11 @@ public:
     Q_INVOKABLE void stopDetection();
     Q_INVOKABLE void restartDetection();
     Q_INVOKABLE void saveSettings();
+    void inputConfigurationChanged();
 
 signals:
     void runningChanged();
+    void acceptingDetectionsChanged();
     void overlayEnabledChanged();
     void pythonPathChanged();
     void modelPathChanged();
@@ -81,6 +86,7 @@ private slots:
     void _readDetectOutput();
 
 private:
+    friend class AIDetectionReceiverTest;
     QString _pythonPath() const;
     QString _toolsPath() const;
     QString _modelPath() const;
@@ -99,6 +105,7 @@ private:
     bool _shuttingDown = false;
     bool _restartPending = false;
     bool _stopRequested = false;
+    bool _inputRestartRequired = false;
     bool _overlayEnabled = true;
     QString _pythonPathValue;
     QString _modelPathValue;

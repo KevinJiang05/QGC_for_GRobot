@@ -14,10 +14,6 @@ SettingsGroupLayout {
 
     property real _aiFieldWidth: ScreenTools.defaultFontPixelWidth * 48
 
-    function syncAIDetectionPort() {
-        AIDetectionReceiver.port = AIDetectionManager.udpPort
-    }
-
     function saveAIDetectionSettings() {
         AIDetectionManager.pythonPath = pythonPathField.text
         AIDetectionManager.modelPath = modelPathField.text
@@ -38,11 +34,8 @@ SettingsGroupLayout {
         if (!isNaN(udpPort)) {
             AIDetectionManager.udpPort = udpPort
         }
-        syncAIDetectionPort()
         AIDetectionManager.saveSettings()
     }
-
-    Component.onCompleted: syncAIDetectionPort()
 
     QGCCheckBoxSlider {
         Layout.fillWidth:   true
@@ -212,7 +205,6 @@ SettingsGroupLayout {
                 var value = parseInt(text)
                 if (!isNaN(value)) {
                     AIDetectionManager.udpPort = value
-                    root.syncAIDetectionPort()
                 }
             }
         }
@@ -225,7 +217,6 @@ SettingsGroupLayout {
         QGCButton {
             text:       qsTr("Check Environment")
             onClicked: {
-                root.syncAIDetectionPort()
                 AIDetectionManager.checkEnvironment()
             }
         }
@@ -233,7 +224,6 @@ SettingsGroupLayout {
         QGCButton {
             text:       AIDetectionManager.running ? qsTr("Stop AI") : qsTr("Start AI")
             onClicked: {
-                root.syncAIDetectionPort()
                 AIDetectionManager.running ? AIDetectionManager.stopDetection() : AIDetectionManager.startDetection()
             }
         }
@@ -241,7 +231,6 @@ SettingsGroupLayout {
         QGCButton {
             text:       qsTr("Restart")
             onClicked: {
-                root.syncAIDetectionPort()
                 AIDetectionManager.restartDetection()
             }
         }

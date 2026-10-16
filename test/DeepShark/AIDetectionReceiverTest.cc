@@ -1,10 +1,12 @@
 #include "AIDetectionReceiverTest.h"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDateTime>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QSettings>
+#include <QtCore/qscopeguard.h>
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QUdpSocket>
 #include <QtQml/QQmlComponent>
@@ -18,6 +20,7 @@
 #include "AIDetectionManager.h"
 #include "AIDetectionReceiver.h"
 #include "ColoredSvgImageProvider.h"
+#include "DeepSharkVideoSettings.h"
 #include "QGCCorePlugin.h"
 #include "QGCPalette.h"
 
@@ -162,6 +165,149 @@ void AIDetectionReceiverTest::_overlaySwitchMigratesLegacyVideoSetting()
 
     settings.remove(overlayKey);
     settings.remove(legacyKey);
+}
+
+void AIDetectionReceiverTest::_startManagedStub(AIDetectionManager* manager)
+{
+    manager->_deleteProcess(manager->_detectProcess);
+    manager->_inputRestartRequired = false;
+    manager->_restartPending = false;
+    manager->_stopRequested = false;
+    emit manager->acceptingDetectionsChanged();
+    auto* process = new QProcess(manager);
+    manager->_detectProcess = process;
+    connect(process, &QProcess::started, manager, &AIDetectionManager::_detectStarted);
+    connect(process, &QProcess::finished, manager,
+            [manager](int exitCode, QProcess::ExitStatus) { manager->_detectFinished(exitCode); });
+    connect(process, &QProcess::errorOccurred, manager, &AIDetectionManager::_detectError);
+    // A harmless process waits for stdin. It exercises the real asynchronous stop/finished
+    // lifecycle without importing Python libraries, opening a camera, or running inference.
+#ifdef Q_OS_WIN
+    process->start(QStringLiteral("cmd.exe"), {QStringLiteral("/d"), QStringLiteral("/c"), QStringLiteral("more")});
+#else
+    process->start(QStringLiteral("cat"), {});
+#endif
+    QTRY_COMPARE_WITH_TIMEOUT(process->state(), QProcess::Running, 2000);
+}
+
+void AIDetectionReceiverTest::_runningInputChangeStopsSession_data()
+{
+    QTest::addColumn<QByteArray>("inputProperty");
+    for (const char* name : {"udpPort", "camera1Url", "camera2Url", "camera3Url", "camera4Url", "camera1Enabled",
+                             "camera2Enabled", "camera3Enabled", "camera4Enabled"}) {
+        QTest::newRow(name) << QByteArray(name);
+    }
+}
+
+void AIDetectionReceiverTest::_runningInputChangeStopsSession()
+{
+    QFETCH(QByteArray, inputProperty);
+    QGCCorePlugin::instance()->init();
+    auto* manager = QCoreApplication::instance()->findChild<AIDetectionManager*>();
+    auto* receiver = QCoreApplication::instance()->findChild<AIDetectionReceiver*>();
+    auto* videoSettings = QGCCorePlugin::instance()->findChild<DeepSharkVideoSettings*>();
+    QVERIFY(manager);
+    QVERIFY(receiver);
+    QVERIFY(videoSettings);
+    const int savedPort = manager->udpPort();
+    const QVariant savedInput = videoSettings->property(inputProperty.constData());
+    QMetaObject::Connection portConnection;
+    const auto cleanup = qScopeGuard([&]() {
+        disconnect(portConnection);
+        manager->_deleteProcess(manager->_detectProcess);
+        manager->_restartPending = false;
+        manager->_stopRequested = false;
+        manager->_inputRestartRequired = false;
+        if (inputProperty != "udpPort") {
+            videoSettings->setProperty(inputProperty.constData(), savedInput);
+        }
+        manager->setUdpPort(savedPort);
+        emit manager->acceptingDetectionsChanged();
+    });
+    const quint16 oldPort = availableLocalPort();
+    QVERIFY(oldPort != 0);
+    manager->setUdpPort(oldPort);
+    _startManagedStub(manager);
+    QVERIFY(manager->running());
+    QVERIFY(receiver->enabled());
+    QVERIFY(receiver->bound());
+
+    QUdpSocket sender;
+    const double now = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    QVERIFY(sendPacket(sender, oldPort, packet(QStringLiteral("deepSharkVideo1"), {validDetection()}, now)));
+    QTRY_COMPARE_WITH_TIMEOUT(receiver->detections().size(), 1, 1000);
+    bool reboundWhileRunning = false;
+    portConnection = connect(receiver, &AIDetectionReceiver::portChanged, this,
+                             [&]() { reboundWhileRunning |= manager->running(); });
+
+    int expectedPort = oldPort;
+    if (inputProperty == "udpPort") {
+        expectedPort = availableLocalPort();
+        QVERIFY(expectedPort != 0);
+        manager->setUdpPort(expectedPort);
+        QCOMPARE(receiver->port(), oldPort);
+    } else if (inputProperty.endsWith("Enabled")) {
+        QVERIFY(videoSettings->setProperty(inputProperty.constData(), !savedInput.toBool()));
+    } else {
+        QVERIFY(videoSettings->setProperty(inputProperty.constData(),
+                                           savedInput.toString() + QStringLiteral("/different-test-source")));
+    }
+    QVERIFY(!receiver->enabled());
+    QVERIFY(!receiver->bound());
+    QVERIFY(receiver->detections().isEmpty());
+    manager->saveSettings();
+    QVERIFY(manager->statusText().contains(QStringLiteral("Restart AI")));
+    QTRY_VERIFY_WITH_TIMEOUT(!manager->running(), 3000);
+    QVERIFY(!reboundWhileRunning);
+    QCOMPARE(receiver->port(), static_cast<quint16>(expectedPort));
+    QVERIFY(!receiver->enabled());
+    QVERIFY(receiver->detections().isEmpty());
+    QVERIFY(!manager->_restartPending);
+    QVERIFY(manager->statusText().contains(QStringLiteral("Restart AI")));
+    QVERIFY(sendPacket(sender, static_cast<quint16>(expectedPort),
+                       packet(QStringLiteral("deepSharkVideo1"), {validDetection(QStringLiteral("old frame"))}, now)));
+    QVERIFY(!receiver->bound());
+    QVERIFY(receiver->detections().isEmpty());
+}
+
+void AIDetectionReceiverTest::_unchangedInputSettingsKeepSession()
+{
+    QGCCorePlugin::instance()->init();
+    auto* manager = QCoreApplication::instance()->findChild<AIDetectionManager*>();
+    auto* videoSettings = QGCCorePlugin::instance()->findChild<DeepSharkVideoSettings*>();
+    QVERIFY(manager);
+    QVERIFY(videoSettings);
+    const auto cleanup = qScopeGuard([&]() {
+        manager->_deleteProcess(manager->_detectProcess);
+        emit manager->runningChanged();
+    });
+    _startManagedStub(manager);
+    QVERIFY(manager->running());
+    QProcess* process = manager->_detectProcess;
+    for (const char* name : {"camera1Url", "camera2Url", "camera3Url", "camera4Url", "camera1Enabled", "camera2Enabled",
+                             "camera3Enabled", "camera4Enabled"}) {
+        QVERIFY(videoSettings->setProperty(name, videoSettings->property(name)));
+    }
+    manager->setUdpPort(manager->udpPort());
+    manager->saveSettings();
+    QCOMPARE(manager->_detectProcess, process);
+    QVERIFY(manager->running());
+    QVERIFY(!manager->_stopRequested);
+    QVERIFY(manager->acceptingDetections());
+}
+
+void AIDetectionReceiverTest::_stoppedInputChangesDoNotStart()
+{
+    AIDetectionManager manager;
+    const int oldPort = manager.udpPort();
+    QSignalSpy running(&manager, &AIDetectionManager::runningChanged);
+    manager.setUdpPort(manager.udpPort() == 57610 ? 57611 : 57610);
+    manager.inputConfigurationChanged();
+    manager.saveSettings();
+    QVERIFY(!manager.running());
+    QCOMPARE(running.count(), 0);
+    QVERIFY(!manager._restartPending);
+    manager.setUdpPort(oldPort);
 }
 
 void AIDetectionReceiverTest::_qmlComponentsLoad()

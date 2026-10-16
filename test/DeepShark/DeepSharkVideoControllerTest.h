@@ -23,6 +23,7 @@ private slots:
     void _failedRestartCanScheduleAgain();
     void _startedRestartCanScheduleAgain();
     void _reconnectNeverGivesUp();
+    void _earlyPipelineErrorRetries();
     void _flyViewStatusQmlLoads();
     void _videoRowsUpdateWithoutReplacingDelegates();
     void _disabledVideoResourcesCanBeRecreated();

@@ -371,6 +371,12 @@ void DeepSharkVideoController::_ensureReceiver()
             const int delayMs = _restartDelayMs;
             _restartRequested = false;
             _prepareRestart(delayMs);
+        } else if (_autoStart && !_stopRequested && !_uri.isEmpty()) {
+            // An asynchronous error can stop the pipeline before either state ever became true.
+            // In that case no streamingChanged/decodingChanged signal asks VideoTile to retry.
+            if (!_startTimer.isActive()) {
+                _reportFailure(tr("视频连接意外中断"));
+            }
         } else {
             _restartRequested = false;
             _restartNeedsSinkRebuild = false;

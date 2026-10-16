@@ -2,6 +2,7 @@
 
 #include <QtCore/QSemaphore>
 #include <QtCore/qscopeguard.h>
+#include <QtNetwork/QTcpServer>
 #include <QtNetwork/QUdpSocket>
 #include <QtQml/QJSValue>
 #include <QtQml/QQmlApplicationEngine>
@@ -506,6 +507,73 @@ void DeepSharkVideoControllerTest::_reconnectNeverGivesUp()
     QCOMPARE(retryDelay(3), 10000);
     QCOMPARE(retryDelay(4), 15000);
     QCOMPARE(retryDelay(200), 15000);
+}
+
+void DeepSharkVideoControllerTest::_earlyPipelineErrorRetries()
+{
+#ifndef QGC_GST_STREAMING
+    QSKIP("GStreamer video sinks are not enabled");
+#else
+    QGCCorePlugin::instance()->init();
+    QTcpServer camera;
+    QVERIFY(camera.listen(QHostAddress::LocalHost, 0));
+
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/qml"));
+    engine.addImageProvider(QLatin1String(ColoredSvgImageProvider::ProviderId), new ColoredSvgImageProvider());
+    QQmlComponent component(&engine,
+                            QUrl(QStringLiteral("qrc:/Custom/qml/QGroundControl/FlyView/DeepShark/VideoTile.qml")),
+                            QQmlComponent::PreferSynchronous);
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    const QVariantMap initialProperties{
+        {QStringLiteral("videoEnabled"), true},
+        {QStringLiteral("videoSource"), QStringLiteral("rtsp://127.0.0.1:%1/test").arg(camera.serverPort())},
+        {QStringLiteral("receiverName"), QStringLiteral("earlyPipelineErrorTest")},
+    };
+    std::unique_ptr<QObject> tile(component.createWithInitialProperties(initialProperties));
+    QVERIFY2(tile, qPrintable(component.errorString()));
+    auto* controller = tile->findChild<DeepSharkVideoController*>();
+    QVERIFY(controller);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->_receiver && controller->_receiver->started(), 5000);
+    auto* receiver = qobject_cast<GstVideoReceiver*>(controller->_receiver);
+    QVERIFY(receiver);
+    QVERIFY(!controller->streaming());
+    QVERIFY(!controller->decoding());
+
+    QSignalSpy failures(controller, &DeepSharkVideoController::failure);
+    QSignalSpy streams(controller, &DeepSharkVideoController::streamingChanged);
+    QSignalSpy decodes(controller, &DeepSharkVideoController::decodingChanged);
+    GstElement* pipeline = receiver->_acquirePipelineRef();
+    QVERIFY(pipeline);
+    expectLogMessage("Video.GStreamer.GstVideoReceiver", QtCriticalMsg,
+                     QRegularExpression(QStringLiteral("GStreamer error: controlled early RTSP failure")));
+    // Enter the real bus error -> worker stop -> controller -> production VideoTile path. The
+    // local camera never supplies a pad, so both public state properties remain false throughout.
+    GError* error = g_error_new_literal(GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_READ, "controlled early RTSP failure");
+    QVERIFY(gst_element_post_message(pipeline, gst_message_new_error(GST_OBJECT(pipeline), error, "regression test")));
+    g_error_free(error);
+    gst_object_unref(pipeline);
+
+    QTRY_COMPARE_WITH_TIMEOUT(failures.count(), 1, 5000);
+    verifyExpectedLogMessage();
+    QCOMPARE(streams.count(), 0);
+    QCOMPARE(decodes.count(), 0);
+    QCOMPARE(tile->property("retryCount").toInt(), 1);
+    QVERIFY(tile->property("reconnectPending").toBool());
+    QVERIFY(controller->_startTimer.isActive());
+    receiver->onStopComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(failures.count(), 1);
+    QCOMPARE(tile->property("retryCount").toInt(), 1);
+    QTRY_VERIFY_WITH_TIMEOUT(controller->startAttempts() >= 2, 6000);
+
+    QVERIFY(QMetaObject::invokeMethod(tile.get(), "stopVideo"));
+    QTRY_VERIFY_WITH_TIMEOUT(controller->_receiver == nullptr, 5000);
+    QVERIFY(!controller->_startTimer.isActive());
+    QVERIFY(!tile->property("controllerAutoStart").toBool());
+    QVERIFY(!tile->property("reconnectPending").toBool());
+    tile->setProperty("videoEnabled", false);
+    QVERIFY(!controller->_startTimer.isActive());
+#endif
 }
 
 void DeepSharkVideoControllerTest::_flyViewStatusQmlLoads()

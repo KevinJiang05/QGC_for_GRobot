@@ -119,17 +119,13 @@ void JoystickControlTest::_manualControlPackets()
     QCOMPARE(control.buttons2, 8);
     QCOMPARE(control.enabled_extensions, 0);
 
-    // Stop the worker before changing calibration, then exercise the same send guard synchronously.
+    // Calibration invalidation must also finish a session whose worker has already stopped.
     joystick->_stopPollingThread();
-    joystick->settings()->calibrated()->setRawValue(false);
-    QSignalSpy axisSpy(joystick, &Joystick::axisValues);
-    QTRY_VERIFY_WITH_TIMEOUT(joystick->_axisElapsedTimer.elapsed() >= 40, 1000);
-    joystick->_handleAxis();
-    QCOMPARE(axisSpy.count(), 0);
     expectLogMessage("Joystick.Joystick", QtWarningMsg,
                      QRegularExpression("Joystick polling thread not running even though _pollingVehicle was set\\."));
-    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    joystick->settings()->calibrated()->setRawValue(false);
     verifyExpectedLogMessage();
+    QVERIFY(!manager->activeJoystickEnabledForActiveVehicle());
     QVERIFY(!joystick->isRunning());
     QVERIFY(!joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
 
@@ -227,6 +223,11 @@ void JoystickControlTest::_configurationKeepsManualControl()
     controller.cancelButtonClicked();
     QVERIFY(!controller.calibrating());
     QVERIFY(joystick->_configurationAllowsVehicleControl.load());
+    // Ordinary calibration cancellation retains the existing valid calibration. Only invalidating the
+    // calibrated Fact (for example by changing extension settings) ends the enabled control session.
+    QVERIFY(joystick->settings()->calibrated()->rawValue().toBool());
+    QVERIFY(manager->activeJoystickEnabledForActiveVehicle());
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
 
     // Turning the option off restores configuration-only polling immediately.
     overrideSetting->setRawValue(false);
@@ -241,6 +242,102 @@ void JoystickControlTest::_configurationKeepsManualControl()
     joystick->_handleAxis();
     QCOMPARE(axisSpy.count(), 1);
     joystick->_startPollingThread();
+}
+
+void JoystickControlTest::_calibrationInvalidationEndsControl_data()
+{
+    QTest::addColumn<int>("settingIndex");
+    QTest::addColumn<bool>("liveGuard");
+    const QStringList names{QStringLiteral("pitch"), QStringLiteral("roll"), QStringLiteral("aux1"),
+                            QStringLiteral("aux2"),  QStringLiteral("aux3"), QStringLiteral("aux4"),
+                            QStringLiteral("aux5"),  QStringLiteral("aux6")};
+    for (int index = 0; index < names.size(); ++index) {
+        QTest::newRow(qPrintable(names[index])) << index << (index % 2 != 0);
+    }
+}
+
+void JoystickControlTest::_calibrationInvalidationEndsControl()
+{
+    QFETCH(int, settingIndex);
+    QFETCH(bool, liveGuard);
+    std::unique_ptr<MockJoystick> mock;
+    QPointer<Joystick> joystick;
+    const auto stopJoystick = qScopeGuard([&]() { _stopLiveJoystick(mock, joystick); });
+    _startLiveJoystick(QStringLiteral("Calibration invalidation fixture"), mock, joystick);
+    if (QTest::currentTestFailed()) {
+        return;
+    }
+    auto* const manager = JoystickManager::instance();
+    auto* const guard = SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard();
+    const QVariant oldGuard = guard->rawValue();
+    const auto restoreGuard = qScopeGuard([&]() { guard->setRawValue(oldGuard); });
+    guard->setRawValue(liveGuard);
+    manager->setActiveJoystickEnabledForActiveVehicle(false);
+    auto* const settings = joystick->settings();
+    settings->additionalAxesFunction()->setRawValue(1);
+    settings->enableAdditionalAxis1()->setRawValue(true);
+    const QList<Joystick::AxisFunction_t> extensionFunctions{
+        Joystick::pitchExtensionFunction,  Joystick::rollExtensionFunction,   Joystick::additionalAxis1Function,
+        Joystick::additionalAxis2Function, Joystick::additionalAxis3Function, Joystick::additionalAxis4Function,
+        Joystick::additionalAxis5Function, Joystick::additionalAxis6Function};
+    const auto restoreExtensionMappings = [&]() {
+        joystick->_setJoystickAxisForAxisFunction(Joystick::additionalAxis1Function, 4);
+        joystick->_rgCalibration[4].reset();
+        if (extensionFunctions[settingIndex] != Joystick::additionalAxis1Function) {
+            joystick->_setJoystickAxisForAxisFunction(extensionFunctions[settingIndex], 5);
+            joystick->_rgCalibration[5].reset();
+        }
+    };
+    // The selected extension already has a valid spare axis. A scan may see the changed enable Fact
+    // immediately before its calibration-invalidating signal is delivered.
+    restoreExtensionMappings();
+    QVERIFY(mock->setAxis(4, 32767));
+    settings->calibrated()->setRawValue(true);
+    joystick->setButtonAction(1, QString::fromLatin1(Joystick::_buttonActionGimbalUp));
+    QSignalSpy starts(joystick, &Joystick::gimbalPitchStart);
+    QSignalSpy stops(joystick, &Joystick::gimbalPitchStop);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(mock->pressButton(1));
+    QTRY_COMPARE_WITH_TIMEOUT(starts.count(), 1, 5000);
+    mavlink_message_t message{};
+    mavlink_rc_channels_override_t overrideValues{};
+    QTRY_VERIFY_WITH_TIMEOUT(_mockLink->lastReceivedMavlinkMessage(MAVLINK_MSG_ID_RC_CHANNELS_OVERRIDE, message) &&
+                                 (mavlink_msg_rc_channels_override_decode(&message, &overrideValues),
+                                  overrideValues.chan5_raw > 1500 && overrideValues.chan5_raw < UINT16_MAX),
+                             5000);
+
+    const QList<Fact*> extensionSettings{settings->enableManualControlPitchExtension(),
+                                         settings->enableManualControlRollExtension(),
+                                         settings->enableAdditionalAxis1(),
+                                         settings->enableAdditionalAxis2(),
+                                         settings->enableAdditionalAxis3(),
+                                         settings->enableAdditionalAxis4(),
+                                         settings->enableAdditionalAxis5(),
+                                         settings->enableAdditionalAxis6()};
+    Fact* const changedSetting = extensionSettings[settingIndex];
+    changedSetting->setRawValue(!changedSetting->rawValue().toBool());
+    QVERIFY(!settings->calibrated()->rawValue().toBool());
+    QVERIFY2(!manager->activeJoystickEnabledForActiveVehicle(), "Calibration invalidation must clear enabled state");
+    QVERIFY(!joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
+    QCOMPARE(stops.count(), 1);
+    QTRY_VERIFY_WITH_TIMEOUT(_mockLink->lastReceivedMavlinkMessage(MAVLINK_MSG_ID_RC_CHANNELS_OVERRIDE, message) &&
+                                 (mavlink_msg_rc_channels_override_decode(&message, &overrideValues),
+                                  overrideValues.chan5_raw == 0 && overrideValues.chan9_raw == UINT16_MAX - 1),
+                             5000);
+    QCOMPARE(overrideValues.chan1_raw, UINT16_MAX);
+    QCOMPARE(overrideValues.chan4_raw, UINT16_MAX);
+    QCOMPARE(overrideValues.chan6_raw, 0);
+    QCOMPARE(overrideValues.chan10_raw, UINT16_MAX - 1);
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY2(!manager->activeJoystickEnabledForActiveVehicle(), "An uncalibrated gamepad must not resume control");
+    QVERIFY(mock->releaseButton(1));
+    changedSetting->setRawValue(!changedSetting->rawValue().toBool());
+    restoreExtensionMappings();
+    settings->calibrated()->setRawValue(true);
+    QVERIFY2(!manager->activeJoystickEnabledForActiveVehicle(), "Calibration completion must not enable control");
+    manager->setActiveJoystickEnabledForActiveVehicle(true);
+    QVERIFY(manager->activeJoystickEnabledForActiveVehicle());
+    QVERIFY(joystick->_pollingFlags.testFlag(Joystick::PollingForVehicle));
 }
 
 void JoystickControlTest::_firmwareButtonOwnership()

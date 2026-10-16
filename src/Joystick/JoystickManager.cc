@@ -197,6 +197,7 @@ void JoystickManager::_setActiveJoystick(Joystick *newActiveJoystick)
     }
 
     // Cleanup old active joystick
+    disconnect(_calibrationChanged);
     if (_activeJoystick) {
         _activeJoystick->_stopAllPollingForVehicle();
         _activeJoystick = nullptr;
@@ -207,6 +208,17 @@ void JoystickManager::_setActiveJoystick(Joystick *newActiveJoystick)
         qCDebug(JoystickManagerLog) << "Set active:" << newActiveJoystick->name();
 
         _activeJoystick = newActiveJoystick;
+        _calibrationChanged = connect(_activeJoystick->settings()->calibrated(), &Fact::rawValueChanged, this,
+                                      [this](const QVariant& value) {
+                                          if (value.toBool() || !_activeJoystick) {
+                                              return;
+                                          }
+                                          // Re-calibration invalidates this control session, including held actions in
+                                          // legacy mode. Finish it before clearing the enabled setting; a later
+                                          // calibration must not restart it.
+                                          _activeJoystick->_stopAllPollingForVehicle(true);
+                                          setActiveJoystickEnabledForActiveVehicle(false);
+                                      });
 
         auto multiVehicleManager = MultiVehicleManager::instance();
         auto activeVehicle = multiVehicleManager->activeVehicle();
@@ -263,6 +275,10 @@ bool JoystickManager::_joystickEnabledForVehicle(Vehicle *vehicle) const
 
 void JoystickManager::_setJoystickEnabledForVehicle(Vehicle *vehicle, bool enabled)
 {
+    // Polling requires a valid calibration even for gamepads once an extension edit invalidates it.
+    if (enabled && (!_activeJoystick || !_activeJoystick->settings()->calibrated()->rawValue().toBool())) {
+        return;
+    }
     QStringList vehicleIds = _joystickManagerSettings->joystickEnabledVehiclesIds()->rawValue().toString().split(",", Qt::SkipEmptyParts);
     const QString vehicleIdStr = QString::number(vehicle->id());
 

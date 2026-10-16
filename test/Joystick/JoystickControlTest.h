@@ -17,6 +17,8 @@ private slots:
     void _manualControlPackets();
     void _firmwareButtonOwnership();
     void _configurationKeepsManualControl();
+    void _calibrationInvalidationEndsControl_data();
+    void _calibrationInvalidationEndsControl();
     void _buttonActionEditsAreSerializedWithPolling();
     void _pollingStateChangesAreSerializedWithPolling();
     void _reassignmentSettlesOnlyWhatTheButtonHolds();

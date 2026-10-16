@@ -418,7 +418,7 @@ private:
     void _startPollingForActiveVehicle();
     void _startPollingForConfiguration();
     void _stopPollingForConfiguration();
-    void _stopAllPollingForVehicle();
+    void _stopAllPollingForVehicle(bool settleContinuousActions = false);
     void _startPollingThread();
     void _stopPollingThread();
     QString _pollingFlagsToString(PollingFlags flags) const;

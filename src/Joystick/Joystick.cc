@@ -1346,7 +1346,7 @@ void Joystick::_stopPollingForConfiguration()
     }
 }
 
-void Joystick::_stopAllPollingForVehicle()
+void Joystick::_stopAllPollingForVehicle(bool settleContinuousActions)
 {
     qCDebug(JoystickLog) << "Stopping all joystick polling for vehicle. Current flags:" << _pollingFlagsToString(_pollingFlags);
 
@@ -1401,7 +1401,8 @@ void Joystick::_stopAllPollingForVehicle()
             _startedContinuousActions.remove(control);
             _runReleaseHandler(release.action);
         }
-        if (SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool()) {
+        if (settleContinuousActions ||
+            SettingsManager::instance()->appSettings()->joystickSetupLiveControlGuard()->rawValue().toBool()) {
             // What is still held has to end with the session: the buttons may stay down across the stop,
             // and their releases would belong to another session.
             _settleStartedContinuousActions(releasedVehicle);

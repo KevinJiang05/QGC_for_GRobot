@@ -75,8 +75,9 @@ SetupPage {
                     objectName: "joystickEnableCheckBox"
                     text: qsTr("Enable joystick control")
                     checked: joystickManager.activeJoystickEnabledForActiveVehicle
-                    enabled: root.activeJoystickCalibrated && !!root.activeVehicle
-                             && (!configurationLoader.item || !configurationLoader.item.calibrating)
+                    enabled: !!root.activeVehicle
+                             && (checked || (root.activeJoystickCalibrated
+                                 && (!configurationLoader.item || !configurationLoader.item.calibrating)))
                     onClicked: joystickManager.activeJoystickEnabledForActiveVehicle = checked
                 }
 

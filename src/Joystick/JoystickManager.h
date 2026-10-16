@@ -83,4 +83,5 @@ private:
     Joystick *_activeJoystick = nullptr;
     QMap<QString, Joystick*> _name2JoystickMap;
     QTimer _pollTimer;
+    QMetaObject::Connection _calibrationChanged;
 };

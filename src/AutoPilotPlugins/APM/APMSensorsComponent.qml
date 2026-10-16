@@ -31,6 +31,8 @@ SetupPage {
             readonly property string levelHelp:     qsTr("To level the horizon you need to place the vehicle in its level flight position and press OK.")
 
             readonly property string statusTextAreaDefaultText: qsTr("Start the individual calibration steps by clicking one of the buttons to the left.")
+            readonly property string calibrationStateWarning: controller.calibrationStateUnknown
+                ? qsTr("The previous calibration state is unknown. Confirm it has stopped on the vehicle before starting another calibration.\n\n") : ""
 
             // Used to pass help text to the preCalibrationDialog dialog
             property string preCalibrationDialogHelp
@@ -79,13 +81,13 @@ SetupPage {
                 switch (calType) {
                 case _calTypeCompass:
                     _orientationsDialogShowCompass = true
-                    _orientationDialogHelp = orientationHelpCal
+                    _orientationDialogHelp = calibrationStateWarning + orientationHelpCal
                     dialogTitle = qsTr("Calibrate Compass")
                     dialogButtons |= Dialog.Cancel
                     break
                 case _calTypeAccel:
                     _orientationsDialogShowCompass = false
-                    _orientationDialogHelp = orientationHelpCal
+                    _orientationDialogHelp = calibrationStateWarning + orientationHelpCal
                     dialogTitle = qsTr("Calibrate Accelerometer")
                     dialogButtons |= Dialog.Cancel
                     break
@@ -140,6 +142,7 @@ SetupPage {
 
             APMSensorsComponentController {
                 id:                         controller
+                objectName:                 "apmSensorsController"
                 statusLog:                  statusTextArea
                 progressBar:                progressBar
                 nextButton:                 nextButton
@@ -194,10 +197,29 @@ SetupPage {
             Component {
                 id: waitForCancelDialogComponent
 
-                QGCSimpleMessageDialog {
+                QGCPopupDialog {
                     title:      qsTr("Calibration Cancel")
-                    text:       qsTr("Waiting for Vehicle to response to Cancel. This may take a few seconds.")
                     buttons:    0
+
+                    ColumnLayout {
+                        width: 45 * ScreenTools.defaultFontPixelWidth
+                        spacing: ScreenTools.defaultFontPixelHeight
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: controller.calibrationTimedOut
+                                ? qsTr("The vehicle has not confirmed cancellation. Ending the local wait does not stop calibration on the vehicle. Confirm its state before operating it.")
+                                : qsTr("Waiting for the vehicle to respond to Cancel. This may take a few seconds.")
+                        }
+
+                        QGCButton {
+                            objectName: "sensorsSetup_endCancelWaitButton"
+                            text: qsTr("End local wait")
+                            visible: controller.calibrationTimedOut
+                            onClicked: controller.endCalibrationWait()
+                        }
+                    }
 
                     Connections {
                         target: controller
@@ -644,7 +666,7 @@ SetupPage {
                             anchors.left:   parent.left
                             anchors.right:  parent.right
                             wrapMode:       Text.WordWrap
-                            text:           qsTr("This is recommended for vehicles that have only an internal compass and on vehicles where there is significant interference on the compass from the motors, power wires, etc. ") +
+                            text:           calibrationStateWarning + qsTr("This is recommended for vehicles that have only an internal compass and on vehicles where there is significant interference on the compass from the motors, power wires, etc. ") +
                                             qsTr("CompassMot only works well if you have a battery current monitor because the magnetic interference is linear with current drawn. ") +
                                             qsTr("It is technically possible to set-up CompassMot using throttle but this is not recommended.")
                         }
@@ -734,7 +756,7 @@ SetupPage {
                                 QGroundControl.showMessageDialog(sensorsPage, _levelHorizonText, qsTr("Accelerometer must be calibrated prior to Level Horizon."))
                             } else {
                                 QGroundControl.showMessageDialog(sensorsPage, _levelHorizonText,
-                                                             qsTr("To level the horizon you need to place the vehicle in its level flight position and press Ok."),
+                                                             calibrationStateWarning + qsTr("To level the horizon you need to place the vehicle in its level flight position and press Ok."),
                                                              Dialog.Cancel | Dialog.Ok,
                                                              function() { controller.levelHorizon() })
                             }
@@ -746,16 +768,17 @@ SetupPage {
                         text:       qsTr("Gyro")
                         visible:    globals.activeVehicle && (globals.activeVehicle.multiRotor | globals.activeVehicle.rover | globals.activeVehicle.sub)
                         onClicked:  QGroundControl.showMessageDialog(sensorsPage, qsTr("Calibrate Gyro"),
-                                                                 qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.\n\nClick Ok to start calibration."),
+                                                                 calibrationStateWarning + qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.\n\nClick Ok to start calibration."),
                                                                  Dialog.Cancel | Dialog.Ok,
                                                                  function() { controller.calibrateGyro() })
                     }
 
                     QGCButton {
+                        objectName: "sensorsSetup_calibratePressure"
                         width:      _buttonWidth
                         text:       _calibratePressureText
                         onClicked:  QGroundControl.showMessageDialog(sensorsPage, _calibratePressureText,
-                                                                 qsTr("Pressure calibration will set the %1 to zero at the current pressure reading. %2").arg(_altText).arg(_helpTextFW),
+                                                                 calibrationStateWarning + qsTr("Pressure calibration will set the %1 to zero at the current pressure reading. %2").arg(_altText).arg(_helpTextFW),
                                                                  Dialog.Cancel | Dialog.Ok,
                                                                  function() { controller.calibratePressure() })
 
@@ -801,6 +824,21 @@ SetupPage {
                         text:           qsTr("Cancel")
                         enabled:        false
                         onClicked:      controller.cancelCalibration()
+                    }
+
+                    QGCLabel {
+                        width: _buttonWidth
+                        wrapMode: Text.WordWrap
+                        visible: controller.calibrationTimedOut
+                        text: qsTr("No confirmed response. The vehicle may still be calibrating.")
+                    }
+
+                    QGCButton {
+                        objectName: "sensorsSetup_endWaitButton"
+                        width: _buttonWidth
+                        text: qsTr("End local wait")
+                        visible: controller.calibrationTimedOut
+                        onClicked: controller.endCalibrationWait()
                     }
                 }
             } // QGCFlickable - buttons

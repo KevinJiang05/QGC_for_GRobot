@@ -4,7 +4,7 @@
 
 class Vehicle;
 
-/// UI test that boots the full QML UI with an ArduCopter MockLink vehicle connected,
+/// UI test that boots the full QML UI with an ArduCopter or ArduSub MockLink vehicle connected,
 /// navigates to the Sensors setup page and runs magnetometer and accelerometer
 /// calibrations by clicking the real UI buttons.
 ///
@@ -31,4 +31,6 @@ private slots:
     void _testCompassCalibrationIgnoresStaleFailedReports();
     void _testCompassCalibrationStartRejected();
     void _testAccelCalibration();
+    void _testArduSubAccelAndCompassCalibration();
+    void _testArduSubPressureLocalWaitExit();
 };

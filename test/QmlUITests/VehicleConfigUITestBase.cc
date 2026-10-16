@@ -1,6 +1,6 @@
 #include "VehicleConfigUITestBase.h"
 
-#include <QtCore/QElapsedTimer>
+#include <QtCore/QChildEvent>
 #include <QtCore/QLocale>
 #include <QtCore/QPointer>
 #include <QtCore/QRegularExpression>
@@ -11,14 +11,70 @@
 
 #include "AppSettings.h"
 #include "AutoPilotPlugin.h"
+#include "BulkRefreshJob.h"
 #include "Fact.h"
+#include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "QGCApplication.h"
+#include "QGCStateMachine.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
 #include "VehicleComponent.h"
 
 namespace {
+
+class CalibrationParameterBudget : public QObject
+{
+public:
+    explicit CalibrationParameterBudget(ParameterManager* manager) : QObject(manager)
+    {
+        setObjectName(QStringLiteral("testCalibrationParameterBudget"));
+        manager->installEventFilter(this);
+        for (auto* child : manager->children()) {
+            configure(child);
+        }
+    }
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::ChildAdded) {
+            const QPointer<QObject> child = static_cast<QChildEvent*>(event)->child();
+            // ChildAdded runs inside QObject construction. This queued configuration runs
+            // after construction, but before ParameterManager subsequently queues start().
+            QMetaObject::invokeMethod(this, [child]() { configure(child); }, Qt::QueuedConnection);
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    static void configure(QObject* child)
+    {
+        auto* machine = qobject_cast<QGCStateMachine*>(child);
+        if (machine && (machine->objectName() == QStringLiteral("PARAM_REQUEST_READ") ||
+                        machine->objectName() == QStringLiteral("ParameterManager PARAM_SET"))) {
+            // Rendering the full calibration page competes with a 144-read batch. Retain
+            // the production response budget instead of the 50 ms unit-test shortcut.
+            machine->setTimeoutOverride(QStringLiteral("WaitForParamResponseState"),
+                                        ParameterManager::kWaitForParamValueAckMs);
+        }
+    }
+};
+
+bool parameterWorkFinished(ParameterManager* manager)
+{
+    for (auto* child : manager->children()) {
+        if (dynamic_cast<BulkRefreshJob*>(child)) {
+            return false;
+        }
+    }
+    for (const auto* machine : manager->findChildren<QGCStateMachine*>()) {
+        if (machine->isRunning()) {
+            return false;
+        }
+    }
+    return !manager->pendingWrites();
+}
 
 /// Returns true if the item tree (including \a item itself) contains at least
 /// one visible text, control or image item with a non-zero size. Layout
@@ -273,17 +329,8 @@ void VehicleConfigUITestBase::clickThroughAllComponentsAllLocales(Vehicle *vehic
 void VehicleConfigUITestBase::waitForParamRefreshQuiet(Vehicle *vehicle)
 {
     ParameterManager *mgr = vehicle->parameterManager();
-    QElapsedTimer sinceLastResponse;
-    sinceLastResponse.start();
-
-    QObject context;
-    QObject::connect(mgr, &ParameterManager::_paramRequestReadSuccess, &context,
-                     [&] { sinceLastResponse.restart(); });
-    QObject::connect(mgr, &ParameterManager::_paramRequestReadFailure, &context,
-                     [&] { sinceLastResponse.restart(); });
-
-    QVERIFY2(QTest::qWaitFor([&] { return sinceLastResponse.elapsed() > 500; }, 10000),
-             "waitForParamRefreshQuiet: parameter refresh traffic still active after 10s");
+    QVERIFY2(QTest::qWaitFor([&] { return parameterWorkFinished(mgr); }, 10000),
+             "waitForParamRefreshQuiet: parameter jobs, state machines or writes still active after 10s");
 }
 
 void VehicleConfigUITestBase::navigateToAPMSensorsPage()
@@ -291,7 +338,18 @@ void VehicleConfigUITestBase::navigateToAPMSensorsPage()
     navigateToConfigureView();
     if (QTest::currentTestFailed()) return;
 
-    QQuickItem *sensorsBtn = clickSidebarButton(QStringLiteral("vehicleConfig_comp_Sensors"));
+    auto* vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+    auto* const manager = vehicle->parameterManager();
+    if (!manager->findChild<QObject*>(QStringLiteral("testCalibrationParameterBudget"), Qt::FindDirectChildrenOnly)) {
+        new CalibrationParameterBudget(manager);
+    }
+    auto* sensors =
+        vehicle->autopilotPlugin()->findKnownVehicleComponent(AutoPilotPlugin::KnownSensorsVehicleComponent);
+    QVERIFY(sensors);
+    const QString buttonName =
+        QStringLiteral("vehicleConfig_comp_") + QString(sensors->name()).remove(QLatin1Char(' '));
+    QQuickItem* sensorsBtn = clickSidebarButton(buttonName);
     if (QTest::currentTestFailed()) return;
 
     // The Sensors component has no sub-sections on APM; clicking the button opens the page.

@@ -1,15 +1,18 @@
 #pragma once
 
+#include <QtCore/QObject>
+#include <QtCore/QPointer>
+#include <QtCore/QTimer>
+#include <QtQmlIntegration/QtQmlIntegration>
+#include <QtQuick/QQuickItem>
+
 #include "FactPanelController.h"
 #include "QGCMAVLink.h"
 #include "QGCMAVLinkTypes.h"
 
-#include <QtCore/QObject>
-#include <QtQuick/QQuickItem>
-#include <QtQmlIntegration/QtQmlIntegration>
-
 class APMSensorsComponent;
 class LinkInterface;
+class VehicleLinkManager;
 
 /// \brief Sensors Component MVC Controller for SensorsComponent.qml.
 ///
@@ -60,6 +63,8 @@ class APMSensorsComponentController : public FactPanelController
     Q_PROPERTY(bool waitingForCancel                        MEMBER _waitingForCancel                        NOTIFY waitingForCancelChanged)
 
     Q_PROPERTY(bool calibrationActive                       READ calibrationActive                          NOTIFY calibrationActiveChanged)
+    Q_PROPERTY(bool calibrationTimedOut READ calibrationTimedOut NOTIFY calibrationTimedOutChanged)
+    Q_PROPERTY(bool calibrationStateUnknown READ calibrationStateUnknown NOTIFY calibrationStateUnknownChanged)
 
     Q_PROPERTY(bool compass1CalSucceeded                    READ compass1CalSucceeded                       NOTIFY compass1CalSucceededChanged)
     Q_PROPERTY(bool compass2CalSucceeded                    READ compass2CalSucceeded                       NOTIFY compass2CalSucceededChanged)
@@ -81,6 +86,7 @@ public:
     Q_INVOKABLE void levelHorizon();
     Q_INVOKABLE void calibratePressure();
     Q_INVOKABLE void cancelCalibration();
+    Q_INVOKABLE void endCalibrationWait();
     Q_INVOKABLE void nextClicked();
     Q_INVOKABLE bool usingUDPLink() const;
 
@@ -92,6 +98,10 @@ public:
     bool compass3CalSucceeded() const { return _rgCompassCalSucceeded[2]; }
 
     bool calibrationActive() const { return _calTypeInProgress != QGCMAVLink::CalibrationNone; }
+
+    bool calibrationTimedOut() const { return _calibrationTimedOut; }
+
+    bool calibrationStateUnknown() const { return _calibrationStateUnknown; }
 
     double compass1CalFitness() const { return _rgCompassCalFitness[0]; }
     double compass2CalFitness() const { return _rgCompassCalFitness[1]; }
@@ -107,6 +117,8 @@ signals:
     void resetStatusTextArea();
     void waitingForCancelChanged();
     void calibrationActiveChanged();
+    void calibrationTimedOutChanged();
+    void calibrationStateUnknownChanged();
     void setupNeededChanged();
     void calibrationComplete(QGCMAVLink::CalibrationType calType);
     void compass1CalSucceededChanged(bool compass1CalSucceeded);
@@ -121,6 +133,7 @@ private slots:
     void _handleTextMessage(int sysid, int componentid, int severity, const QString &text, const QString &description);
     void _mavlinkMessageReceived(LinkInterface *link, const mavlink_message_t &message);
     void _mavCommandResult(int vehicleId, int component, int command, int result, int failureCode);
+    void _calibrationWaitTimedOut();
 
 private:
     bool _canStartCalibration() const;
@@ -137,12 +150,18 @@ private:
     bool _handleCmdLongAccelcalVehiclePos(const mavlink_command_long_t &commandLong);
     void _handleCommandLong(const mavlink_message_t &message);
     void _restorePreviousCompassCalFitness();
+    void _startCalibrationWait();
+    void _calibrationProgressReceived();
+    void _pauseCommunicationLostCheck();
+    void _restoreCommunicationLostCheck();
 
-    enum StopCalibrationCode {
+    enum StopCalibrationCode
+    {
         StopCalibrationSuccess,
         StopCalibrationSuccessShowLog,
         StopCalibrationFailed,
-        StopCalibrationCancelled
+        StopCalibrationCancelled,
+        StopCalibrationStateUnknown
     };
     void _stopCalibration(StopCalibrationCode code);
 
@@ -153,6 +172,20 @@ private:
     void _updateAndEmitShowOrientationCalArea(bool show);
 
     APMSensorsComponent *_sensorsComponent = nullptr;
+    QPointer<VehicleLinkManager> _pausedLinkManager;
+    QPointer<Vehicle> _calibrationVehicle;
+    QTimer _calibrationWaitTimer;
+    bool _calibrationTimedOut = false;
+    bool _calibrationStateUnknown = false;
+
+    // These only offer a local-wait exit; a slow calibration may still complete normally.
+    static constexpr int _ordinaryWaitTimeoutMs = 30000;
+    static constexpr int _interactiveWaitTimeoutMs = 120000;
+    static constexpr int _cancelWaitTimeoutMs = 10000;
+
+#ifdef QGC_UNITTEST_BUILD
+    friend class APMSensorsSessionTest;
+#endif
 
     QQuickItem *_statusLog = nullptr;
     QQuickItem *_progressBar = nullptr;

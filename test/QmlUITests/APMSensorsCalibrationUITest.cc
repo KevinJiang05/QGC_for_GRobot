@@ -1,11 +1,16 @@
 #include "APMSensorsCalibrationUITest.h"
 
+#include <QtCore/QScopeGuard>
 #include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
 #include <QtTest/QTest>
 
+#include "APMSensorsComponentController.h"
+#include "MAVLinkProtocol.h"
 #include "MockLink.h"
 #include "ParameterManager.h"
 #include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 UT_REGISTER_TEST(APMSensorsCalibrationUITest, TestLabel::Integration)
 
@@ -220,8 +225,11 @@ void APMSensorsCalibrationUITest::_testCompassCalibrationStartRejected()
 
     // START is sent with showError=true so the rejection first shows the command
     // error, then _stopCalibration(StopCalibrationFailed) shows the cal failed message.
-    expectAppMessage(QRegularExpression(QStringLiteral("command failed")));
-    expectAppMessage(QRegularExpression(QStringLiteral("Calibration failed")));
+    const QString commandFailure = QCoreApplication::translate("MavCommandQueue", "%1 command failed");
+    expectAppMessage(QRegularExpression(
+        QRegularExpression::escape(commandFailure).replace(QStringLiteral("%1"), QStringLiteral(".*"))));
+    expectAppMessage(QRegularExpression(QRegularExpression::escape(QCoreApplication::translate(
+        "APMSensorsComponentController", "Calibration failed. Calibration log will be displayed."))));
 
     QVERIFY2(clickButton(QStringLiteral("sensorsSetup_calibrateCompass")),
              "Failed to click Compass button");
@@ -285,4 +293,89 @@ void APMSensorsCalibrationUITest::_testAccelCalibration()
     verifyAPMCalIndicators(/*compassGreen=*/false, /*accelGreen=*/true, "after accel cal");
 
     });
+}
+
+void APMSensorsCalibrationUITest::_testArduSubAccelAndCompassCalibration()
+{
+    // Cover the actual underwater firmware path as well as the existing Copter scenarios.
+    runWithMockLink([] { return MockLink::startAPMArduSubMockLink(); },
+                    [&](QPointer<MockLink>, Vehicle* vehicle) {
+                        resetAPMParamsToUncalibrated(vehicle);
+                        if (QTest::currentTestFailed())
+                            return;
+                        navigateToAPMSensorsPage();
+                        if (QTest::currentTestFailed())
+                            return;
+                        verifyAPMCalIndicators(false, false, "ArduSub after param reset");
+                        if (QTest::currentTestFailed())
+                            return;
+
+                        runAPMFullAccelCal();
+                        if (QTest::currentTestFailed())
+                            return;
+                        waitForParamRefreshQuiet(vehicle);
+                        if (QTest::currentTestFailed())
+                            return;
+                        verifyAPMCalIndicators(false, true, "ArduSub after accel cal");
+                        if (QTest::currentTestFailed())
+                            return;
+
+                        runAPMCompassCal();
+                        if (QTest::currentTestFailed())
+                            return;
+                        waitForParamRefreshQuiet(vehicle);
+                        if (QTest::currentTestFailed())
+                            return;
+                        verifyAPMCalIndicators(true, true, "ArduSub after compass cal");
+                    });
+}
+
+void APMSensorsCalibrationUITest::_testArduSubPressureLocalWaitExit()
+{
+    runWithMockLink([] { return MockLink::startAPMArduSubMockLink(); },
+                    [&](QPointer<MockLink> mockLink, Vehicle* vehicle) {
+                        navigateToAPMSensorsPage();
+                        if (QTest::currentTestFailed())
+                            return;
+                        auto* const controller =
+                            _window->findChild<APMSensorsComponentController*>(QStringLiteral("apmSensorsController"));
+                        QVERIFY(controller);
+                        QVERIFY(vehicle->vehicleLinkManager()->communicationLostEnabled());
+
+                        // The firmware receives the real button's request, but its terminal result is lost.
+                        QVERIFY(QObject::disconnect(mockLink, &LinkInterface::bytesReceived,
+                                                    MAVLinkProtocol::instance(), &MAVLinkProtocol::receiveBytes));
+                        bool connected = false;
+                        const auto restoreConnection = qScopeGuard([&]() {
+                            if (mockLink && !connected) {
+                                connect(mockLink, &LinkInterface::bytesReceived, MAVLinkProtocol::instance(),
+                                        &MAVLinkProtocol::receiveBytes);
+                            }
+                        });
+                        QVERIFY(clickButton(QStringLiteral("sensorsSetup_calibratePressure")));
+                        QVERIFY(findVisibleItem(_rootItem, QStringLiteral("popupDialog_acceptButton"), 3000));
+                        QVERIFY(clickButton(QStringLiteral("popupDialog_acceptButton")));
+                        QVERIFY(controller->calibrationActive());
+                        QVERIFY(!vehicle->vehicleLinkManager()->communicationLostEnabled());
+                        QTRY_VERIFY_WITH_TIMEOUT(mockLink->receivedMavCommandCount(MAV_CMD_PREFLIGHT_CALIBRATION) > 0,
+                                                 1000);
+
+                        // Timer durations/firing are covered by APMSensorsSessionTest; exercise the actual
+                        // production timeout UI and its navigation cleanup here without a 30-second delay.
+                        QVERIFY(QMetaObject::invokeMethod(controller, "_calibrationWaitTimedOut"));
+                        QVERIFY(findVisibleItem(_rootItem, QStringLiteral("sensorsSetup_endWaitButton"), 1000));
+                        connect(mockLink, &LinkInterface::bytesReceived, MAVLinkProtocol::instance(),
+                                &MAVLinkProtocol::receiveBytes);
+                        connected = true;
+                        QVERIFY(clickButton(QStringLiteral("sensorsSetup_endWaitButton")));
+                        QVERIFY(!controller->calibrationActive());
+                        QVERIFY(controller->calibrationStateUnknown());
+                        QVERIFY(vehicle->vehicleLinkManager()->communicationLostEnabled());
+                        waitForParamRefreshQuiet(vehicle);
+                        if (QTest::currentTestFailed())
+                            return;
+                        QPointer<APMSensorsComponentController> original = controller;
+                        QVERIFY(clickButton(QStringLiteral("vehicleConfig_summary")));
+                        QTRY_VERIFY_WITH_TIMEOUT(original.isNull(), 2000);
+                    });
 }

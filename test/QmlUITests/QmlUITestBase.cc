@@ -707,6 +707,20 @@ QPointer<MockLink> QmlUITestBase::connectMockLinkAndWaitReady(
         return failAndDisconnect("Parameters should be ready after signal");
     }
 
+    // The initial-connect signal precedes completion of queued stream-interval commands.
+    // Deliver their real MockLink ACKs before heavy setup-page creation/parameter reset work.
+    const auto initialStreamCommandsFinished = [vehicle]() {
+        for (int component = 0; component <= 255; ++component) {
+            if (vehicle->isMavCommandPending(component, MAV_CMD_SET_MESSAGE_INTERVAL)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!QTest::qWaitFor(initialStreamCommandsFinished, 5000)) {
+        return failAndDisconnect("Initial stream-interval commands did not complete before UI setup");
+    }
+
     vehicleOut = vehicle;
     return mockLink;
 }

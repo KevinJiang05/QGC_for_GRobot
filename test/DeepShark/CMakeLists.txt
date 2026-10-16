@@ -22,6 +22,8 @@ target_sources(
             APMGimbalCompatibilityTest.h
             APMSubMotorTest.cc
             APMSubMotorTest.h
+            APMSensorsSessionTest.cc
+            APMSensorsSessionTest.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -54,6 +56,7 @@ add_qgc_test(ThrusterMappingIntegrationTest LABELS Integration DeepShark TIMEOUT
 add_qgc_test(APMGimbalCompatibilityTest LABELS Unit DeepShark)
 
 add_qgc_test(APMSubMotorTest LABELS Integration DeepShark)
+add_qgc_test(APMSensorsSessionTest LABELS Integration DeepShark Vehicle)
 
 add_qgc_test(
     DeepSharkUILayoutTest

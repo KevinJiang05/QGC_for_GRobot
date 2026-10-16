@@ -75,14 +75,29 @@ Section "Install" SecMain
     StrCmp $R0 "" doInstall checkUninstaller
 
 checkUninstaller:
-    ; Remove quotes from uninstaller path to check if file exists
-    StrCpy $R1 $R0 "" 1  ; Skip first quote
-    StrLen $R2 $R1
-    IntOp $R2 $R2 - 1    ; Remove last quote
-    StrCpy $R1 $R1 $R2
+    ; Older registrations may store either a quoted or an unquoted executable path.
+    StrCpy $R1 $R0
+    StrCpy $R2 $R0 1
+    StrCmp $R2 '"' 0 uninstallerPathReady
+    StrCpy $R1 $R0 "" 1
+    StrCpy $R2 $R1 1 -1
+    StrCmp $R2 '"' 0 invalidUninstallerPath
+    StrCpy $R1 $R1 -1
 
+uninstallerPathReady:
     DetailPrint "Checking if uninstaller exists: $R1"
-    IfFileExists "$R1" doUninstall cleanupOrphanedRegistry
+    IfFileExists "$R1" 0 cleanupOrphanedRegistry
+    GetFullPathName $R1 "$R1"
+    ${GetParent} "$R1" $R3
+    ${GetRoot} "$R1" $R4
+    StrCmp $R3 "" invalidUninstallerPath
+    StrCmp $R3 $R4 invalidUninstallerPath
+
+    Goto doUninstall
+
+invalidUninstallerPath:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "The previous uninstaller path is invalid. Please remove the previous version before continuing."
+    Abort
 
 cleanupOrphanedRegistry:
     DetailPrint "Previous uninstaller not found, cleaning up orphaned registry keys..."
@@ -92,9 +107,36 @@ cleanupOrphanedRegistry:
     Goto doInstall
 
 doUninstall:
+    ; The old uninstaller recursively removes its own directory. A different target below
+    ; that directory would also be deleted, even though _?= correctly points to the old copy.
+    GetFullPathName $R5 "$INSTDIR"
+    StrCmp $R5 "" 0 compareInstallDirectories
+    ; Unlike NSIS GetFullPathName, the Windows API also handles a destination not yet created.
+    System::Call 'kernel32::GetFullPathNameW(w "$INSTDIR", i ${NSIS_MAX_STRLEN}, w .R5, p 0) i.R6'
+    IntCmp $R6 0 invalidInstallDirectory
+    IntCmp $R6 ${NSIS_MAX_STRLEN} invalidInstallDirectory compareInstallDirectories invalidInstallDirectory
+
+invalidInstallDirectory:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "The selected installation directory could not be resolved. Please choose another directory."
+    Abort
+
+compareInstallDirectories:
+    StrCpy $R6 "$R3\"
+    StrLen $R7 $R6
+    StrCpy $R8 $R5 $R7
+    StrCmp $R8 $R6 0 uninstallPreviousVersion
+    StrLen $R9 $R5
+    IntCmp $R9 $R7 uninstallPreviousVersion uninstallPreviousVersion nestedInstallDirectory
+
+nestedInstallDirectory:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "The selected installation directory is inside the previous installation directory.$\n$\nThe previous uninstaller would remove its contents. Choose the previous directory itself or a location outside it."
+    Abort
+
+uninstallPreviousVersion:
     DetailPrint "Uninstalling previous version..."
     ClearErrors
-    ExecWait "$R0 /S -LEAVE_DATA=1 _?=$INSTDIR" $0
+    ; _?= sets the child's removal directory, not this installer's selected destination.
+    ExecWait '"$R1" /S -LEAVE_DATA=1 _?=$R3' $0
     ${If} ${Errors}
         MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to start previous uninstaller."
         Abort

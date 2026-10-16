@@ -97,7 +97,8 @@ Popup {
     }
 
     onClosed: {
-        globals.validationErrorCount = _previousValidationErrorCount
+        // Release this dialog's fields before destroying them; other pages own their own errors.
+        _clearValidationErrors(dialogContentParent)
         Qt.inputMethod.hide()
         if (destroyOnClose) {
             root.destroy()
@@ -106,8 +107,24 @@ Popup {
 
     onButtonsChanged: setupDialogButtons(buttons)
 
+    function _clearValidationErrors(item) {
+        if (item instanceof QGCTextField) item.clearValidationError()
+        for (var i = 0; i < item.children.length; i++) {
+            _clearValidationErrors(item.children[i])
+        }
+    }
+
+    function _hasBlockingValidationError(item) {
+        if (item instanceof QGCTextField && item._blocksViewSwitch) return true
+        for (var i = 0; i < item.children.length; i++) {
+            if (_hasBlockingValidationError(item.children[i])) return true
+        }
+        return false
+    }
+
     function _accept() {
-        if (_acceptAllowed && (bypassNavigationCheck || mainWindow.allowViewSwitch(_previousValidationErrorCount))) {
+        if (_acceptAllowed && (bypassNavigationCheck ||
+                (mainWindow.allowViewSwitch(_previousValidationErrorCount) && !_hasBlockingValidationError(dialogContentParent)))) {
             accepted()
             if (preventClose) {
                 preventClose = false
@@ -119,7 +136,8 @@ Popup {
 
     function _reject() {
         // Dialogs with cancel button are allowed to close with validation errors
-        if (_rejectAllowed && ((buttons & Dialog.Cancel) || bypassNavigationCheck || mainWindow.allowViewSwitch(_previousValidationErrorCount))) {
+        if (_rejectAllowed && ((buttons & Dialog.Cancel) || bypassNavigationCheck ||
+                (mainWindow.allowViewSwitch(_previousValidationErrorCount) && !_hasBlockingValidationError(dialogContentParent)))) {
             rejected()
             if (preventClose) {
                 preventClose = false

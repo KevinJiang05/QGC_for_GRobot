@@ -33,10 +33,12 @@ TextField {
 
     property real _helpLayoutWidth: 0
     property real _marginPadding:   ScreenTools.defaultFontPixelHeight / 3
+    property bool _blocksViewSwitch: false
 
     signal helpClicked
 
     Component.onCompleted: checkActiveFocus()
+    Component.onDestruction: _setViewSwitchBlocked(false)
     onActiveFocusChanged: checkActiveFocus()
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
@@ -63,23 +65,23 @@ TextField {
         validationToolTip.text = errorString
         validationToolTip.originalValidValue = originalValidValue
         validationToolTip.visible = true
-        if (!validationError) {
-            validationError = true
-            if (preventViewSiwtch) {
-                globals.validationErrorCount++
-            }
-        }
+        validationError = true
+        _setViewSwitchBlocked(preventViewSiwtch)
     }
 
-    function clearValidationError(preventViewSiwtch = true) {
+    function _setViewSwitchBlocked(blocked) {
+        if (_blocksViewSwitch === blocked) return
+        if (typeof globals !== "undefined" && globals) {
+            globals.validationErrorCount += blocked ? 1 : -1
+        }
+        _blocksViewSwitch = blocked
+    }
+
+    function clearValidationError() {
         validationToolTip.visible = false
         validationToolTip.originalValidValue = undefined
-        if (validationError) {
-            validationError = false
-            if (preventViewSiwtch) {
-                globals.validationErrorCount--
-            }
-        }
+        validationError = false
+        _setViewSwitchBlocked(false)
     }
 
     background: Rectangle {

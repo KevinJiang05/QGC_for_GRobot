@@ -18,9 +18,14 @@ QGCTextField {
 
     property Fact fact: null
 
+    onFactChanged: clearValidationError()
     onEditingFinished: _onEditingFinished()
 
     function _onEditingFinished() {
+        if (!fact) {
+            clearValidationError()
+            return
+        }
         var errorString = fact.validate(text, false /* convertOnly */)
         if (errorString === "") {
             clearValidationError()

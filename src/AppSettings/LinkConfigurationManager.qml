@@ -24,6 +24,7 @@ SettingsGroupLayout {
                 text:               object.name
             }
             QGCColoredImage {
+                objectName:             "linkConfig_edit_" + object.name
                 height:                 ScreenTools.minTouchPixels
                 width:                  height
                 sourceSize.height:      height
@@ -88,6 +89,7 @@ SettingsGroupLayout {
     }
 
     LabelledButton {
+        objectName: "linkConfig_addButton"
         label:      qsTr("Add New Link")
         buttonText: qsTr("Add")
 
@@ -107,17 +109,28 @@ SettingsGroupLayout {
         id: linkDialogComponent
 
         QGCPopupDialog {
+            objectName:             "linkConfig_dialog"
             title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
             buttons:                Dialog.Save | Dialog.Cancel
-            acceptButtonEnabled:    nameField.text !== ""
+            acceptButtonEnabled:    nameField.text !== "" && _settingsReady
 
             property var originalConfig
             property var editingConfig
 
+            // The settings page loads asynchronously and is replaced when the link type changes.
+            readonly property bool _settingsReady: linkSettingsLoader.status === Loader.Ready && !!linkSettingsLoader.item
+
             onAccepted: {
+                if (!_settingsReady) {
+                    // Keep the dialog open so the edit can still be saved or cancelled.
+                    preventClose = true
+                    return
+                }
                 linkSettingsLoader.item.saveSettings()
                 editingConfig.name = nameField.text
                 if (originalConfig) {
+                    // The edited copy is deleted next; unload the page that is bound to it first.
+                    linkSettingsLoader.source = ""
                     _linkManager.endConfigurationEditing(originalConfig, editingConfig)
                 } else {
                     editingConfig.dynamic = false
@@ -125,7 +138,11 @@ SettingsGroupLayout {
                 }
             }
 
-            onRejected: _linkManager.cancelConfigurationEditing(editingConfig)
+            onRejected: {
+                // The configuration is deleted next; unload the page that is bound to it first.
+                linkSettingsLoader.source = ""
+                _linkManager.cancelConfigurationEditing(editingConfig)
+            }
 
             ColumnLayout {
                 spacing: ScreenTools.defaultFontPixelHeight / 2
@@ -137,6 +154,7 @@ SettingsGroupLayout {
                     QGCLabel { text: qsTr("Name") }
                     QGCTextField {
                         id:                 nameField
+                        objectName:         "linkConfig_nameField"
                         Layout.fillWidth:   true
                         text:               editingConfig.name
                         placeholderText:    qsTr("Enter name")
@@ -172,8 +190,9 @@ SettingsGroupLayout {
                 }
 
                 Loader {
-                    id:     linkSettingsLoader
-                    source: editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
+                    id:         linkSettingsLoader
+                    objectName: "linkConfig_settingsLoader"
+                    source:editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
                     asynchronous: true
 
                     property var subEditConfig:         editingConfig

@@ -109,11 +109,12 @@ Rectangle {
         }
 
         QGCButton {
+            objectName: "logReplay_closeButton"
             text: qsTr("Close")
             onClicked: {
-                var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
-                if (activeVehicle) {
-                    activeVehicle.closeVehicle()
+                if (controller.link) {
+                    controller.link.disconnect()
+                    controller.link = null
                 }
                 QGroundControl.settingsManager.flyViewSettings.showLogReplayStatusBar.rawValue = false
             }

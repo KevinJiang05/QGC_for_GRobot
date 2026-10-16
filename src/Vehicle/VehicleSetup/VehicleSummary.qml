@@ -16,6 +16,8 @@ Rectangle {
     property real _summaryBoxSpace: ScreenTools.defaultFontPixelWidth * 2
     property real _margins:        ScreenTools.defaultFontPixelHeight / 2
 
+    signal vehicleComponentRequested(var vehicleComponent)
+
     function capitalizeWords(sentence) {
         return sentence.replace(/(?:^|\s)\S/g, function(a) { return a.toUpperCase(); });
     }
@@ -84,6 +86,7 @@ Rectangle {
 
                             // Title bar
                             QGCButton {
+                                objectName: "vehicleSummary_component_" + index
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: titleHeight
                                 text: capitalizeWords(modelData.name)
@@ -104,7 +107,7 @@ Rectangle {
 
                                 onClicked : {
                                     if (modelData.setupSource !== "") {
-                                        setupView.showVehicleComponentPanel(modelData)
+                                        _summaryRoot.vehicleComponentRequested(modelData)
                                     }
                                 }
                             }

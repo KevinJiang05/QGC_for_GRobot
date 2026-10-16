@@ -6,6 +6,7 @@ import QGroundControl.Controls
 
 RowLayout {
     id:         control
+    objectName: "toolbar_mainStatusIndicator"
     spacing:    ScreenTools.defaultFontPixelWidth
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
@@ -17,6 +18,9 @@ RowLayout {
     property bool   _vehicleFlies:      _activeVehicle ? _activeVehicle.airShip || _activeVehicle.fixedWing || _activeVehicle.vtol || _activeVehicle.multiRotor : false
     property var    _vehicleInAir:      _activeVehicle ? _activeVehicle.flying || _activeVehicle.landing : false
     property bool   _vtolInFWDFlight:   _activeVehicle ? _activeVehicle.vtolInFwdFlight : false
+
+    on_ActiveVehicleChanged: _allowForceArm = false
+    on_ArmedChanged: if (_armed) _allowForceArm = false
 
     function dropMainStatusIndicator() {
         let overallStatusComponent = _activeVehicle ? overallStatusIndicatorPage : overallStatusOfflineIndicatorPage
@@ -162,7 +166,10 @@ RowLayout {
 
         MainStatusIndicatorOfflinePage {
             Component.onCompleted:   mainWindow.suppressCriticalVehicleMessages = true
-            Component.onDestruction: mainWindow.suppressCriticalVehicleMessages = false
+            Component.onDestruction: {
+                mainWindow.suppressCriticalVehicleMessages = false
+                control._allowForceArm = false
+            }
         }
     }
 
@@ -177,7 +184,10 @@ RowLayout {
             expandedComponent:                  mainStatusExpandedComponent
 
             Component.onCompleted:   mainWindow.suppressCriticalVehicleMessages = true
-            Component.onDestruction: mainWindow.suppressCriticalVehicleMessages = false
+            Component.onDestruction: {
+                mainWindow.suppressCriticalVehicleMessages = false
+                control._allowForceArm = false
+            }
         }
     }
 
@@ -195,6 +205,7 @@ RowLayout {
                 visible: parametersReady
 
                 QGCDelayButton {
+                    objectName: "mainStatus_forceArmButton"
                     visible: control._allowForceArm && !_armed
                     text: qsTr("Force Arm")
 
@@ -392,10 +403,11 @@ RowLayout {
                 visible:            _activeVehicle && !_armed
 
                 QGCCheckBoxSlider {
+                    objectName:         "mainStatus_allowForceArm"
                     Layout.fillWidth:   true
                     text:               qsTr("Allow Force Arm")
-                    checked:            false
-                    onClicked:          _allowForceArm = true
+                    checked:            control._allowForceArm
+                    onClicked:          control._allowForceArm = checked
                 }
             }
 

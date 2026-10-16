@@ -16,8 +16,8 @@ SetupPage {
 
     property int neutralValue: 50;
     property int _lastIndex: 0;
-    property bool canRunManualTest: controller.vehicle.flightMode !== controller.vehicle.motorDetectionFlightMode && controller.vehicle.armed && motorPage.visible && setupView.visible
-    property var shouldRunManualTest: false // Does the operator intend to run the motor test?
+    readonly property bool canRunManualTest: controller.vehicle && controller.vehicle.flightMode !== controller.vehicle.motorDetectionFlightMode && controller.vehicle.armed && motorPage.visible
+    property bool shouldRunManualTest: false // Does the operator intend to run the motor test?
 
     APMSubMotorComponentController {
         id:             controller
@@ -29,8 +29,13 @@ SetupPage {
     }
 
     Component.onCompleted: {
-        if (controller.vehicle && !controller.vehicle.setupSafetyRestrictionsDisabled) {
-            controller.vehicle.armed = false
+        if (controller.vehicle) {
+            if (controller.vehicle.setupSafetyRestrictionsDisabled) {
+                // An already-armed vehicle will not emit armedChanged when this page opens.
+                shouldRunManualTest = controller.vehicle.armed
+            } else if (controller.vehicle.armed) {
+                controller.vehicle.armed = false
+            }
         }
     }
 
@@ -38,12 +43,28 @@ SetupPage {
         id: pageComponent
 
         Column {
+            id: motorControls
             spacing: 10
+
+            function resetSliders() {
+                for (var sliderIndex = 0; sliderIndex < sliderRepeater.count; sliderIndex++) {
+                    var item = sliderRepeater.itemAt(sliderIndex)
+                    if (item) {
+                        item.motorSlider.value = motorPage.neutralValue
+                    }
+                }
+            }
 
             Row {
                 id:         motorSliders
-                enabled:    canRunManualTest && shouldRunManualTest
+                objectName: "subMotor_sliders"
+                enabled:    canRunManualTest && shouldRunManualTest && !coolDownTimer.running
                 spacing:    ScreenTools.defaultFontPixelWidth * 4
+                onEnabledChanged: {
+                    if (!enabled) {
+                        motorControls.resetSliders()
+                    }
+                }
 
                 Column {
                     spacing:    ScreenTools.defaultFontPixelWidth * 2
@@ -67,6 +88,7 @@ SetupPage {
 
                                 QGCSlider {
                                     id:                         slider
+                                    objectName:                 "subMotor_slider_" + index
                                     height:                     ScreenTools.defaultFontPixelHeight * _sliderHeight
                                     orientation:                Qt.Vertical
                                     to:               100
@@ -160,14 +182,23 @@ SetupPage {
                 spacing: ScreenTools.defaultFontPixelWidth
                 Switch {
                     id: safetySwitch
+                    objectName: "subMotor_safetySwitch"
+                    checked: controller.vehicle ? controller.vehicle.armed : false
+                    enabled: controller.vehicle && !coolDownTimer.running
                     onToggled: {
-                        if (controller.vehicle.armed) {
+                        if (!controller.vehicle) {
+                            return
+                        }
+                        if (!checked) {
                             shouldRunManualTest = false
-                            enabled = false
-                            coolDownTimer.start()
+                            coolDownTimer.restart()
+                        } else if (controller.vehicle.armed) {
+                            shouldRunManualTest = true
                         }
 
-                        controller.vehicle.armed = checked
+                        if (controller.vehicle.armed !== checked) {
+                            controller.vehicle.armed = checked
+                        }
                         checked = controller.vehicle.armed // Makes the switch stay off if it's not possible to arm
                     }
                 }
@@ -175,20 +206,14 @@ SetupPage {
                 // Make sure external changes to Armed are reflected on the switch
                 Connections {
                     target: controller.vehicle
-                    onArmedChanged:
-                    {
+                    function onArmedChanged(armed) {
+                        motorControls.resetSliders()
                         safetySwitch.checked = armed
-                            if (!armed) {
-                                shouldRunManualTest = false
-                                safetySwitch.enabled = false
-                                coolDownTimer.start()
-                            } else {
-                                shouldRunManualTest = true
-                            }
-                            for (var sliderIndex=0; sliderIndex<sliderRepeater.count; sliderIndex++) {
-                                sliderRepeater.itemAt(sliderIndex).motorSlider.value = neutralValue
-                            }
+                        shouldRunManualTest = armed
+                        if (!armed) {
+                            coolDownTimer.restart()
                         }
+                    }
                 }
 
                 QGCLabel {
@@ -269,12 +294,13 @@ SetupPage {
             // Repeats the command signal and updates the checkbox every 50 ms
             Timer {
                 id: timer
+                objectName:     "subMotor_commandTimer"
                 interval:       50
                 repeat:         true
-                running:        canRunManualTest && shouldRunManualTest
+                running:        motorSliders.enabled
 
                 onTriggered: {
-                    if (controller.vehicle.armed) {
+                    if (motorSliders.enabled && controller.vehicle && controller.vehicle.armed) {
                             var slider = sliderRepeater.itemAt(_lastIndex)
 
                             var reversed = controller.getParameterFact(-1, "MOT_" + (_lastIndex + 1) + "_DIRECTION").value == -1
@@ -289,12 +315,10 @@ SetupPage {
             }
             Timer {
                 id: coolDownTimer
+                objectName:     "subMotor_coolDownTimer"
                 interval:       11000
                 repeat:         false
 
-                onTriggered: {
-                    safetySwitch.enabled = true
-                }
             }
         } // Column
     } // Component

@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal DisableDelayedExpansion
 
 set "SCRIPT_DIR=%~dp0"
 set "REPO_DIR=%SCRIPT_DIR%..\.."
@@ -18,25 +18,29 @@ if not exist "%YOLO_PYTHON%" (
 
 set "FIRST_ARG=%~1"
 
-if "%~1"=="" (
-    pushd "%REPO_DIR%" >nul
-    "%YOLO_PYTHON%" tools\ai_detection\run_yolo_to_qgc_auto.py --model "%DEFAULT_MODEL%"
-    set "EXIT_CODE=%ERRORLEVEL%"
-    popd >nul
-    exit /b %EXIT_CODE%
-) else if "!FIRST_ARG:~0,2!"=="--" (
-    pushd "%REPO_DIR%" >nul
-    "%YOLO_PYTHON%" tools\ai_detection\run_yolo_to_qgc_auto.py --model "%DEFAULT_MODEL%" %*
-    set "EXIT_CODE=%ERRORLEVEL%"
-    popd >nul
-    exit /b %EXIT_CODE%
-) else (
-    set "SOURCE=%~1"
-    shift
-)
+if "%~1"=="" goto auto
+if "%FIRST_ARG:~0,2%"=="--" goto auto
 
+set "SOURCE=%~1"
+shift
+set "EXTRA_ARGS="
+
+:collect_source_args
+if "%~1"=="" goto single_source
+set EXTRA_ARGS=%EXTRA_ARGS% %1
+shift
+goto collect_source_args
+
+:single_source
 pushd "%REPO_DIR%" >nul
-"%YOLO_PYTHON%" tools\ai_detection\yolo_to_qgc_udp.py --source "%SOURCE%" --model "%DEFAULT_MODEL%" %*
+"%YOLO_PYTHON%" tools\ai_detection\yolo_to_qgc_udp.py --source "%SOURCE%" --model "%DEFAULT_MODEL%" %EXTRA_ARGS%
+goto finished
+
+:auto
+pushd "%REPO_DIR%" >nul
+"%YOLO_PYTHON%" tools\ai_detection\run_yolo_to_qgc_auto.py --model "%DEFAULT_MODEL%" %*
+
+:finished
 set "EXIT_CODE=%ERRORLEVEL%"
 popd >nul
 

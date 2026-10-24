@@ -308,10 +308,11 @@ function Assert-UpgradeContract {
     if ($nsisScript -notmatch 'InstallDir "\$PROGRAMFILES64\\\$\{APPNAME\}"') {
         throw 'Stable QGC_KevinJiang install directory contract is missing.'
     }
-    if ($nsisScript -notmatch 'ExecWait "\$R0 /S -LEAVE_DATA=1') {
+    # The previous uninstaller ($R1) removes its own directory ($R3), not the selected destination.
+    if ($nsisScript -notmatch 'ExecWait ''"\$R1" /S -LEAVE_DATA=1 _\?=\$R3''') {
         throw 'In-place upgrade and user-data preservation contract is missing.'
     }
-    if ($nsisScript -notmatch '(?m)ExecWait "\$R0 /S -LEAVE_DATA=1[^"\r\n]*" \$0') {
+    if ($nsisScript -notmatch '(?m)ExecWait ''"\$R1" /S -LEAVE_DATA=1[^''\r\n]*'' \$0') {
         throw 'Previous uninstaller return-code capture is missing.'
     }
 }

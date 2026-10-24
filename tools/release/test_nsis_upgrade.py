@@ -111,6 +111,9 @@ allowed:
     FileOpen $9 "{case / "observed-directory.txt"}" w
     FileWrite $9 "$INSTDIR"
     FileClose $9
+    FileOpen $9 "{case / "observed-uninstaller.txt"}" w
+    FileWrite $9 "$EXEPATH"
+    FileClose $9
     ${{GetParameters}} $R0
     ${{GetOptions}} $R0 "-LEAVE_DATA=" $R1
     ${{If}} $R1 != 1
@@ -121,6 +124,8 @@ allowed:
         Quit
     ${{EndIf}}
     Delete "$INSTDIR\\sentinel.txt"
+    ; Like the production RMDir, but never scheduled for reboot: a running file stays in place.
+    Delete "$INSTDIR\\Fixture-Uninstall.exe"
 SectionEnd
 ''',
             encoding="utf-8",
@@ -207,6 +212,11 @@ SectionEnd
             if not missing:
                 self.assertEqual(Path((case / "observed-directory.txt").read_text()), old)
                 self.assertFalse((old / "sentinel.txt").exists())
+                # The previous uninstaller runs from a temporary copy, so its own file is removed.
+                running = Path((case / "observed-uninstaller.txt").read_text())
+                self.assertFalse(running.resolve().is_relative_to(old.resolve()))
+                self.assertFalse(old_exe.exists())
+                self.assertEqual(list((case / "runtime-temp").rglob("previous-uninstaller.exe")), [])
             else:
                 self.assertTrue((old / "sentinel.txt").exists())
             if not same and new_exists:

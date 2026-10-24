@@ -134,9 +134,18 @@ nestedInstallDirectory:
 
 uninstallPreviousVersion:
     DetailPrint "Uninstalling previous version..."
+    ; Run a copy: an uninstaller running from its own directory cannot delete itself, so it would
+    ; only be scheduled for deletion at reboot, which then removes the new uninstaller of the same name.
+    InitPluginsDir
+    ClearErrors
+    CopyFiles /SILENT "$R1" "$PLUGINSDIR\previous-uninstaller.exe"
+    ${If} ${Errors}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to prepare the previous uninstaller."
+        Abort
+    ${EndIf}
     ClearErrors
     ; _?= sets the child's removal directory, not this installer's selected destination.
-    ExecWait '"$R1" /S -LEAVE_DATA=1 _?=$R3' $0
+    ExecWait '"$PLUGINSDIR\previous-uninstaller.exe" /S -LEAVE_DATA=1 _?=$R3' $0
     ${If} ${Errors}
         MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to start previous uninstaller."
         Abort

@@ -308,11 +308,16 @@ function Assert-UpgradeContract {
     if ($nsisScript -notmatch 'InstallDir "\$PROGRAMFILES64\\\$\{APPNAME\}"') {
         throw 'Stable QGC_KevinJiang install directory contract is missing.'
     }
-    # The previous uninstaller ($R1) removes its own directory ($R3), not the selected destination.
-    if ($nsisScript -notmatch 'ExecWait ''"\$R1" /S -LEAVE_DATA=1 _\?=\$R3''') {
+    # A temporary copy of the previous uninstaller removes the previous directory ($R3), not the selected destination.
+    # Matches start at an instruction, so a commented-out line does not satisfy the contract.
+    if ($nsisScript -notmatch '(?m)^\s*InitPluginsDir\s*$' -or
+        $nsisScript -notmatch '(?m)^\s*CopyFiles /SILENT "\$R1" "\$PLUGINSDIR\\previous-uninstaller\.exe"\s*$') {
+        throw 'Previous uninstaller is not run from a temporary copy.'
+    }
+    if ($nsisScript -notmatch '(?m)^\s*ExecWait ''"\$PLUGINSDIR\\previous-uninstaller\.exe" /S -LEAVE_DATA=1 _\?=\$R3''') {
         throw 'In-place upgrade and user-data preservation contract is missing.'
     }
-    if ($nsisScript -notmatch '(?m)ExecWait ''"\$R1" /S -LEAVE_DATA=1[^''\r\n]*'' \$0') {
+    if ($nsisScript -notmatch '(?m)^\s*ExecWait ''"\$PLUGINSDIR\\previous-uninstaller\.exe" /S -LEAVE_DATA=1[^''\r\n]*'' \$0\s*$') {
         throw 'Previous uninstaller return-code capture is missing.'
     }
 }

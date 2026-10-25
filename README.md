@@ -3,30 +3,30 @@
 QGC_KevinJiang is an internal GRobot ground control application maintained by Kevin Jiang. It is based on the open-source QGroundControl project and customized for DeepShark multi-camera operation and optional local AI detection.
 
 - Project name: QGC_KevinJiang
-- Current stable version: 1.4.0
-- Development candidate: 2.1.0 Debug, based on QGroundControl v5.1.5
-- Stable v1.4.0 upstream base: QGroundControl v5.0.8
+- Latest internal installer: 2.1.0, based on QGroundControl v5.1.5 ([release notes](docs-deepshark/releases/v2.1.0.zh-CN.md))
+- Latest public GitHub Release: 1.4.0, based on QGroundControl v5.0.8
+- Development: `main` carries 2.1.0; the Debug build shows `2.1.0 Debug (QGroundControl v5.1.5)`
 - Maintainer: Jiang Zhongze / KevinJiang1018@gmail.com
-- Distribution: Windows installer published through GitHub Releases
 - Development branch: `main`; single-maintainer branch and directory rules are documented in [Repository maintenance](docs-deepshark/repository.md).
 
 ## Main Features
 
-- DeepShark four-channel RTSP video panel for front, left, right, and rear camera views.
+- DeepShark four-channel RTSP video panel for front, left, right, and rear camera views, with automatic reconnection.
 - Optional YOLO AI detection overlay using a local Python environment and local model files.
 - Built-in AI environment check and AI start/stop/restart controls in QGC video settings.
-- GRobot application icon and Windows NSIS installer packaging.
-- QGC native video source defaults to disabled and respects the disabled state when vehicle video stream information is received.
+- Disconnect alert that watches the vehicle heartbeat and the video frames and warns when either link stops.
+- Arm/disarm and heartbeat status on the main toolbar; joystick setup in four pages (general, button assignment, calibration, advanced).
 - ArduSub 4.8 parameter metadata and firmware-backed joystick actions for Servo12/Actuator4 gripper control.
-- Separate physical-output test paths for thruster PWM and servo jog operation.
+- Physical-output tool for thruster PWM and servo jog tests, with output backup, recovery and neutral confirmation; it refuses to start while an arm request is still pending.
+- GRobot application icon and Windows NSIS installer with in-place upgrade that keeps user settings.
 
 ## Installation
 
-Download the Windows installer from the GitHub Release page for the required version. For v1.4.0, use:
+Versions 1.5.0 and 2.x are distributed to GRobot members internally as `QGC_v<version>_KevinJiang-installer.exe`; they are not listed on GitHub Releases. Version 1.4.0 remains available from the [GitHub Release page](https://github.com/KevinJiang05/QGC_for_GRobot/releases/tag/qgc-kevinjiang-v1.4.0) as `QGC_v1.4.0_KevinJiang-installer.exe`.
 
-- `QGC_v1.4.0_KevinJiang-installer.exe`
+To upgrade, quit QGC and run the new installer into the existing directory; uninstalling first is not needed. The release notes for each version describe backup and rollback.
 
-The installer is distributed as a Release asset. It is intentionally not committed into the normal source tree.
+Installers are not committed into the source tree.
 
 ## Optional AI Detection
 
@@ -42,7 +42,7 @@ Use the environment check in the Video settings page before starting AI detectio
 
 ## Source Provenance
 
-The development source is based on the complete official QGroundControl v5.1.5 project. DeepShark functionality and necessary core fixes are adapted to that version. The existing stable v1.4.0 release remains based on v5.0.8. The upstream QGroundControl history is preserved for traceability and license compliance.
+The development source is based on the complete official QGroundControl v5.1.5 project. DeepShark functionality and necessary core fixes are adapted to that version. The public v1.4.0 release remains based on v5.0.8. The upstream QGroundControl history is preserved for traceability and license compliance.
 
 Upstream project:
 
@@ -52,7 +52,7 @@ Upstream project:
 
 - Project documentation index: [docs-deepshark/README.md](docs-deepshark/README.md)
 - Repository and directory maintenance: [docs-deepshark/repository.md](docs-deepshark/repository.md)
-- Release notes: [docs-deepshark/releases/v1.4.0.md](docs-deepshark/releases/v1.4.0.md)
+- Release notes: [v2.1.0](docs-deepshark/releases/v2.1.0.zh-CN.md), [v1.4.0](docs-deepshark/releases/v1.4.0.md), all versions in [docs-deepshark/releases/](docs-deepshark/releases/)
 - Original QGroundControl user documentation: https://docs.qgroundcontrol.com/
 - Original QGroundControl developer documentation: https://dev.qgroundcontrol.com/
 

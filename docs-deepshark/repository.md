@@ -6,10 +6,10 @@
 
 - `main` 是唯一长期开发分支。需要明确并行任务时才创建短期分支或工作树。
 - `upstream` 用于取得官方 QGroundControl 源码；官方标签与历史保持完整。升级使用 Git 合并，并迁移 `custom` 和有明确依据的核心补丁。
-- 固定 tag 保存回退节点。已发布 tag 不移动；正式安装包通过 GitHub Release 分发。
+- 固定 tag 保存回退节点。已发布 tag 不移动。GitHub Release 上公开的最新安装包是 `1.4.0`；`1.5.0` 和 `2.x` 安装包在项目成员内部分发，不上传 GitHub Release。
 - 升级前检查点是 `db9c9159631a271457a7d6c395deb50e2cf3c304`，备份 tag `backup/pre-qgc-v5.1.5` 已创建并推送，可用于完整回退源码。
 - 官方合并与定制适配已提交为 `6b044f606de525d7f978d4e64f5bcd26f112ab46` 并推送；GitHub 默认分支与本地开发分支均为 `main`，本地跟踪 `origin/main`。
-- 当前源码基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），Kevin 产品版本为 `2.1.0`（上一版安装包是 `2.0.1`）；Debug 候选显示 `2.1.0 Debug (QGroundControl v5.1.5)`。
+- 当前源码基于官方 `v5.1.5`（`3a67d31f0c36bf3fe38ec52970d250a89d0aaf67`），Kevin 产品版本为 `2.1.0`（2026-10-24 打包，内部小范围发放，发布说明见 `releases/v2.1.0.zh-CN.md`）；Debug 候选显示 `2.1.0 Debug (QGroundControl v5.1.5)`。
 - 正式 `1.4.0` 发布与对应 tag 保留。Debug 和预发布 tag 不表示实机验收完成。
 
 ## 目录用途

@@ -34,7 +34,7 @@
 
 | ID | 目的 | 为什么要改上游 | 最小验证 | 退出方向 |
 | --- | --- | --- | --- | --- |
-| P01 | **版本覆盖、安装包和仓库级文件**：`QGC_APP_VERSION_OVERRIDE`、安装 AI 工具目录、安装器组件化、覆盖安装时处理旧卸载程序、忽略规则、协作说明 | 这些入口都在上游的构建和安装脚本里 | `tools/release/build-windows-release.ps1` 完整成功；覆盖安装 | 产品品牌不回馈上游。能参数化的继续收进 `custom/cmake` |
+| P01 | **版本覆盖、安装包和仓库级文件**：`QGC_APP_VERSION_OVERRIDE`、安装 AI 工具目录、安装器组件化、覆盖安装时处理旧卸载程序（从临时副本运行，避免它被登记为重启删除，连带删掉新写入的同名卸载程序）、忽略规则、协作说明 | 这些入口都在上游的构建和安装脚本里 | `tools/release/build-windows-release.ps1` 完整成功；覆盖安装 | 产品品牌不回馈上游。能参数化的继续收进 `custom/cmake` |
 | P02 | **品牌声明与中文翻译**：帮助页的二次开发声明，两份中文翻译 | 帮助页和翻译是仓库级资源 | 帮助页实际显示；`JsonResourceAuditTest` | 帮助页声明可以改成 custom 覆盖。翻译每次升级都要重做合并 |
 | P03 | **设置页挂载点**：通信链路页挂 `ConnectionAlertSettings`，视频页挂 `AIDetectionSettings`，并把"强制解码器"移到单独的 DeepShark 小节 | 设置页由上游 JSON 描述，custom 没有向页面里插入小节的扩展点 | 两个设置页能打开并显示定制小节；设置搜索能搜到 | 上游若提供设置页扩展点就迁出。这两个文件里 `keywords` 被展开成多行是纯格式差异，见第 7 节 |
 | P04 | **"禁用安全限制"开关**：新增应用设置 `disableSetupSafetyRestrictions` 和固件能力 `ArmedSetupOverrideCapability`；开启后 ArduSub 在已解锁时可以进配置页、补下载被跳过的参数；传感器和遥控校准在已解锁时拒绝开始；电机页不再无条件上锁。同一批文件里还有两个默认开启的保护开关：`joystickSetupLiveControlGuard`、`allowManualOutputRecovery` | 配置页的可用性判断、初始连接状态机和校准控制器都在上游核心里 | `AppSettingsTest`、`InitialConnectTest`；已解锁时进配置页、尝试校准 | 产品决策，不回馈上游。审计条目 F05、N01、N06、N07 都与它有关 |
